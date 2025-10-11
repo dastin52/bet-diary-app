@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { UserSettings } from '../types';
 import { loadSettings, saveSettings, defaultSettings } from '../data/settingsStore';

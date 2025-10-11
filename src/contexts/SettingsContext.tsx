@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useSettings, UseSettingsReturn } from '../hooks/useSettings';
 

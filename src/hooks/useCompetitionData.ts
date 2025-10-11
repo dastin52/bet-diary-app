@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useMemo } from 'react';
 import { Bet, User, BetStatus, Achievement } from '../types';
 import { getUsers } from '../data/userStore';

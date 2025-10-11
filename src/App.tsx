@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { BetProvider } from './contexts/BetContext';
 import Layout from './components/Layout';

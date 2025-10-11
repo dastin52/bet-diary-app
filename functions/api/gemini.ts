@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 // FIX: Define PagesFunction type for Cloudflare environment.

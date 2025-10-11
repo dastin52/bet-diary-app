@@ -1,4 +1,3 @@
-
 import { Bet, BetStatus, BetType, BankTransaction, BankTransactionType } from './types';
 import { generateEventString } from './utils/betUtils';
 

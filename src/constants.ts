@@ -1,4 +1,3 @@
-
 import { BetStatus, BetType, Challenge } from './types';
 
 export const SPORTS = [

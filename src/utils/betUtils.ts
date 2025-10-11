@@ -1,4 +1,3 @@
-
 import { Bet, BetLeg, BetStatus, BetType } from '../types';
 
 export const calculateProfit = (bet: Omit<Bet, 'id' | 'createdAt' | 'event'>): number => {
