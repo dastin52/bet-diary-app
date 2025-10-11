@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import Card from './ui/Card';
 import { useCompetitionData, TimePeriod, CompetitionParticipant } from '../hooks/useCompetitionData';

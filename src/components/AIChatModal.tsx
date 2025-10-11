@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Bet, Message, GroundingSource } from '../types';
 import { UseBetsReturn } from '../hooks/useBets';

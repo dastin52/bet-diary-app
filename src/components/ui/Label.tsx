@@ -1,4 +1,3 @@
-
 import React, { LabelHTMLAttributes } from 'react';
 
 const Label: React.FC<LabelHTMLAttributes<HTMLLabelElement>> = ({ children, ...props }) => {

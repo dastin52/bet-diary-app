@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 // A generic type for tooltip props from Recharts

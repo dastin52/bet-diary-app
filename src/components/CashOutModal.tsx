@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useBetContext } from '../contexts/BetContext';
 import Modal from './ui/Modal';

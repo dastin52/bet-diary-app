@@ -1,5 +1,3 @@
-
-
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useBets, UseBetsReturn } from '../hooks/useBets';
 

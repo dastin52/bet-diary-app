@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useBetContext } from '../contexts/BetContext';
 import { Bet, BetStatus, BetType } from '../types';
