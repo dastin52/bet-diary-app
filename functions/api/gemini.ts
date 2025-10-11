@@ -1,6 +1,12 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
+// FIX: Define PagesFunction type for Cloudflare environment.
+type PagesFunction<Env = unknown> = (context: {
+  request: Request;
+  env: Env;
+}) => Response | Promise<Response>;
+
 interface Env {
   GEMINI_API_KEY: string;
 }

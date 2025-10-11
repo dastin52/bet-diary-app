@@ -1,10 +1,16 @@
 
-import { Bet, BetLeg, Message, GroundingSource, UpcomingMatch } from '../types';
+// DEPRECATED: Прямые вызовы к Gemini API с фронтенда небезопасны.
+// API-ключ будет виден всем пользователям.
+// import { GoogleGenAI, Type } from "@google/genai";
+import { Bet, BetLeg, Message, GroundingSource, BetStatus, UpcomingMatch } from '../types';
 import { UseBetsReturn } from "../hooks/useBets";
+
+// DEPRECATED: Инициализация на клиенте небезопасна.
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 const dateOptions: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
 
-// --- System instructions will be sent to the backend ---
+// --- Системные инструкции остаются без изменений, они будут передаваться на бэкенд ---
 const betSystemInstruction = `Вы — эксперт-аналитик по спортивным ставкам. Ваша цель — предоставлять проницательные, сбалансированные и ответственные советы. Анализируйте ставку пользователя на основе предоставленных данных. Вы также можете использовать поиск в реальном времени для получения дополнительной информации о матче, если пользователь спросит. Не давайте финансовых советов и не гарантируйте исход. Обсуждайте вероятности, потенциальные риски и стратегии. Сохраняйте тон полезного и аналитического помощника. Отвечайте на русском языке.`;
 const generalSystemInstruction = (currentDate: string) => `Вы — эксперт-аналитик по спортивным ставкам. Сегодняшняя дата: ${currentDate}. Всегда используй эту дату как точку отсчета для любых запросов о текущих или будущих событиях.
 
@@ -19,7 +25,7 @@ const generalSystemInstruction = (currentDate: string) => `Вы — экспер
 
 Всегда поощряйте ответственную игру. Не давайте прямых финансовых советов. Отвечайте на русском языке.`;
 
-// --- Helper functions remain unchanged ---
+// --- Вспомогательные функции остаются без изменений ---
 function legsToText(legs: BetLeg[], sport: string): string {
     if (!legs || legs.length === 0) return "События не указаны.";
     
@@ -28,7 +34,7 @@ function legsToText(legs: BetLeg[], sport: string): string {
         const eventName = ['Теннис', 'Бокс', 'ММА'].includes(sport) 
             ? `${leg.homeTeam} - ${leg.awayTeam}` 
             : `${leg.homeTeam} vs ${leg.awayTeam}`;
-        return `Событие: ${eventName}\\n- Исход: ${leg.market}`;
+        return `Событие: ${eventName}\n- Исход: ${leg.market}`;
     }
 
     const legsDescription = legs.map((leg, index) => {
@@ -36,8 +42,8 @@ function legsToText(legs: BetLeg[], sport: string): string {
             ? `${leg.homeTeam} - ${leg.awayTeam}` 
             : `${leg.homeTeam} vs ${leg.awayTeam}`;
         return `  ${index + 1}. Событие: ${eventName}, Исход: ${leg.market}`;
-    }).join('\\n');
-    return `Экспресс из ${legs.length} событий:\\n${legsDescription}`;
+    }).join('\n');
+    return `Экспресс из ${legs.length} событий:\n${legsDescription}`;
 }
 function betToText(bet: Bet): string {
     return `
@@ -62,19 +68,20 @@ function analyticsToText(analytics: UseBetsReturn['analytics']): string {
     `;
 }
 
+
 /**
  * =====================================================================================
- * SECURE API ARCHITECTURE FOR PRODUCTION
+ * НОВАЯ АРХИТЕКТУРА ДЛЯ ОНЛАЙН-РАЗВЕРТЫВАНИЯ
  * =====================================================================================
  * 
- * All functions below now call our own backend server function 
- * at `/api/gemini`. This server function will:
- * 1. Accept POST requests with a body containing { endpoint: '...', payload: {...} }.
- * 2. Securely store `process.env.GEMINI_API_KEY` in the server's environment variables.
- * 3. Call the appropriate Gemini API method based on `endpoint` and `payload`.
- * 4. Return the result to the frontend.
+ * Все функции ниже теперь обращаются к вашему собственному бэкенд-серверу 
+ * по адресу `/api/gemini`. Этот сервер должен:
+ * 1. Принимать POST-запросы с телом, содержащим { endpoint: '...', payload: {...} }.
+ * 2. Безопасно хранить `process.env.API_KEY` в переменных окружения сервера.
+ * 3. Вызывать соответствующий метод Gemini API на основе `endpoint` и `payload`.
+ * 4. Возвращать результат обратно на фронтенд.
  * 
- * This prevents your API key from ever being exposed to the user's browser.
+ * Это предотвращает утечку вашего API-ключа.
  */
 async function callApiProxy(endpoint: string, payload: object) {
     const response = await fetch('/api/gemini', {
@@ -87,15 +94,15 @@ async function callApiProxy(endpoint: string, payload: object) {
 
     if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `Server error when calling ${endpoint}`);
+        throw new Error(errorData.error || `Ошибка сервера при вызове ${endpoint}`);
     }
 
     return response.json();
 }
 
 export const fetchAIStrategy = async (analytics: UseBetsReturn['analytics']): Promise<string> => {
-    const systemInstruction = `Вы — AI-Стратег...`; // Full instruction text
-    const prompt = `Проанализируй мою эффективность и дай стратегические советы.\\n\\n${analyticsToText(analytics)}`;
+    const systemInstruction = `Вы — AI-Стратег...`; // Полный текст инструкции
+    const prompt = `Проанализируй мою эффективность и дай стратегические советы.\n\n${analyticsToText(analytics)}`;
     
     try {
         const response = await callApiProxy('generateContent', {
@@ -105,12 +112,14 @@ export const fetchAIStrategy = async (analytics: UseBetsReturn['analytics']): Pr
         });
         return response.text;
     } catch (error) {
-        console.error("Error fetching AI strategy:", error);
+        console.error("Ошибка при запросе стратегии от AI:", error);
         throw new Error("Не удалось получить стратегический анализ от AI.");
     }
 };
 
 export const fetchUpcomingMatches = async (): Promise<UpcomingMatch[]> => {
+     // Этот вызов требует сложной логики с JSON-схемой и инструментами,
+     // которая должна быть реализована на бэкенде.
     try {
         const response = await callApiProxy('findMatches', {});
         if (response.events && Array.isArray(response.events)) {
@@ -118,7 +127,7 @@ export const fetchUpcomingMatches = async (): Promise<UpcomingMatch[]> => {
         }
         return [];
     } catch (error) {
-        console.error("Error fetching upcoming matches:", error);
+        console.error("Ошибка при поиске событий:", error);
         throw new Error("Не удалось получить список матчей от AI.");
     }
 }
@@ -138,7 +147,7 @@ export const fetchMatchAnalysis = async (match: UpcomingMatch): Promise<{ text: 
         });
         return { text: response.text, sources: response.sources };
     } catch (error) {
-         console.error("Error fetching match analysis:", error);
+         console.error("Ошибка при анализе матча:", error);
          throw new Error("Не удалось получить анализ матча от AI.");
     }
 }
@@ -159,14 +168,14 @@ export const getAIChatResponse = async (
     if (bet) {
         systemInstructionText = betSystemInstruction;
         if (contents.length > 0 && history.length === 1 && contents[0].role === 'user') {
-             contents[0].parts[0].text = `${betToText(bet)}\\n\\n${contents[0].parts[0].text}`;
+             contents[0].parts[0].text = `${betToText(bet)}\n\n${contents[0].parts[0].text}`;
         }
     } else {
         const currentDate = new Date().toLocaleDateString('ru-RU', dateOptions);
         systemInstructionText = generalSystemInstruction(currentDate);
         if (contents.length > 0 && history.length === 1 && contents[0].role === 'user' && 
             (contents[0].parts[0].text.toLowerCase().includes('эффективность') || contents[0].parts[0].text.toLowerCase().includes('статистику'))) {
-            contents[0].parts[0].text = `${analyticsToText(analytics)}\\n\\n${contents[0].parts[0].text}`;
+            contents[0].parts[0].text = `${analyticsToText(analytics)}\n\n${contents[0].parts[0].text}`;
         }
     }
 
@@ -182,7 +191,7 @@ export const getAIChatResponse = async (
 
         return { text: response.text, sources: response.sources };
     } catch (error) {
-        console.error("Error calling AI API (text mode):", error);
+        console.error("Ошибка при вызове AI API (text mode):", error);
         return { text: "К сожалению, произошла ошибка при обращении к AI-ассистенту. Пожалуйста, попробуйте позже.", sources: undefined };
     }
 };
