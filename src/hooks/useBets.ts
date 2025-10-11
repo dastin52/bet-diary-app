@@ -167,6 +167,7 @@ export const useBets = (userKey: string): UseBetsReturn => {
         const originalBet = prevBets.find(b => b.id === id);
         if (!originalBet) return prevBets;
 
+        // FIX: Corrected typo from 'original' to 'originalBet'.
         const wasSettled = originalBet.status !== BetStatus.Pending;
         const originalProfit = wasSettled ? (originalBet.profit ?? calculateProfit(originalBet)) : 0;
 
@@ -214,10 +215,12 @@ export const useBets = (userKey: string): UseBetsReturn => {
              addBankTransaction(profitChange, type, description, id);
         }
 
+        // FIX: Added missing return statement. The updater function for `setBets` must return the new state array.
         return prevBets.map(bet => (bet.id === id ? updatedBet : bet));
     });
   }, [isDemoMode, addBankTransaction]);
 
+  // FIX: Added missing functions and return statement for the hook.
   const deleteBet = useCallback((id: string) => {
     if (isDemoMode) return;
     const betToDelete = bets.find(b => b.id === id);
@@ -264,7 +267,6 @@ export const useBets = (userKey: string): UseBetsReturn => {
             id: new Date().toISOString() + Math.random(),
             createdAt: new Date().toISOString(),
             currentValue: 0,
-            // FIX: Use GoalStatus enum instead of a magic string.
             status: GoalStatus.InProgress,
         };
         setGoals(prev => [newGoal, ...prev]);
