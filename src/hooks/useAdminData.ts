@@ -83,21 +83,23 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
+    // FIX: Use a generic type argument for `reduce` to correctly type the accumulator.
+    // This resolves issues where `count` was inferred as `unknown` in subsequent operations.
+    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    // FIX: Added type assertion to the initial value of `reduce` to correctly infer the type of the accumulator.
-    }, {} as Record<string, number>);
+    }, {});
     const popularSports = Object.entries(popularSportsCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
+    // FIX: Use a generic type argument for `reduce` to correctly type the accumulator.
+    // This resolves issues where `count` was inferred as `unknown` in subsequent operations.
+    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    // FIX: Added type assertion to the initial value of `reduce` to correctly infer the type of the accumulator.
-    }, {} as Record<string, number>);
+    }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
