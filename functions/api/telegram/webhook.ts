@@ -1,3 +1,4 @@
+
 // functions/api/telegram/webhook.ts
 
 // --- TYPE DEFINITIONS ---
@@ -121,8 +122,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
     
     try {
-        // FIX: The .json() method on Request does not take a generic. Cast the result instead.
-        const update = await request.json() as TelegramUpdate;
+        const update = (await request.json()) as TelegramUpdate;
         const message = update.message;
 
         if (!message || !message.chat?.id || !message.from?.id || !message.text) {
@@ -156,8 +156,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         // Try to inform the user about the error, but don't let this fail the function.
         try {
              // A simplified way to get chat_id if the main parsing failed.
-             // FIX: The .json() method on Request does not take a generic. Cast the result instead.
-             const reqBodyForError = await request.clone().json() as any;
+             const reqBodyForError = (await request.clone().json()) as any;
              const errorChatId = reqBodyForError?.message?.chat?.id;
              if (errorChatId) {
                 const errorMessage = `🚧 Произошла внутренняя ошибка сервера.\n\nАдминистратор был уведомлен. Пожалуйста, попробуйте позже.\n\nТехнические детали:\n${e.message}`;

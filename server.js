@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -54,6 +55,35 @@ app.post('/api/gemini', async (req, res) => {
     console.error('Gemini API proxy error:', error);
     res.status(500).json({ error: 'Failed to fetch from Gemini API on the server.' });
   }
+});
+
+
+// --- TELEGRAM BOT LOCAL DEV ROUTES ---
+// This temporary store is for local development only. In production, Cloudflare KV is used.
+const tempAuthCodes = new Map();
+
+app.post('/api/telegram/generate-code', (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(400).json({ error: 'Email is required.' });
+    }
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Store with an expiry
+    const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
+    tempAuthCodes.set(code, { email, expiry });
+    
+    // Cleanup expired codes periodically (simple approach)
+    setTimeout(() => {
+        for (const [key, value] of tempAuthCodes.entries()) {
+            if (Date.now() > value.expiry) {
+                tempAuthCodes.delete(key);
+            }
+        }
+    }, 6 * 60 * 1000);
+
+    console.log(`[LOCAL DEV] Generated Telegram code ${code} for ${email}`);
+    res.json({ code });
 });
 
 

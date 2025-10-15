@@ -1,3 +1,4 @@
+
 // functions/api/telegram/generate-code.ts
 
 interface CodeGenerationRequest {
@@ -32,7 +33,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
 
     try {
-        const body = await request.json() as CodeGenerationRequest;
+        const body = (await request.json()) as CodeGenerationRequest;
         const { email } = body;
 
         if (!email) {
