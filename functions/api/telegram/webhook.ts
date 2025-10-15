@@ -169,11 +169,26 @@ const getMainMenu = (isLinked: boolean) => ({
     ]
 });
 
-const getRegistrationMenu = () => ({
+const getNewUserMenu = () => ({
     inline_keyboard: [
-        [{ text: "🔗 Привязать аккаунт с сайта", callback_data: "link_account" }],
+        [{ text: "✍️ Регистрация (инструкция)", callback_data: "show_registration_info" }],
+        [{ text: "🔗 У меня есть аккаунт", callback_data: "link_account" }],
     ]
 });
+
+async function sendNewUserWelcome(token: string, chatId: number, messageId?: number) {
+    const welcomeText = "👋 *Добро пожаловать в Дневник Ставок!*\n\n" +
+                        "Этот бот — ваш помощник для быстрого доступа к функциям сайта.\n\n" +
+                        "Если у вас еще нет аккаунта, нажмите 'Регистрация'. Если уже есть — привяжите его.";
+    const menu = getNewUserMenu();
+
+    if (messageId) {
+        await editMessageText(token, chatId, messageId, welcomeText, menu);
+    } else {
+        await sendMessage(token, chatId, welcomeText, menu);
+    }
+}
+
 
 // --- MAIN HANDLER ---
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -207,11 +222,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                         const userData = await getUserData(env.BOT_STATE, userEmail);
                         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `С возвращением, ${userData?.nickname || 'пользователь'}! 👋\n\nЧем могу помочь?`, getMainMenu(true));
                     } else {
-                        const welcomeText = "👋 *Добро пожаловать в Дневник Ставок!*\n\n" +
-                                            "Этот бот — ваш помощник для быстрого доступа к функциям сайта.\n\n" +
-                                            "Для начала работы необходимо *привязать ваш аккаунт*, созданный на сайте. " +
-                                            "Если у вас еще нет аккаунта, пожалуйста, сначала зарегистрируйтесь на сайте.";
-                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, welcomeText, getRegistrationMenu());
+                        await sendNewUserWelcome(env.TELEGRAM_BOT_TOKEN, chatId);
                     }
                     return new Response('OK');
             }
@@ -221,8 +232,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
             await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, callbackQueryId);
             const [action] = callbackData.split(':');
             
-            // Public actions
+            // Public actions (for new users)
             switch(action) {
+                case 'start_new_user':
+                    if (messageId) await sendNewUserWelcome(env.TELEGRAM_BOT_TOKEN, chatId, messageId);
+                    return new Response('OK');
+
+                case 'show_registration_info':
+                    const registrationInfoText = "ℹ️ *Как зарегистрироваться?*\n\n" +
+                                                 "1. Регистрация проходит на нашем основном сайте.\n" +
+                                                 "2. После успешной регистрации вернитесь в этот бот.\n" +
+                                                 "3. Нажмите 'У меня есть аккаунт' и следуйте инструкциям для привязки.\n\n" +
+                                                 "_(К сожалению, бот не может предоставить прямую ссылку на сайт.)_";
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, registrationInfoText, {
+                        inline_keyboard: [[{ text: "⬅️ Назад", callback_data: "start_new_user" }]]
+                    });
+                    return new Response('OK');
+
                 case 'link_account':
                      await setDialogState(env.BOT_STATE, userId, { action: 'link_ask_code', data: {} });
                      const instructionText = "🔐 *Привязка аккаунта*\n\n" +
@@ -230,16 +256,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                                              "2. Перейдите в *Настройки* ➝ *Интеграция с Telegram*.\n" +
                                              "3. Нажмите *'Сгенерировать код'*.\n" +
                                              "4. Отправьте полученный 6-значный код в этот чат.";
-
-                     if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, instructionText, { inline_keyboard: [[{ text: "⬅️ Отмена", callback_data: "main_menu" }]] });
+                     const backButtonCallback = userEmail ? "main_menu" : "start_new_user";
+                     if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, instructionText, { inline_keyboard: [[{ text: "⬅️ Назад", callback_data: backButtonCallback }]] });
                      else await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, instructionText);
                      
                      return new Response('OK');
             }
 
-            // Private actions
+            // Private actions (require linked account)
             if (!userEmail) {
-                await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Действие недоступно. Пожалуйста, сначала привяжите свой аккаунт.", getRegistrationMenu());
+                await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Действие недоступно. Пожалуйста, сначала привяжите свой аккаунт.");
+                await sendNewUserWelcome(env.TELEGRAM_BOT_TOKEN, chatId);
                 return new Response('OK');
             }
 
@@ -252,7 +279,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
             switch (action) {
                 case 'main_menu':
-                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "🏠 Главное меню:", getMainMenu(true));
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, `С возвращением, ${userData?.nickname || 'пользователь'}! 👋\n\nЧем могу помочь?`, getMainMenu(true));
                     return new Response('OK');
 
                 case 'view_stats':
@@ -358,7 +385,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         }
 
         if (text && !userEmail && !dialogState) {
-            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Я не понимаю команду. Пожалуйста, используйте кнопки ниже или введите /start.", getRegistrationMenu());
+            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Я не понимаю команду. Пожалуйста, используйте кнопки ниже или введите /start.");
+            await sendNewUserWelcome(env.TELEGRAM_BOT_TOKEN, chatId);
         }
 
     } catch (error) {
