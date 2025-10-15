@@ -36,8 +36,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   
   // This effect will sync the currentUser state if another tab updates the referrer's buttercups
   useEffect(() => {
-    const handleStorageChange = () => {
-      if (currentUser) {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'betting_app_users' && currentUser) {
         const latestUser = userStore.findUserBy(u => u.email === currentUser.email);
         if (latestUser && JSON.stringify(latestUser) !== JSON.stringify(currentUser)) {
           setCurrentUser(latestUser);
