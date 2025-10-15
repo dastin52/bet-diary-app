@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -86,18 +87,20 @@ export const useAdminData = (): UseAdminDataReturn => {
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {});
+    }, {} as Record<string, number>);
     const popularSports = Object.entries(popularSportsCounts)
-        .map(([name, count]) => ({ name, count }))
+        // FIX: Cast count to number to resolve type inference issue.
+        .map(([name, count]) => ({ name, count: count as number }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {});
+    }, {} as Record<string, number>);
     const popularBookmakers = Object.entries(popularBookmakersCounts)
-        .map(([name, count]) => ({ name, count }))
+        // FIX: Cast count to number to resolve type inference issue.
+        .map(([name, count]) => ({ name, count: count as number }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     

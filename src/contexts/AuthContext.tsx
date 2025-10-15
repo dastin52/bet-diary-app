@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User } from '../types';
 import * as userStore from '../data/userStore';
 
@@ -14,6 +14,7 @@ interface AuthContextType {
   register: (email: string, password_hash: string, nickname: string, adminCode?: string, referralCode?: string) => Promise<void>;
   logout: () => void;
   isAdmin: boolean;
+  updateCurrentUser: (updatedData: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,8 +31,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return null;
     }
   });
-  
+
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
+  
+  // This effect will sync the currentUser state if another tab updates the referrer's buttercups
+  useEffect(() => {
+    const handleStorageChange = () => {
+      if (currentUser) {
+        const latestUser = userStore.findUserBy(u => u.email === currentUser.email);
+        if (latestUser && JSON.stringify(latestUser) !== JSON.stringify(currentUser)) {
+          setCurrentUser(latestUser);
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(latestUser));
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [currentUser]);
+
 
   const login = async (email: string, password_hash: string): Promise<void> => {
     const user = userStore.findUserBy(u => u.email === email);
@@ -73,6 +92,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             };
             userStore.updateUser(updatedReferrer);
             initialButtercups = REFERRAL_BONUS_FOR_INVITEE;
+        } else {
+            // Optional: throw an error if the referral code is invalid
+            // throw new Error("Неверный реферальный код.");
         }
     }
 
@@ -90,13 +112,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setCurrentUser(newUser);
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
   };
+  
+  const updateCurrentUser = (updatedData: Partial<User>) => {
+      if (currentUser) {
+          const updatedUser = { ...currentUser, ...updatedData };
+          userStore.updateUser(updatedUser);
+          setCurrentUser(updatedUser);
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updatedUser));
+      }
+  };
+
 
   const logout = () => {
     setCurrentUser(null);
     localStorage.removeItem(SESSION_STORAGE_KEY);
   };
   
-  const value = { currentUser, login, register, logout, isAdmin };
+  const value = { currentUser, login, register, logout, isAdmin, updateCurrentUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
