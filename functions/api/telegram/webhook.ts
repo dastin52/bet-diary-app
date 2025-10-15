@@ -2,7 +2,7 @@
 
 // --- TYPE DEFINITIONS ---
 import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, User, Goal, GoalMetric, GoalStatus } from '../../../src/types';
-import { SPORTS, BOOKMAKERS, BET_STATUS_OPTIONS, BET_TYPE_OPTIONS } from '../../../src/constants';
+import { SPORTS, BOOKMAKERS, BET_STATUS_OPTIONS, BET_TYPE_OPTIONS, MARKETS_BY_SPORT } from '../../../src/constants';
 import { GoogleGenAI } from "@google/genai";
 
 
@@ -171,7 +171,7 @@ const setDialogState = async (kv: KVNamespace, userId: number, state: DialogStat
         await kv.delete(`dialog:${userId}`);
     } else {
         // AI chat session can be longer
-        const ttl = state.action === 'ai_chat_active' ? 900 : 300; // 15 mins for AI, 5 for others
+        const ttl = ['ai_chat_active', 'add_bet'].includes(state.action) ? 900 : 300; // 15 mins for AI/bet, 5 for others
         await kv.put(`dialog:${userId}`, JSON.stringify(state), { expirationTtl: ttl });
     }
 };
@@ -240,7 +240,7 @@ function analyticsToText(analytics: any): string {
 }
 
 
-// --- MENUS ---
+// --- MENUS & KEYBOARDS ---
 const getMainMenu = (isLinked: boolean) => ({
     inline_keyboard: [
         [{ text: "📝 Добавить ставку", callback_data: "add_bet" }, { text: "📈 Управление ставками", callback_data: "manage_bets" }],
@@ -275,6 +275,42 @@ async function sendNewUserWelcome(token: string, chatId: number, messageId?: num
     } else {
         await sendMessage(token, chatId, welcomeText, menu);
     }
+}
+
+// --- BET CREATION KEYBOARDS ---
+function createSportKeyboard() {
+    const keyboard = [];
+    for (let i = 0; i < SPORTS.length; i += 3) {
+        keyboard.push(SPORTS.slice(i, i + 3).map(sport => ({
+            text: sport, callback_data: `add_bet_data:sport:${sport}`
+        })));
+    }
+    keyboard.push([{ text: "❌ Отмена", callback_data: "main_menu" }]);
+    return { inline_keyboard: keyboard };
+}
+
+function createMarketKeyboard(sport: string, page = 0) {
+    const markets = MARKETS_BY_SPORT[sport] || [];
+    const itemsPerPage = 9; // 3x3 grid
+    const start = page * itemsPerPage;
+    const end = start + itemsPerPage;
+    const paginatedMarkets = markets.slice(start, end);
+
+    const keyboard = [];
+    for (let i = 0; i < paginatedMarkets.length; i += 3) {
+        keyboard.push(paginatedMarkets.slice(i, i + 3).map(market => ({
+            text: market, callback_data: `add_bet_data:market:${market}`
+        })));
+    }
+    
+    const navigation = [];
+    if (page > 0) navigation.push({ text: "⬅️", callback_data: `add_bet_page:market:${page - 1}` });
+    if (end < markets.length) navigation.push({ text: "➡️", callback_data: `add_bet_page:market:${page + 1}` });
+    if (navigation.length > 0) keyboard.push(navigation);
+    
+    keyboard.push([{ text: "↩️ Изменить событие", callback_data: "add_bet_step:2" }, { text: "❌ Отмена", callback_data: "main_menu" }]);
+    
+    return { inline_keyboard: keyboard };
 }
 
 
@@ -330,7 +366,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
         if (callbackQueryId) {
             await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, callbackQueryId);
-            const [action] = callbackData.split(':');
+            const [action, ...params] = callbackData.split(':');
             
             // Public actions (for new users)
             switch(action) {
@@ -371,6 +407,90 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                  await env.BOT_STATE.delete(userLinkKey);
                  return new Response('OK');
             }
+            
+            // --- Bet Creation Flow ---
+            if (action.startsWith('add_bet')) {
+                const dialogState = await getDialogState(env.BOT_STATE, userId) || { action: 'add_bet', data: { step: 1 } };
+                if (dialogState.action !== 'add_bet') return new Response('OK'); // Should not happen
+
+                switch(action) {
+                    case 'add_bet': // Initial call from main menu
+                        dialogState.data = { step: 1 };
+                        await setDialogState(env.BOT_STATE, userId, dialogState);
+                        if(messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "📝 *Новая ставка (Шаг 1/5)*\n\nВыберите вид спорта:", createSportKeyboard());
+                        return new Response('OK');
+                    
+                    case 'add_bet_step': // Go to a specific step
+                        const step = parseInt(params[0]);
+                        dialogState.data.step = step;
+                        await setDialogState(env.BOT_STATE, userId, dialogState);
+                        // Fallthrough to handle displaying the new step
+                        break;
+                    
+                    case 'add_bet_data': // User selected data from a keyboard
+                        const [dataType, value] = params;
+                        dialogState.data[dataType] = value;
+                        dialogState.data.step++;
+                        await setDialogState(env.BOT_STATE, userId, dialogState);
+                         // Fallthrough to handle displaying the next step
+                        break;
+                    
+                    case 'add_bet_page': // Pagination for markets
+                        const [pageType, pageNum] = params;
+                        if(messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "Выберите исход:", createMarketKeyboard(dialogState.data.sport, parseInt(pageNum)));
+                        return new Response('OK');
+                    
+                    case 'add_bet_save': // User confirmed the bet
+                        const betData = dialogState.data;
+                        const newBet: Bet = {
+                            sport: betData.sport,
+                            legs: [{ homeTeam: betData.homeTeam, awayTeam: betData.awayTeam, market: betData.market }],
+                            bookmaker: 'Telegram',
+                            betType: BetType.Single,
+                            stake: betData.stake,
+                            odds: betData.odds,
+                            status: BetStatus.Pending,
+                            id: new Date().toISOString() + Math.random(),
+                            createdAt: new Date().toISOString(),
+                            event: generateEventString([{ homeTeam: betData.homeTeam, awayTeam: betData.awayTeam, market: betData.market }], BetType.Single, betData.sport),
+                            tags: ['telegram'],
+                        };
+                        userData.bets.unshift(newBet);
+                        await saveUserData(env.BOT_STATE, userEmail, userData);
+                        await setDialogState(env.BOT_STATE, userId, null);
+                        if(messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, `✅ Ставка успешно добавлена:\n*${newBet.event}*`, getMainMenu(true));
+                        return new Response('OK');
+                }
+
+                // Handle displaying the current step after a state change
+                const currentStep = dialogState.data.step;
+                switch (currentStep) {
+                    case 1: // Ask Sport (Restart)
+                         if(messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "📝 *Новая ставка (Шаг 1/5)*\n\nВыберите вид спорта:", createSportKeyboard());
+                         break;
+                    case 2: // Ask Event
+                        const isIndividual = ['Теннис', 'Бокс', 'ММА'].includes(dialogState.data.sport);
+                        const teamExample = isIndividual ? "Джокович vs Алькарас" : "Реал Мадрид vs Барселона";
+                        if(messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, `📝 *Новая ставка (Шаг 2/5)*\n\nВведите событие в формате:\n\`Команда 1 vs Команда 2\`\n\n*Пример:* \`${teamExample}\``, { inline_keyboard: [[{ text: "↩️ Изменить спорт", callback_data: "add_bet_step:1" }]] });
+                        break;
+                    case 3: // Ask Market
+                        if(messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "📝 *Новая ставка (Шаг 3/5)*\n\nВыберите исход:", createMarketKeyboard(dialogState.data.sport));
+                        break;
+                    case 4: // Ask Stake
+                        const recommendation = calculateRiskManagedStake(userData.bankroll, 2.0); // Use average odds for initial recommendation
+                        let stakeText = "📝 *Новая ставка (Шаг 4/5)*\n\nВведите сумму ставки (₽).";
+                        if (recommendation) {
+                            stakeText += `\n\n💡 *Рекомендация:* ${recommendation.stake.toFixed(0)} ₽ (${recommendation.percentage.toFixed(1)}% от банка)`;
+                        }
+                        if(messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, stakeText, { inline_keyboard: [[{ text: "↩️ Изменить исход", callback_data: "add_bet_step:3" }]] });
+                        break;
+                    case 5: // Ask Odds
+                        if(messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "📝 *Новая ставка (Шаг 5/5)*\n\nВведите коэффициент.", { inline_keyboard: [[{ text: "↩️ Изменить сумму", callback_data: "add_bet_step:4" }]] });
+                        break;
+                }
+                return new Response('OK');
+            }
+
 
             switch (action) {
                 case 'main_menu':
@@ -399,16 +519,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                                       `📋 *Всего ставок:* ${analytics.betCount}`;
                     
                     if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, statsText, { inline_keyboard: [[{ text: "⬅️ Назад в меню", callback_data: "main_menu" }]] });
-                    return new Response('OK');
-                
-                case 'add_bet':
-                    await setDialogState(env.BOT_STATE, userId, { action: 'add_bet_parse', data: {} });
-                    const addBetText = "📝 *Добавление новой ставки*\n\n" +
-                                       "Отправьте данные о ставке одним сообщением в формате:\n" +
-                                       "`Спорт, Команда 1 vs Команда 2, Исход, Сумма, Коэффициент`\n\n" +
-                                       "*Пример:*\n" +
-                                       "`Футбол, Реал Мадрид vs Барселона, П1, 100, 2.15`";
-                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, addBetText, { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "main_menu" }]] });
                     return new Response('OK');
                 
                 case 'manage_bets':
@@ -520,6 +630,63 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         if (text && dialogState) {
             // Need userEmail for some actions
             const userData = userEmail ? await getUserData(env.BOT_STATE, userEmail) : null;
+            
+            if (dialogState.action === 'add_bet') {
+                 if (!userData || !userEmail) { await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Ошибка сессии. Пожалуйста, /start"); return new Response('OK'); }
+                 if(messageId) await deleteMessage(env.TELEGRAM_BOT_TOKEN, chatId, messageId); // Delete user's text message
+
+                 const step = dialogState.data.step;
+                 switch(step) {
+                    case 2: // Received event string
+                        const teams = text.split('vs').map(t => t.trim());
+                        if (teams.length !== 2 || !teams[0] || !teams[1]) {
+                             await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Неверный формат. Пожалуйста, используйте `Команда 1 vs Команда 2`.");
+                             return new Response('OK');
+                        }
+                        dialogState.data.homeTeam = teams[0];
+                        dialogState.data.awayTeam = teams[1];
+                        dialogState.data.step = 3;
+                        await setDialogState(env.BOT_STATE, userId, dialogState);
+                        const originalMessageId = update.callback_query?.message.message_id || (message ? message.message_id - 1 : undefined);
+                        if(originalMessageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, originalMessageId, "📝 *Новая ставка (Шаг 3/5)*\n\nВыберите исход:", createMarketKeyboard(dialogState.data.sport));
+                        break;
+                    case 4: // Received stake
+                        const stake = parseFloat(text);
+                        if (isNaN(stake) || stake <= 0) {
+                            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Неверная сумма. Введите положительное число.");
+                            return new Response('OK');
+                        }
+                        dialogState.data.stake = stake;
+                        dialogState.data.step = 5;
+                        await setDialogState(env.BOT_STATE, userId, dialogState);
+                        const stakeMsgId = update.callback_query?.message.message_id || (message ? message.message_id - 1 : undefined);
+                        if(stakeMsgId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, stakeMsgId, "📝 *Новая ставка (Шаг 5/5)*\n\nВведите коэффициент.", { inline_keyboard: [[{ text: "↩️ Изменить сумму", callback_data: "add_bet_step:4" }]] });
+                        break;
+                    case 5: // Received odds
+                        const odds = parseFloat(text);
+                        if (isNaN(odds) || odds <= 1) {
+                            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Неверный коэффициент. Введите число больше 1.");
+                            return new Response('OK');
+                        }
+                        dialogState.data.odds = odds;
+                        dialogState.data.step = 6;
+                        await setDialogState(env.BOT_STATE, userId, dialogState);
+                        
+                        const confirmText = `🔍 *Проверьте данные ставки:*\n\n` +
+                                            `*Спорт:* ${dialogState.data.sport}\n` +
+                                            `*Событие:* ${dialogState.data.homeTeam} vs ${dialogState.data.awayTeam}\n` +
+                                            `*Исход:* ${dialogState.data.market}\n` +
+                                            `*Сумма:* ${dialogState.data.stake} ₽\n` +
+                                            `*Коэффициент:* ${dialogState.data.odds}\n\n` +
+                                            `Все верно?`;
+                        const confirmKeyboard = { inline_keyboard: [[{ text: "✅ Сохранить", callback_data: "add_bet_save" }, { text: "✏️ Начать заново", callback_data: "add_bet_step:1" }]] };
+                        const oddsMsgId = update.callback_query?.message.message_id || (message ? message.message_id - 1 : undefined);
+                        if (oddsMsgId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, oddsMsgId, confirmText, confirmKeyboard);
+                        break;
+                 }
+                 return new Response('OK');
+            }
+
 
             switch(dialogState.action) {
                 case 'ai_chat_active':
@@ -692,46 +859,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
                     await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `🎉 *Регистрация завершена!* \n\nВаш аккаунт для *${regEmail}* создан и привязан к этому чату.\n\nМожете удалить сообщения с вашими данными для безопасности.`, getMainMenu(true));
 
-                    return new Response('OK');
-                
-                case 'add_bet_parse':
-                    try {
-                        if (!userEmail || !userData) throw new Error("Сессия пользователя не найдена. Пожалуйста, /start");
-                        const parts = text.split(',').map(p => p.trim());
-                        if (parts.length !== 5) throw new Error("Неверный формат. Ожидалось 5 частей, разделенных запятой.");
-                        
-                        const [sport, teams, market, stakeStr, oddsStr] = parts;
-                        const [homeTeam, awayTeam] = teams.split('vs').map(t => t.trim());
-                        const stake = parseFloat(stakeStr);
-                        const odds = parseFloat(oddsStr);
-
-                        if (!sport || !homeTeam || !awayTeam || !market || isNaN(stake) || isNaN(odds) || stake <= 0 || odds <= 1) {
-                            throw new Error("Одно или несколько полей некорректны. Проверьте данные и попробуйте снова.");
-                        }
-                        
-                        const newBet: Bet = {
-                            sport,
-                            legs: [{ homeTeam, awayTeam, market }],
-                            bookmaker: 'Telegram',
-                            betType: BetType.Single,
-                            stake,
-                            odds,
-                            status: BetStatus.Pending,
-                            id: new Date().toISOString() + Math.random(),
-                            createdAt: new Date().toISOString(),
-                            event: generateEventString([{ homeTeam, awayTeam, market }], BetType.Single, sport),
-                            tags: ['telegram'],
-                        };
-
-                        userData.bets.unshift(newBet);
-                        await saveUserData(env.BOT_STATE, userEmail, userData);
-                        await setDialogState(env.BOT_STATE, userId, null);
-                        
-                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `✅ Ставка успешно добавлена:\n*${newBet.event}*`, getMainMenu(true));
-
-                    } catch (e) {
-                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `❌ Ошибка: ${e.message}\n\nПожалуйста, попробуйте еще раз или нажмите 'Отмена'.`, { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "main_menu" }]] });
-                    }
                     return new Response('OK');
             }
         }
