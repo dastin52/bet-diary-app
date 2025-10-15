@@ -340,7 +340,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                     return new Response('OK');
                 
                 case 'show_bet':
-                    const betIdToShow = callbackData.split(':')[1];
+                    const betIdToShow = callbackData.substring('show_bet:'.length);
                     const betToShow = userData.bets.find(b => b.id === betIdToShow);
                     if (!betToShow) {
                         if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "❌ Ставка не найдена.", { inline_keyboard: [[{ text: "⬅️ К списку ставок", callback_data: "manage_bets" }]] });
@@ -363,8 +363,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                     return new Response('OK');
 
                 case 'set_status':
-                    const [, betIdToSet, newStatusStr] = callbackData.split(':');
-                    const newStatus = newStatusStr as BetStatus;
+                    const setStatusParts = callbackData.split(':');
+                    setStatusParts.shift(); // remove 'set_status'
+                    const newStatus = setStatusParts.pop() as BetStatus;
+                    const betIdToSet = setStatusParts.join(':');
+
                     const betIndex = userData.bets.findIndex(b => b.id === betIdToSet);
                     if (betIndex === -1) {
                          if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "❌ Ставка не найдена.", { inline_keyboard: [[{ text: "⬅️ К списку ставок", callback_data: "manage_bets" }]] });
