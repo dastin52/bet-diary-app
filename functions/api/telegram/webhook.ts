@@ -160,7 +160,9 @@ async function handleDialog(msg: TelegramMessage, state: any, env: Env) {
         registration_email: processRegistrationEmail, registration_nickname: processRegistrationNickname, registration_password: processRegistrationPassword,
         add_bet_event: processAddBetEvent, add_bet_stake: processAddBetStake, add_bet_odds: processAddBetOdds,
         bank_adjust: processBankAdjustment,
-        add_goal_title: processAddGoalTitle, add_goal_target: processAddGoalTarget, add_goal_deadline: processAddGoalDeadline
+        add_goal_title: processAddGoalTitle, 
+        add_goal_target: processAddGoalTarget, 
+        add_goal_deadline: processAddGoalDeadline
     };
     if (handlers[name]) await handlers[name](msg, state, env);
 }
@@ -341,7 +343,7 @@ async function showBankMenu(data: string, cid: number, mid: number, env: Env, ui
 }
 async function handleBankDialogCallback(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await handleStatefulAction(mid, cid, state, env, async () => {
-        const [, type] = data.split(':');
+        const type = data.startsWith('bank_deposit') ? 'deposit' : 'withdraw';
         await setUserState(env, uid, {...state, dialog: { name: 'bank_adjust', type, msgId: mid }});
         await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, type === 'deposit' ? "➕ Введите сумму пополнения:" : "➖ Введите сумму для снятия:", cancelKeyboard(mid));
     });
@@ -351,6 +353,7 @@ async function processBankAdjustment(msg: TelegramMessage, state: any, env: Env)
     if (isNaN(amount) || amount <= 0) return sendMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, "❌ Неверная сумма. Попробуйте еще раз.");
     state.bankroll += (state.dialog.type === 'deposit' ? amount : -amount);
     const mid = state.dialog.msgId; state.dialog = null; await setUserState(env, msg.from.id, state);
+    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
     await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, mid, `✅ Баланс обновлен! Новый баланс: *${state.bankroll.toFixed(2)} ₽*`, backToMenuKeyboard(mid));
 }
 
@@ -453,7 +456,7 @@ async function handleAddGoalDialogCallback(data: string, cid: number, mid: numbe
             dialog.data.metric = value;
             dialog.name = 'add_goal_target';
             await setUserState(env, uid, state);
-            await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "🎯 Введите целевое значение:", backAndCancelKeyboard('add_goal', mid));
+            await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "🎯 Введите целевое значение:", backAndCancelKeyboard('add_goal_metric', mid));
         }
     });
 }
