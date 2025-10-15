@@ -65,6 +65,9 @@ interface EventContext<E> {
 
 type PagesFunction<E = unknown> = (context: EventContext<E>) => Response | Promise<Response>;
 
+// --- MOCK HASHING (for compatibility with frontend) ---
+const mockHash = (password: string): string => `hashed_${password}`;
+
 // --- RISK MANAGEMENT MODEL ---
 const calculateRiskManagedStake = (bankroll: number, odds: number): { stake: number; percentage: number } | null => {
   if (bankroll <= 0 || odds <= 1) return null;
@@ -160,6 +163,13 @@ const setDialogState = async (kv: KVNamespace, userId: number, state: DialogStat
         await kv.put(`dialog:${userId}`, JSON.stringify(state), { expirationTtl: 300 }); // 5 min TTL for dialogs
     }
 };
+const getEmailByNickname = async (kv: KVNamespace, nickname: string): Promise<string | null> => {
+    return await kv.get(`nickname:${nickname.toLowerCase()}`);
+};
+const saveNicknameMapping = async (kv: KVNamespace, nickname: string, email: string): Promise<void> => {
+    await kv.put(`nickname:${nickname.toLowerCase()}`, email);
+};
+
 
 // --- MENUS ---
 const getMainMenu = (isLinked: boolean) => ({
@@ -171,8 +181,16 @@ const getMainMenu = (isLinked: boolean) => ({
 
 const getNewUserMenu = () => ({
     inline_keyboard: [
-        [{ text: "✍️ Регистрация (инструкция)", callback_data: "show_registration_info" }],
+        [{ text: "✍️ Регистрация в боте", callback_data: "register" }],
         [{ text: "🔗 У меня есть аккаунт", callback_data: "link_account" }],
+    ]
+});
+
+const getBankMenu = (bankroll: number) => ({
+    inline_keyboard: [
+        [{ text: `➕ Пополнить (вручную)`, callback_data: "deposit" }],
+        [{ text: `➖ Снять (вручную)`, callback_data: "withdraw" }],
+        [{ text: "⬅️ Назад в меню", callback_data: "main_menu" }]
     ]
 });
 
@@ -238,17 +256,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                     if (messageId) await sendNewUserWelcome(env.TELEGRAM_BOT_TOKEN, chatId, messageId);
                     return new Response('OK');
 
-                case 'show_registration_info':
-                    const registrationInfoText = "ℹ️ *Как зарегистрироваться?*\n\n" +
-                                                 "1. Регистрация проходит на нашем основном сайте.\n" +
-                                                 "2. После успешной регистрации вернитесь в этот бот.\n" +
-                                                 "3. Нажмите 'У меня есть аккаунт' и следуйте инструкциям для привязки.\n\n" +
-                                                 "_(К сожалению, бот не может предоставить прямую ссылку на сайт.)_";
-                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, registrationInfoText, {
-                        inline_keyboard: [[{ text: "⬅️ Назад", callback_data: "start_new_user" }]]
-                    });
+                case 'register':
+                    await setDialogState(env.BOT_STATE, userId, { action: 'register_ask_email', data: {} });
+                    const askEmailText = "✍️ *Регистрация*\n\nПожалуйста, введите ваш email-адрес.";
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, askEmailText, { inline_keyboard: [[{ text: "⬅️ Назад", callback_data: "start_new_user" }]] });
                     return new Response('OK');
-
+                
                 case 'link_account':
                      await setDialogState(env.BOT_STATE, userId, { action: 'link_ask_code', data: {} });
                      const instructionText = "🔐 *Привязка аккаунта*\n\n" +
@@ -265,7 +278,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
             // Private actions (require linked account)
             if (!userEmail) {
-                await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Действие недоступно. Пожалуйста, сначала привяжите свой аккаунт.");
+                await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Действие недоступно. Пожалуйста, сначала зарегистрируйтесь или привяжите свой аккаунт.");
                 await sendNewUserWelcome(env.TELEGRAM_BOT_TOKEN, chatId);
                 return new Response('OK');
             }
@@ -310,11 +323,114 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                                        "`Футбол, Реал Мадрид vs Барселона, П1, 100, 2.15`";
                     if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, addBetText, { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "main_menu" }]] });
                     return new Response('OK');
+                
+                case 'manage_bets':
+                    const pendingBets = userData.bets.filter(b => b.status === BetStatus.Pending).slice(0, 5); // Show first 5
+                    let manageText = "📈 *Управление ставками*\n\nВыберите ставку для обновления статуса:";
+                    const keyboard = [];
+                    if (pendingBets.length > 0) {
+                        for (const bet of pendingBets) {
+                            keyboard.push([{ text: `[${bet.sport}] ${bet.event}`, callback_data: `show_bet:${bet.id}` }]);
+                        }
+                    } else {
+                        manageText = "📈 *Управление ставками*\n\nУ вас нет ставок в ожидании.";
+                    }
+                    keyboard.push([{ text: "⬅️ Назад в меню", callback_data: "main_menu" }]);
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, manageText, { inline_keyboard: keyboard });
+                    return new Response('OK');
+                
+                case 'show_bet':
+                    const betIdToShow = callbackData.split(':')[1];
+                    const betToShow = userData.bets.find(b => b.id === betIdToShow);
+                    if (!betToShow) {
+                        if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "❌ Ставка не найдена.", { inline_keyboard: [[{ text: "⬅️ К списку ставок", callback_data: "manage_bets" }]] });
+                        return new Response('OK');
+                    }
+                    const betDetailsText = `*Детали ставки:*\n` +
+                                           `*Событие:* ${betToShow.event}\n` +
+                                           `*Сумма:* ${betToShow.stake} ₽\n` +
+                                           `*Коэф.:* ${betToShow.odds}\n\n` +
+                                           `*Как она сыграла?*`;
+                    const betKeyboard = {
+                        inline_keyboard: [
+                            [{ text: "✅ Выигрыш", callback_data: `set_status:${betToShow.id}:won` }],
+                            [{ text: "❌ Проигрыш", callback_data: `set_status:${betToShow.id}:lost` }],
+                            [{ text: "🔄 Возврат", callback_data: `set_status:${betToShow.id}:void` }],
+                            [{ text: "⬅️ К списку ставок", callback_data: "manage_bets" }]
+                        ]
+                    };
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, betDetailsText, betKeyboard);
+                    return new Response('OK');
+
+                case 'set_status':
+                    const [, betIdToSet, newStatusStr] = callbackData.split(':');
+                    const newStatus = newStatusStr as BetStatus;
+                    const betIndex = userData.bets.findIndex(b => b.id === betIdToSet);
+                    if (betIndex === -1) {
+                         if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "❌ Ставка не найдена.", { inline_keyboard: [[{ text: "⬅️ К списку ставок", callback_data: "manage_bets" }]] });
+                         return new Response('OK');
+                    }
+                    const betToUpdate = userData.bets[betIndex];
+                    if (betToUpdate.status !== BetStatus.Pending) {
+                        if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, `⚠️ Статус этой ставки уже '${BET_STATUS_OPTIONS.find(o => o.value === betToUpdate.status)?.label}'.`, { inline_keyboard: [[{ text: "⬅️ К списку ставок", callback_data: "manage_bets" }]] });
+                        return new Response('OK');
+                    }
+
+                    betToUpdate.status = newStatus;
+                    const profit = calculateProfit(betToUpdate);
+                    betToUpdate.profit = profit;
+                    userData.bets[betIndex] = betToUpdate;
+
+                    let transactionType = BankTransactionType.Correction;
+                    if (newStatus === BetStatus.Won) transactionType = BankTransactionType.BetWin;
+                    if (newStatus === BetStatus.Lost) transactionType = BankTransactionType.BetLoss;
+                    if (newStatus === BetStatus.Void) transactionType = BankTransactionType.BetVoid;
+                    
+                    if (profit !== 0 || newStatus === BetStatus.Void) { // Void has 0 profit but should be logged
+                        const transaction: BankTransaction = {
+                            id: new Date().toISOString() + Math.random(),
+                            timestamp: new Date().toISOString(),
+                            type: transactionType,
+                            amount: profit,
+                            previousBalance: userData.bankroll,
+                            newBalance: userData.bankroll + profit,
+                            description: `${BET_STATUS_OPTIONS.find(o=>o.value === newStatus)?.label}: ${betToUpdate.event}`,
+                            betId: betToUpdate.id,
+                        };
+                        userData.bankroll += profit;
+                        userData.bankHistory.unshift(transaction);
+                    }
+
+                    await saveUserData(env.BOT_STATE, userEmail, userData);
+                    const confirmationText = `✅ Статус для *${betToUpdate.event}* обновлен на *${BET_STATUS_OPTIONS.find(o=>o.value === newStatus)?.label}*.\nПрибыль: ${profit.toFixed(2)} ₽`;
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, confirmationText, { inline_keyboard: [[{ text: "⬅️ К списку ставок", callback_data: "manage_bets" }]] });
+                    return new Response('OK');
+
+
+                case 'bank_management':
+                    const bankText = `💰 *Управление банком*\n\n` +
+                                     `Ваш текущий баланс: *${userData.bankroll.toFixed(2)} ₽*\n\n` +
+                                     `Здесь вы можете вручную скорректировать свой банк, например, после пополнения счета у букмекера или вывода средств.`;
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, bankText, getBankMenu(userData.bankroll));
+                    return new Response('OK');
+                
+                case 'deposit':
+                    await setDialogState(env.BOT_STATE, userId, { action: 'ask_deposit_amount', data: {} });
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "➕ Введите сумму пополнения:", { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "bank_management" }]] });
+                    return new Response('OK');
+                
+                case 'withdraw':
+                     await setDialogState(env.BOT_STATE, userId, { action: 'ask_withdraw_amount', data: {} });
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "➖ Введите сумму для снятия:", { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "bank_management" }]] });
+                    return new Response('OK');
             }
         }
         
         const dialogState = await getDialogState(env.BOT_STATE, userId);
         if (text && dialogState) {
+            // Need userEmail for some actions
+            const userData = userEmail ? await getUserData(env.BOT_STATE, userEmail) : null;
+
             switch(dialogState.action) {
                 case 'link_ask_code':
                     const code = text.match(/\d{6}/)?.[0];
@@ -339,9 +455,112 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                     }
                     return new Response('OK');
                 
+                case 'ask_deposit_amount':
+                case 'ask_withdraw_amount':
+                    if (!userData || !userEmail) { await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Ошибка сессии. Пожалуйста, /start"); return new Response('OK'); }
+                    const amount = parseFloat(text);
+                    const isDeposit = dialogState.action === 'ask_deposit_amount';
+
+                    if (isNaN(amount) || amount <= 0) {
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Неверная сумма. Пожалуйста, введите положительное число.", { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "bank_management" }]] });
+                        return new Response('OK');
+                    }
+                    if (!isDeposit && amount > userData.bankroll) {
+                         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Сумма снятия не может превышать текущий банк.", { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "bank_management" }]] });
+                         return new Response('OK');
+                    }
+
+                    const finalAmount = isDeposit ? amount : -amount;
+                    const transaction: BankTransaction = {
+                        id: new Date().toISOString() + Math.random(),
+                        timestamp: new Date().toISOString(),
+                        type: isDeposit ? BankTransactionType.Deposit : BankTransactionType.Withdrawal,
+                        amount: finalAmount,
+                        previousBalance: userData.bankroll,
+                        newBalance: userData.bankroll + finalAmount,
+                        description: isDeposit ? 'Ручное пополнение (Telegram)' : 'Вывод средств (Telegram)',
+                    };
+                    userData.bankroll += finalAmount;
+                    userData.bankHistory.unshift(transaction);
+                    
+                    await saveUserData(env.BOT_STATE, userEmail, userData);
+                    await setDialogState(env.BOT_STATE, userId, null);
+                    await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `✅ Банк обновлен. Новый баланс: *${userData.bankroll.toFixed(2)} ₽*`, getMainMenu(true));
+                    return new Response('OK');
+                
+                case 'register_ask_email':
+                    const email = text.toLowerCase();
+                    if (!/^\S+@\S+\.\S+$/.test(email)) {
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Неверный формат email. Попробуйте снова.", { inline_keyboard: [[{ text: "⬅️ Назад", callback_data: "start_new_user" }]] });
+                        return new Response('OK');
+                    }
+                    const existingUser = await getUserData(env.BOT_STATE, email);
+                    if (existingUser) {
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Этот email уже зарегистрирован. Попробуйте другой или привяжите существующий аккаунт.", { inline_keyboard: [[{ text: "⬅️ Назад", callback_data: "start_new_user" }]] });
+                        return new Response('OK');
+                    }
+                    await setDialogState(env.BOT_STATE, userId, { action: 'register_ask_nickname', data: { email } });
+                    await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Отлично! Теперь придумайте никнейм (мин. 3 символа).");
+                    return new Response('OK');
+
+                case 'register_ask_nickname':
+                    const nickname = text;
+                    if (nickname.length < 3) {
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Никнейм должен быть не менее 3 символов. Попробуйте снова.", { inline_keyboard: [[{ text: "⬅️ Назад", callback_data: "start_new_user" }]] });
+                        return new Response('OK');
+                    }
+                    const existingNickname = await getEmailByNickname(env.BOT_STATE, nickname);
+                    if (existingNickname) {
+                         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Этот никнейм уже занят. Попробуйте другой.", { inline_keyboard: [[{ text: "⬅️ Назад", callback_data: "start_new_user" }]] });
+                        return new Response('OK');
+                    }
+                    await setDialogState(env.BOT_STATE, userId, { action: 'register_ask_password', data: { ...dialogState.data, nickname } });
+                    await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Придумайте пароль (мин. 6 символов).\n\n⚠️ *ВНИМАНИЕ: Не используйте важные пароли!* После отправки, пожалуйста, удалите сообщение с паролем из чата.");
+                    return new Response('OK');
+                
+                case 'register_ask_password':
+                    const password = text;
+                    if (password.length < 6) {
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Пароль должен быть не менее 6 символов. Попробуйте снова.", { inline_keyboard: [[{ text: "⬅️ Назад", callback_data: "start_new_user" }]] });
+                        return new Response('OK');
+                    }
+
+                    const { email: regEmail, nickname: regNickname } = dialogState.data;
+                    
+                    const newUser: UserData = {
+                        email: regEmail,
+                        nickname: regNickname,
+                        password_hash: mockHash(password),
+                        registeredAt: new Date().toISOString(),
+                        referralCode: `${regNickname.toUpperCase().replace(/\s/g, '')}${Date.now().toString().slice(-4)}`,
+                        buttercups: 0,
+                        status: 'active',
+                        bankroll: 10000, // Initial bankroll
+                        bets: [],
+                        bankHistory: [{
+                            id: new Date().toISOString() + Math.random(),
+                            timestamp: new Date().toISOString(),
+                            type: BankTransactionType.Deposit,
+                            amount: 10000,
+                            previousBalance: 0,
+                            newBalance: 10000,
+                            description: 'Начальный банк',
+                        }],
+                        goals: [],
+                    };
+
+                    await saveUserData(env.BOT_STATE, regEmail, newUser);
+                    await saveNicknameMapping(env.BOT_STATE, regNickname, regEmail);
+                    await env.BOT_STATE.put(`telegram:${userId}`, regEmail);
+                    await setDialogState(env.BOT_STATE, userId, null);
+
+                    await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `🎉 *Регистрация завершена!* \n\nВаш аккаунт для *${regEmail}* создан и привязан к этому чату.\n\nМожете удалить сообщения с вашими данными для безопасности.`, getMainMenu(true));
+
+                    return new Response('OK');
+                
                 case 'add_bet_parse':
                     try {
-                        if (!userEmail) throw new Error("Сессия пользователя не найдена. Пожалуйста, /start");
+                        if (!userEmail || !userData) throw new Error("Сессия пользователя не найдена. Пожалуйста, /start");
                         const parts = text.split(',').map(p => p.trim());
                         if (parts.length !== 5) throw new Error("Неверный формат. Ожидалось 5 частей, разделенных запятой.");
                         
@@ -354,9 +573,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                             throw new Error("Одно или несколько полей некорректны. Проверьте данные и попробуйте снова.");
                         }
                         
-                        const userData = await getUserData(env.BOT_STATE, userEmail);
-                        if (!userData) throw new Error("Не удалось загрузить данные пользователя.");
-
                         const newBet: Bet = {
                             sport,
                             legs: [{ homeTeam, awayTeam, market }],
