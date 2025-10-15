@@ -166,26 +166,23 @@ const getMainMenu = (isLinked: boolean) => ({
     inline_keyboard: [
         [{ text: "📝 Добавить ставку", callback_data: "add_bet" }, { text: "📈 Управление ставками", callback_data: "manage_bets" }],
         [{ text: "📊 Просмотр статистики", callback_data: "view_stats" }, { text: "💰 Управление банком", callback_data: "bank_management" }],
-        isLinked ? [] : [{ text: "🔑 Получить код для сайта", callback_data: "get_web_code" }],
-    ].filter(row => row.length > 0)
+    ]
 });
 
 const getRegistrationMenu = () => ({
     inline_keyboard: [
-        [{ text: "✅ Зарегистрировать новый аккаунт", callback_data: "register_account" }],
         [{ text: "🔗 Привязать аккаунт с сайта", callback_data: "link_account" }],
     ]
 });
 
 // --- MAIN HANDLER ---
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-    // 1. Initial Checks and Parsing
     if (!env.TELEGRAM_BOT_TOKEN || !env.BOT_STATE) {
         console.error("FATAL: Telegram Bot Token or KV Namespace is not configured.");
         return new Response('Server configuration error', { status: 500 });
     }
 
-    const requestClone = request.clone(); // Clone for safe body reading in case of error
+    const requestClone = request.clone();
     try {
         const update = await request.json() as TelegramUpdate;
         const message = update.message || update.callback_query?.message;
@@ -197,61 +194,88 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         const messageId = message?.message_id;
 
         if (!chatId || !userId) return new Response('OK');
-        if (callbackQueryId) await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, callbackQueryId);
-
+        
         const userLinkKey = `telegram:${userId}`;
         const userEmail = await env.BOT_STATE.get(userLinkKey);
         
-        // 2. Command Handling
         if (text && text.startsWith('/')) {
             await setDialogState(env.BOT_STATE, userId, null);
             switch (text.split(' ')[0]) {
                 case '/start':
+                case '/menu':
                     if (userEmail) {
                         const userData = await getUserData(env.BOT_STATE, userEmail);
                         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `С возвращением, ${userData?.nickname || 'пользователь'}! 👋`, getMainMenu(true));
                     } else {
-                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "👋 Добро пожаловать в Дневник Ставок! \n\nВы новый пользователь? Зарегистрируйтесь или привяжите существующий аккаунт.", getRegistrationMenu());
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "👋 Добро пожаловать в Дневник Ставок! \n\nЧтобы начать, привяжите свой аккаунт с веб-сайта.", getRegistrationMenu());
                     }
                     return new Response('OK');
-                
-                case '/menu':
-                    if (userEmail) await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🏠 Главное меню:", getMainMenu(true));
-                    else await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Вы не авторизованы.", getRegistrationMenu());
-                    return new Response('OK');
-                
-                // Add more commands here...
             }
         }
 
-        // 3. Callback Query Handling (Button Presses)
-        if (callbackData) {
+        if (callbackQueryId) {
+            await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, callbackQueryId);
             const [action] = callbackData.split(':');
-            switch (action) {
-                case 'register_account':
-                    await setDialogState(env.BOT_STATE, userId, { action: 'register_ask_nickname', data: {} });
-                    await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Отлично! Давайте создадим аккаунт.\n\nКакой у вас будет никнейм?");
-                    return new Response('OK');
-                
+            
+            // Public actions
+            switch(action) {
                 case 'link_account':
                      await setDialogState(env.BOT_STATE, userId, { action: 'link_ask_code', data: {} });
+                     if (messageId) await deleteMessage(env.TELEGRAM_BOT_TOKEN, chatId, messageId);
                      await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Пожалуйста, сгенерируйте 6-значный код в приложении ('Настройки' -> 'Интеграция с Telegram') и отправьте его мне.");
                      return new Response('OK');
-                
+            }
+
+            // Private actions
+            if (!userEmail) {
+                await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Действие недоступно. Пожалуйста, сначала привяжите свой аккаунт.", getRegistrationMenu());
+                return new Response('OK');
+            }
+
+            const userData = await getUserData(env.BOT_STATE, userEmail);
+            if (!userData) {
+                 await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Ошибка: не удалось загрузить данные вашего аккаунта. Попробуйте перепривязать аккаунт.");
+                 await env.BOT_STATE.delete(userLinkKey);
+                 return new Response('OK');
+            }
+
+            switch (action) {
                 case 'main_menu':
-                    if (userEmail && messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "🏠 Главное меню:", getMainMenu(true));
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, "🏠 Главное меню:", getMainMenu(true));
                     return new Response('OK');
 
-                // Fallback for any other button press if not logged in
-                default:
-                    if (!userEmail) {
-                         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Пожалуйста, сначала зарегистрируйтесь или привяжите аккаунт.", getRegistrationMenu());
-                         return new Response('OK');
-                    }
+                case 'view_stats':
+                    const settledBets = userData.bets.filter(b => b.status !== 'pending');
+                    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
+                    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
+                    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
+                    const wonBets = settledBets.filter(b => b.status === 'won').length;
+                    const nonVoidBets = settledBets.filter(b => b.status !== 'void');
+// FIX: The variable 'wonBets' is a number (a count), so it does not have a 'length' property. The '.length' should be removed.
+                    const winRate = nonVoidBets.length > 0 ? (wonBets / nonVoidBets.length) * 100 : 0;
+
+                    const statsText = `📊 *Ваша статистика:*\n\n` +
+                                      `💰 *Текущий банк:* ${userData.bankroll.toFixed(2)} ₽\n` +
+                                      `📈 *Общая прибыль:* ${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)} ₽\n` +
+                                      `🎯 *ROI:* ${roi.toFixed(2)}%\n` +
+                                      `✅ *Процент побед:* ${winRate.toFixed(2)}%\n` +
+                                      `📋 *Всего ставок:* ${settledBets.length}`;
+                    
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, statsText, { inline_keyboard: [[{ text: "⬅️ Назад в меню", callback_data: "main_menu" }]] });
+                    return new Response('OK');
+                
+                case 'add_bet':
+                    await setDialogState(env.BOT_STATE, userId, { action: 'add_bet_parse', data: {} });
+                    const addBetText = "📝 *Добавление новой ставки*\n\n" +
+                                       "Отправьте данные о ставке одним сообщением в формате:\n" +
+                                       "`Спорт, Команда 1 vs Команда 2, Исход, Сумма, Коэффициент`\n\n" +
+                                       "*Пример:*\n" +
+                                       "`Футбол, Реал Мадрид vs Барселона, П1, 100, 2.15`";
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, addBetText, { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "main_menu" }]] });
+                    return new Response('OK');
             }
         }
         
-        // 4. Dialog State Handling (Text Replies)
         const dialogState = await getDialogState(env.BOT_STATE, userId);
         if (text && dialogState) {
             switch(dialogState.action) {
@@ -271,35 +295,68 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Неверный или истекший код. Пожалуйста, сгенерируйте новый.");
                     }
                     return new Response('OK');
+                
+                case 'add_bet_parse':
+                    try {
+                        const parts = text.split(',').map(p => p.trim());
+                        if (parts.length !== 5) throw new Error("Неверный формат. Ожидалось 5 частей, разделенных запятой.");
+                        
+                        const [sport, teams, market, stakeStr, oddsStr] = parts;
+                        const [homeTeam, awayTeam] = teams.split('vs').map(t => t.trim());
+                        const stake = parseFloat(stakeStr);
+                        const odds = parseFloat(oddsStr);
+
+                        if (!sport || !homeTeam || !awayTeam || !market || isNaN(stake) || isNaN(odds) || stake <= 0 || odds <= 1) {
+                            throw new Error("Одно или несколько полей некорректны. Проверьте данные и попробуйте снова.");
+                        }
+                        
+                        const userData = await getUserData(env.BOT_STATE, userEmail);
+                        if (!userData) throw new Error("Не удалось загрузить данные пользователя.");
+
+                        const newBet: Bet = {
+                            sport,
+                            legs: [{ homeTeam, awayTeam, market }],
+                            bookmaker: 'Telegram',
+                            betType: BetType.Single,
+                            stake,
+                            odds,
+                            status: BetStatus.Pending,
+                            id: new Date().toISOString() + Math.random(),
+                            createdAt: new Date().toISOString(),
+                            event: generateEventString([{ homeTeam, awayTeam, market }], BetType.Single, sport),
+                            tags: ['telegram'],
+                        };
+
+                        userData.bets.unshift(newBet);
+                        await saveUserData(env.BOT_STATE, userEmail, userData);
+                        await setDialogState(env.BOT_STATE, userId, null);
+                        
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `✅ Ставка успешно добавлена:\n*${newBet.event}*`, getMainMenu(true));
+
+                    } catch (e) {
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `❌ Ошибка: ${e.message}\n\nПожалуйста, попробуйте еще раз или нажмите 'Отмена'.`, { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "main_menu" }]] });
+                    }
+                    return new Response('OK');
             }
         }
 
-        // Handle unregistered user text
         if (text && !userEmail && !dialogState) {
             await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Я не понимаю команду. Пожалуйста, используйте кнопки ниже.", getRegistrationMenu());
         }
 
     } catch (error) {
         console.error("Webhook Error:", error);
-        // Emergency logging
         const bodyText = await requestClone.text();
         console.error("Failed request body:", bodyText);
 
-        const chatId = tryToGetChatId(requestClone);
-        if (chatId && env.TELEGRAM_BOT_TOKEN) {
-             await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `Произошла критическая ошибка на сервере. Я уже сообщил разработчикам. \n\n\`${error instanceof Error ? error.message : 'Unknown error'}\``);
-        }
+        try {
+            const updateForError = JSON.parse(bodyText);
+            const chatId = updateForError.message?.chat.id || updateForError.callback_query?.message?.chat.id;
+             if (chatId) {
+                await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `Произошла критическая ошибка на сервере. Я уже сообщил разработчикам.`);
+             }
+        } catch {}
     }
     
     return new Response('OK');
 };
-
-function tryToGetChatId(request: Request): number | null {
-    // This is a failsafe and might not work if the request is malformed, but it's our best bet.
-    try {
-        const update = JSON.parse(request.headers.get('CF-Connecting-IP') || '{}'); // This is a hack, need to find the body
-        return update.message?.chat.id || update.callback_query?.message?.chat.id || null;
-    } catch {
-        return null;
-    }
-}
