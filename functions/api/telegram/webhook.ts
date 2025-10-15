@@ -1,4 +1,3 @@
-
 // functions/api/telegram/webhook.ts
 
 // --- TYPE DEFINITIONS ---
@@ -120,7 +119,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         console.error("FATAL: BOT_STATE KV Namespace is not bound.");
         return new Response('OK');
     }
-    
+
+    const requestClone = request.clone(); // Clone immediately for emergency logging
+
     try {
         const update = (await request.json()) as TelegramUpdate;
         const message = update.message;
@@ -149,25 +150,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         }
 
     } catch (e: any) {
-        // This is the most important part for debugging.
-        // It logs the error to Cloudflare console BEFORE trying to send a message.
-        console.error("FATAL ERROR in webhook handler:", e.stack || e.message || e);
-        
-        // Try to inform the user about the error, but don't let this fail the function.
+        // Emergency logging: This block is crucial for debugging silent errors.
+        console.error("--- FATAL ERROR IN WEBHOOK ---");
+        console.error("Error message:", e.message);
+        console.error("Error stack:", e.stack);
+
         try {
-             // A simplified way to get chat_id if the main parsing failed.
-             const reqBodyForError = (await request.clone().json()) as any;
-             const errorChatId = reqBodyForError?.message?.chat?.id;
-             if (errorChatId) {
-                const errorMessage = `🚧 Произошла внутренняя ошибка сервера.\n\nАдминистратор был уведомлен. Пожалуйста, попробуйте позже.\n\nТехнические детали:\n${e.message}`;
-                await telegramApi(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
-                    chat_id: errorChatId,
-                    text: errorMessage.substring(0, 4096)
-                });
-             }
-        } catch (sendError) {
-             console.error("Failed to send the error message to Telegram:", sendError);
+            const rawBody = await requestClone.text();
+            console.error("Raw request body that caused the error:", rawBody);
+        } catch (bodyError: any) {
+            console.error("Additionally, failed to read request body as text:", bodyError.message);
         }
+        console.error("------------------------------");
     }
     
     // Always respond 200 OK to Telegram to acknowledge receipt and prevent retries.
