@@ -54,7 +54,6 @@ const telegramApi = async (token: string, methodName: string, body: object) => {
         if (!response.ok) {
             const result = await response.json();
             console.error(`Telegram API error (${methodName}):`, result.description);
-            // Don't re-throw here to prevent function from crashing
         }
         return response;
     } catch (error) {
@@ -69,6 +68,10 @@ async function handleStart(token: string, chatId: number) {
         text: "👋 Добро пожаловать в Дневник Ставок!\n\n" +
               "Чтобы привязать свой аккаунт, сгенерируйте 6-значный код в приложении ('Настройки' ➔ 'Интеграция с Telegram') и отправьте его мне.",
     });
+}
+
+async function handlePing(token: string, chatId: number) {
+    await telegramApi(token, 'sendMessage', { chat_id: chatId, text: "Pong! 🏓" });
 }
 
 async function handleStats(token: string, chatId: number, fromId: number, kv: KVNamespace) {
@@ -108,7 +111,7 @@ async function handleAuthCode(token: string, chatId: number, fromId: number, cod
 async function handleUnknownCommand(token: string, chatId: number) {
      await telegramApi(token, 'sendMessage', {
         chat_id: chatId,
-        text: `Я не понял вашу команду. Доступные команды:\n/start - Начало работы\n/stats - Проверить статус аккаунта`
+        text: `Я не понял вашу команду. Доступные команды:\n/start - Начало работы\n/stats - Проверить статус\n/ping - Проверить связь`
      });
 }
 
@@ -125,18 +128,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
 
     try {
-        // Safely get the raw body text first. This is less likely to fail than .json()
-        const rawBody = await request.text();
-        console.log("Received raw request body:", rawBody);
-
-        let update: TelegramUpdate;
-        try {
-            // Now, safely parse the text.
-            update = JSON.parse(rawBody);
-        } catch (jsonError: any) {
-            console.error("Failed to parse incoming JSON:", jsonError.message);
-            return new Response('OK'); // Not a valid JSON, but acknowledge receipt.
-        }
+        const update = (await request.json()) as TelegramUpdate;
+        console.log(`Received update_id: ${update.update_id}`);
 
         const message = update.message;
 
@@ -155,6 +148,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         // Routing logic
         if (text === '/start') {
             await handleStart(token, chatId);
+        } else if (text === '/ping') {
+            await handlePing(token, chatId);
         } else if (text === '/stats') {
             await handleStats(token, chatId, fromId, env.BOT_STATE);
         } else if (/^\d{6}$/.test(text)) {
