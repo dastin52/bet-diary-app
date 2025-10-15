@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User } from '../types';
 import * as userStore from '../data/userStore';
 
@@ -14,6 +15,7 @@ interface AuthContextType {
   register: (email: string, password_hash: string, nickname: string, adminCode?: string, referralCode?: string) => Promise<void>;
   logout: () => void;
   isAdmin: boolean;
+  updateCurrentUser: (updatedData: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,8 +32,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return null;
     }
   });
-  
+
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
+  
+  // FIX: Add effect to sync auth state across browser tabs.
+  // This effect will sync the currentUser state if another tab updates the user data
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      // Handle login/logout from other tabs
+      if (event.key === SESSION_STORAGE_KEY) {
+        if (event.newValue) {
+          const newSessionUser = JSON.parse(event.newValue);
+          // Update if the user is different or was null
+          if (JSON.stringify(newSessionUser) !== JSON.stringify(currentUser)) {
+            setCurrentUser(newSessionUser);
+          }
+        } else if (currentUser !== null) {
+          // Logged out from another tab
+          setCurrentUser(null);
+        }
+      }
+
+      // Handle updates to user data (e.g., buttercups from a referral)
+      if (event.key === 'betting_app_users' && currentUser && event.newValue) {
+        const users = JSON.parse(event.newValue);
+        const latestUser = users.find((u: User) => u.email === currentUser.email);
+        if (latestUser && JSON.stringify(latestUser) !== JSON.stringify(currentUser)) {
+          setCurrentUser(latestUser);
+          // Also update the session storage for this tab to keep it in sync
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(latestUser));
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [currentUser]);
+
 
   const login = async (email: string, password_hash: string): Promise<void> => {
     const user = userStore.findUserBy(u => u.email === email);
@@ -90,13 +128,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setCurrentUser(newUser);
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
   };
+  
+  // FIX: Add a function to update the current user's state.
+  const updateCurrentUser = (updatedData: Partial<User>) => {
+      if (currentUser) {
+          const updatedUser = { ...currentUser, ...updatedData };
+          userStore.updateUser(updatedUser);
+          setCurrentUser(updatedUser);
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updatedUser));
+      }
+  };
+
 
   const logout = () => {
     setCurrentUser(null);
     localStorage.removeItem(SESSION_STORAGE_KEY);
   };
   
-  const value = { currentUser, login, register, logout, isAdmin };
+  const value = { currentUser, login, register, logout, isAdmin, updateCurrentUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
