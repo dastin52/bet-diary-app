@@ -1,3 +1,4 @@
+
 // functions/api/telegram/webhook.ts
 
 import { GoogleGenAI } from "@google/genai";
@@ -52,6 +53,7 @@ type PagesFunction<E = unknown> = (context: EventContext<E>) => Response | Promi
 
 // --- ROBUST API HELPERS ---
 const apiRequest = async (token: string, method: string, body: object) => {
+    if (!token) { throw new Error("TELEGRAM_BOT_TOKEN is not defined."); }
     const url = `https://api.telegram.org/bot${token}/${method}`;
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!response.ok) {
@@ -62,6 +64,7 @@ const apiRequest = async (token: string, method: string, body: object) => {
     }
     return response.json();
 };
+
 const sendMessage = (t: string, c: number, x: string, r = {}) => apiRequest(t, 'sendMessage', { chat_id: c, text: x, reply_markup: r });
 const editMessageText = (t: string, c: number, m: number, x: string, r = {}) => apiRequest(t, 'editMessageText', { chat_id: c, message_id: m, text: x, reply_markup: r });
 const deleteMessage = (t: string, c: number, m: number) => apiRequest(t, 'deleteMessage', { chat_id: c, message_id: m });
@@ -73,11 +76,9 @@ const reportError = async (env: Env, chatId: number | undefined, error: any, con
     console.error(`--- ERROR REPORT ---\n${fullErrorMessage}`);
     if (chatId && env.TELEGRAM_BOT_TOKEN) {
         try {
-            // Send a simplified, plain text error message to avoid parsing issues.
-            const userMessage = `An error occurred.\nContext: ${context}\nMessage: ${error.message}`;
+            const userMessage = `Произошла ошибка.\nКонтекст: ${context}\nСообщение: ${error.message}`;
             await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: chatId, text: userMessage.slice(0, 4096) })
             });
         } catch (e: any) {
@@ -114,7 +115,6 @@ function normalizeState(state: any): any {
     return { user, bets, bankroll, dialog, goals };
 }
 
-
 const getUserState = async (env: Env, u: number): Promise<any | null> => {
     console.log(`[STATE] Getting state for user ${u}`);
     const json = await env.BOT_STATE.get(`tguser:${u}`);
@@ -124,10 +124,10 @@ const getUserState = async (env: Env, u: number): Promise<any | null> => {
         const normalized = normalizeState(parsedState);
         console.log(`[STATE] State for user ${u} loaded and normalized successfully.`);
         return normalized;
-    } catch (e) {
+    } catch (e: any) {
         console.error(`[STATE] CORRUPTED STATE for user ${u}. Deleting state. Error:`, e);
         await env.BOT_STATE.delete(`tguser:${u}`);
-        throw new Error("Corrupted user data. State has been reset.");
+        throw new Error("Поврежденные данные пользователя. Состояние было сброшено.");
     }
 };
 const setUserState = (env: Env, u: number, s: any) => { console.log(`[STATE] Setting state for user ${u}.`); return env.BOT_STATE.put(`tguser:${u}`, JSON.stringify(s)); };
@@ -140,44 +140,32 @@ const backAndCancelKeyboard = (backCb: string, mid?: number) => ({ inline_keyboa
 const sessionExpiredText = "⚠️ Ваша сессия истекла или данные были повреждены. Пожалуйста, перезапустите бота.";
 const sessionExpiredKeyboard = { inline_keyboard: [[{ text: "🔄 Перезапустить (/start)", callback_data: "main_menu" }]] };
 
-
 // --- MAIN HANDLER ---
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-    console.log("--- Webhook execution started ---");
     let chatId: number | undefined;
-
     try {
         if (!env.TELEGRAM_BOT_TOKEN || !env.BOT_STATE) {
-            const missing = [!env.TELEGRAM_BOT_TOKEN && "TELEGRAM_BOT_TOKEN", !env.BOT_STATE && "BOT_STATE KV Binding"].filter(Boolean).join(", ");
-            console.error(`Server configuration error: Missing environment variables: ${missing}`);
-            // Cannot report error to user if token is missing, so just log and exit.
+            console.error(`FATAL: Missing environment variables. TELEGRAM_BOT_TOKEN: ${!!env.TELEGRAM_BOT_TOKEN}, BOT_STATE: ${!!env.BOT_STATE}`);
             return new Response('Configuration Error', { status: 500 });
         }
-        console.log('TELEGRAM_BOT_TOKEN is set:', !!env.TELEGRAM_BOT_TOKEN);
-        console.log('BOT_STATE KV is bound:', !!env.BOT_STATE);
-
+        
         const body: TelegramWebhookRequest = await request.json();
         chatId = body.message?.chat.id || body.callback_query?.message.chat.id;
-        console.log(`[ROUTER] Request body parsed. Chat ID: ${chatId}.`);
-
+        
         if (!chatId) {
-            console.log("Request received, but no chat_id found. Ignoring.", JSON.stringify(body));
+            console.log("Request ignored: no chat_id found.");
             return new Response('OK');
         }
 
         if (body.callback_query) {
-            console.log(`[ROUTER] Routing to handleCallbackQuery with data: ${body.callback_query.data}`);
             await handleCallbackQuery(body.callback_query, env);
         } else if (body.message) {
-            console.log(`[ROUTER] Routing to handleMessage with text: ${body.message.text}`);
             await handleMessage(body.message, env);
         } else {
-            console.log("[ROUTER] Unhandled request type.");
+            console.log("Unhandled request type.");
         }
     } catch (e: any) {
         await reportError(env, chatId, e, "Global onRequestPost");
-    } finally {
-        console.log("--- Webhook execution finished ---");
     }
     return new Response('OK');
 };
@@ -192,17 +180,21 @@ async function handleMessage(msg: TelegramMessage, env: Env) {
     if (text.startsWith('/')) {
         return await handleCommand(text, cid, uid, env, state);
     }
-    if (/^\d{6}$/.test(text)) {
-        return await handleAuthCode(text, cid, uid, env);
-    }
+    
+    // ** CRITICAL FIX **: Check for active dialog BEFORE checking for auth code.
     if (state?.dialog?.name) {
         return await handleDialog(msg, state, env);
+    }
+
+    if (/^\d{6}$/.test(text)) {
+        return await handleAuthCode(text, cid, uid, env);
     }
     
     if (state?.user) {
         await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, `👋 Привет, ${state.user.nickname}! Чем могу помочь?`, mainMenuKeyboard);
     } else {
-        await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт, сгенерировав код в приложении.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
+        const welcomeText = `👋 Добро пожаловать!\n\nВы можете создать новый аккаунт или привязать существующий.\n\nДля привязки, сгенерируйте 6-значный код в приложении ('Настройки' -> 'Интеграция с Telegram') и отправьте его мне.`;
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, welcomeText, { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
     }
 }
 
@@ -214,16 +206,14 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
     
     const state = await getUserState(env, uid);
     const [action] = data.split(':');
+    
+    await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, cb.id);
 
     const publicActions = ['register', 'main_menu'];
     if (!state && !publicActions.includes(action)) {
-        await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, cb.id, "Ваша сессия истекла. Пожалуйста, перезапустите бота.");
         return await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, sessionExpiredText, sessionExpiredKeyboard);
     }
     
-    // Always answer the callback query immediately to prevent the UI from hanging.
-    await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, cb.id);
-
     const handlers: { [key: string]: Function } = {
         main_menu: showMainMenu, stats: handleStats, add_bet: startAddBet, manage_bets: showPendingBets, show_bet: showBetStatusOptions,
         set_status: setBetStatus, manage_bank: showBankMenu, ai_chat: startAiChat, exit_ai_chat: showMainMenu, competitions: showCompetitions,
@@ -261,7 +251,7 @@ async function handleDialog(msg: TelegramMessage, state: any, env: Env) {
 
 // --- COMMANDS & AUTH ---
 async function handleCommand(text: string, cid: number, uid: number, env: Env, state: any) {
-    if (text === '/start' || text === '/help') {
+    if (text === '/start' || text === '/help' || text === '/menu') {
         await showMainMenu('', cid, undefined, env, uid, state);
     }
 }
@@ -286,7 +276,7 @@ async function showMainMenu(data: string, cid: number, mid: number | undefined, 
         if (messageId > 0) await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, messageId, welcomeText, mainMenuKeyboard);
         else await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, welcomeText, mainMenuKeyboard);
     } else {
-        const notLoggedInText = "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт.";
+        const notLoggedInText = `👋 Добро пожаловать!\n\nВы можете создать новый аккаунт или привязать существующий.\n\nДля привязки, сгенерируйте 6-значный код в приложении ('Настройки' -> 'Интеграция с Telegram') и отправьте его мне.`;
         const kb = { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] };
         if (messageId > 0) await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, messageId, notLoggedInText, kb);
         else await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, notLoggedInText, kb);
@@ -323,11 +313,13 @@ async function startRegistration(data: string, cid: number, mid: number, env: En
 async function processRegistrationEmail(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.data.email = msg.text; state.dialog.name = 'registration_nickname';
     await setUserState(env, msg.from.id, state);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "👍 Отлично. Теперь введите ваш никнейм:", backAndCancelKeyboard('register', state.dialog.msgId));
 }
 async function processRegistrationNickname(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.data.nickname = msg.text; state.dialog.name = 'registration_password';
     await setUserState(env, msg.from.id, state);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "🔒 Теперь придумайте пароль (рекомендуем удалить сообщение после ввода):", backAndCancelKeyboard('registration_email', state.dialog.msgId));
 }
 async function processRegistrationPassword(msg: TelegramMessage, state: any, env: Env) {
@@ -335,7 +327,7 @@ async function processRegistrationPassword(msg: TelegramMessage, state: any, env
     const newUser = { email, nickname, password_hash: mockHash(msg.text || ''), registeredAt: new Date().toISOString() };
     const initialData = { user: newUser, bets: [], bankroll: 10000, goals: [], dialog: null };
     await setUserState(env, msg.from.id, normalizeState(initialData));
-    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, `✅ Регистрация завершена! Добро пожаловать, ${nickname}!`, mainMenuKeyboard);
 }
 
@@ -374,18 +366,18 @@ async function handleAddBetDialogCallback(data: string, cid: number, mid: number
 }
 async function processAddBetEvent(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.name = 'add_bet_outcome'; state.dialog.data.event = msg.text; await setUserState(env, msg.from.id, state);
-    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     const markets = MARKETS_BY_SPORT[state.dialog.data.sport] || ['П1', 'X', 'П2'];
     const marketButtons = chunkArray(markets.map(m => ({text:m, callback_data:`add_bet_outcome:${m}`})), 3);
     await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "🎯 Выберите исход:", { inline_keyboard: [...marketButtons, ...backAndCancelKeyboard('add_bet', state.dialog.msgId).inline_keyboard]});
 }
 async function processAddBetStake(msg: TelegramMessage, state: any, env: Env) {
-    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     state.dialog.name = 'add_bet_odds'; state.dialog.data.stake = parseFloat(msg.text || '0'); await setUserState(env, msg.from.id, state);
     await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "📈 Введите коэффициент:", backAndCancelKeyboard(`add_bet_outcome:${state.dialog.data.outcome}`, state.dialog.msgId));
 }
 async function processAddBetOdds(msg: TelegramMessage, state: any, env: Env) {
-    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     state.dialog.data.odds = parseFloat(msg.text || '0');
     const { sport, event, outcome, stake, odds } = state.dialog.data;
     const text = `👀 Проверьте ставку:\n\nСпорт: ${sport}\nСобытие: ${event}\nИсход: ${outcome}\nСтавка: ${stake} ₽\nКоэф.: ${odds}`;
@@ -445,7 +437,7 @@ async function processBankAdjustment(msg: TelegramMessage, state: any, env: Env)
     if (isNaN(amount) || amount <= 0) return sendMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, "❌ Неверная сумма. Попробуйте еще раз.");
     state.bankroll += (state.dialog.type === 'deposit' ? amount : -amount);
     const mid = state.dialog.msgId; state.dialog = null; await setUserState(env, msg.from.id, state);
-    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, mid, `✅ Баланс обновлен! Новый баланс: ${state.bankroll.toFixed(2)} ₽`, backToMenuKeyboard(mid));
 }
 
@@ -485,7 +477,7 @@ async function showGoals(data: string, cid: number, mid: number, env: Env, uid: 
         if (goals && goals.length > 0) {
             goals.forEach((g: Goal) => {
                 const { label } = getGoalProgress(g);
-                text += `${g.title}\n_${label}_\n\n`;
+                text += `*${g.title}*\n_${label}_\n\n`;
                 buttons.push([{ text: `🗑️ ${g.title}`, callback_data: `delete_goal_prompt:${g.id}` }]);
             });
         } else {
@@ -523,7 +515,7 @@ async function processAddGoalTitle(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.data.title = msg.text;
     state.dialog.name = 'add_goal_metric';
     await setUserState(env, msg.from.id, state);
-    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     const kb = { inline_keyboard: [
         [{text: 'Прибыль', callback_data: 'add_goal_metric:profit'}, {text: 'ROI', callback_data: 'add_goal_metric:roi'}],
         [{text: 'Процент побед', callback_data: 'add_goal_metric:win_rate'}, {text: 'Кол-во ставок', callback_data: 'add_goal_metric:bet_count'}],
@@ -554,7 +546,7 @@ async function processAddGoalTarget(msg: TelegramMessage, state: any, env: Env) 
     state.dialog.data.target = target;
     state.dialog.name = 'add_goal_deadline';
     await setUserState(env, msg.from.id, state);
-    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "🗓️ Введите дедлайн в формате ГГГГ-ММ-ДД:", backAndCancelKeyboard(`add_goal_metric:${state.dialog.data.metric}`, state.dialog.msgId));
 }
 
@@ -584,6 +576,6 @@ async function processAddGoalDeadline(msg: TelegramMessage, state: any, env: Env
     state.dialog = null;
     await setUserState(env, msg.from.id, state);
 
-    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id).catch(console.error);
     await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, mid, `✅ Новая цель "${title}" создана!`, backToMenuKeyboard(mid));
 }
