@@ -206,9 +206,10 @@ async function handleAuthCode(code: string, cid: number, uid: number, env: Env) 
         const dataJson = await env.BOT_STATE.get(`tgauth:${code}`);
         if (!dataJson) return sendMessage(env.TELEGRAM_API_TOKEN, cid, "❌ Неверный или истекший код.");
         const data = JSON.parse(dataJson);
-        await setUserState(env, uid, data);
+        const normalizedData = normalizeState(data); // Normalize data on first link
+        await setUserState(env, uid, normalizedData);
         await env.BOT_STATE.delete(`tgauth:${code}`);
-        await sendMessage(env.TELEGRAM_API_TOKEN, cid, `✅ Аккаунт *${data.user.nickname}* успешно привязан!`, mainMenuKeyboard);
+        await sendMessage(env.TELEGRAM_API_TOKEN, cid, `✅ Аккаунт *${normalizedData.user.nickname}* успешно привязан!`, mainMenuKeyboard);
     } catch(e) {
         console.error("Auth code handling error", e);
         await sendMessage(env.TELEGRAM_API_TOKEN, cid, "❌ Произошла ошибка при обработке кода.");
@@ -260,7 +261,8 @@ async function processRegistrationNickname(msg: TelegramMessage, state: any, env
 async function processRegistrationPassword(msg: TelegramMessage, state: any, env: Env) {
     const { email, nickname } = state.dialog.data;
     const newUser = { email, nickname, password_hash: mockHash(msg.text || ''), registeredAt: new Date().toISOString() };
-    await setUserState(env, msg.from.id, { user: newUser, bets: [], bankroll: 10000, goals: [], dialog: null });
+    const initialData = { user: newUser, bets: [], bankroll: 10000, goals: [], dialog: null };
+    await setUserState(env, msg.from.id, normalizeState(initialData));
     await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
     await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, `✅ Регистрация завершена! Добро пожаловать, *${nickname}*!`, mainMenuKeyboard);
 }
