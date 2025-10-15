@@ -4,33 +4,49 @@ interface CodeGenerationRequest {
     email: string;
 }
 
-// NOTE: This is a placeholder implementation.
-// Cloudflare Functions are stateless. Storing codes in memory or files won't work reliably across requests.
-// For a production environment, you MUST replace this with a persistent storage solution like Cloudflare KV (Key-Value store) or a database.
+interface KVNamespace {
+    put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+}
 
-// FIX: Replaced 'PagesFunction' with an explicit type for the context object, as the 'PagesFunction' type was not found.
-export const onRequestPost = async ({ request }: { request: Request }) => {
+interface Env {
+    BOT_STATE: KVNamespace;
+}
+
+interface EventContext<E> {
+    request: Request;
+    env: E;
+}
+
+type PagesFunction<E = unknown> = (
+    context: EventContext<E>
+) => Response | Promise<Response>;
+
+
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     try {
-        // FIX: The default Request.json() method is not generic. Cast the result to the expected type.
+        const { BOT_STATE } = env;
+        if (!BOT_STATE) {
+            console.error("Cloudflare KV Namespace 'BOT_STATE' is not bound.");
+            return new Response(JSON.stringify({ error: 'Storage is not configured on the server.' }), {
+                status: 500, headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
         const body = await request.json() as CodeGenerationRequest;
         const { email } = body;
 
         if (!email) {
             return new Response(JSON.stringify({ error: 'Email is required.' }), {
-                status: 400,
-                headers: { 'Content-Type': 'application/json' },
+                status: 400, headers: { 'Content-Type': 'application/json' },
             });
         }
         
-        // In a real application, you would generate a random code,
-        // store it in Cloudflare KV with the user's email and an expiration time.
-        // e.g., await env.YOUR_KV_NAMESPACE.put(code, JSON.stringify({ email }), { expirationTtl: 300 });
-
-        const mockCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
         
-        console.log(`Generated mock code ${mockCode} for user ${email}. This is not stored persistently.`);
+        // Store the code in KV with a 5-minute TTL. Key: `authcode:<code>`, Value: `email`
+        await BOT_STATE.put(`authcode:${code}`, email, { expirationTtl: 300 });
 
-        return new Response(JSON.stringify({ code: mockCode }), {
+        return new Response(JSON.stringify({ code }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
         });
