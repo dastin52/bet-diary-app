@@ -26,6 +26,7 @@ const mockHash = (s: string) => `hashed_${s}`;
 const calculateRiskManagedStake = (bank:number, odds:number) => { if (bank <= 0 || odds <= 1) return null; let p = odds < 1.5 ? 0.025 : odds < 2.5 ? 0.015 : 0.0075; const stake = bank * p; return stake < 1 ? null : { stake, percentage: p * 100 }; };
 function chunkArray<T>(array: T[], size: number): T[][] { const r: T[][] = []; for (let i = 0; i < array.length; i += size) { r.push(array.slice(i, i + size)); } return r; }
 const getGoalProgress = (goal: Goal): { percentage: number, label: string } => {
+    if (!goal || typeof goal.currentValue !== 'number' || typeof goal.targetValue !== 'number') return { percentage: 0, label: 'Ошибка данных' };
     const percentage = goal.targetValue !== 0 ? (goal.currentValue / goal.targetValue) * 100 : 0;
     let label = '';
     switch (goal.metric) {
@@ -64,11 +65,41 @@ const deleteMessage = (t: string, c: number, m: number) => apiRequest(t, 'delete
 const answerCallbackQuery = (t: string, i: string, x?: string) => apiRequest(t, 'answerCallbackQuery', { callback_query_id: i, text: x });
 
 // --- ROBUST STATE MGMT ---
+function normalizeState(state: any): any {
+    if (!state || typeof state !== 'object') return null;
+
+    const normalized = {
+        user: state.user && typeof state.user === 'object' ? state.user : null,
+        bets: Array.isArray(state.bets) ? state.bets : [],
+        bankroll: typeof state.bankroll === 'number' && !isNaN(state.bankroll) ? state.bankroll : 10000,
+        dialog: state.dialog && typeof state.dialog === 'object' ? state.dialog : null,
+        goals: (Array.isArray(state.goals) ? state.goals : [])
+            .map((g: any) => {
+                if (!g || typeof g !== 'object') return null;
+                return {
+                    id: g.id || `goal_${Date.now()}_${Math.random()}`,
+                    title: g.title || 'Без названия',
+                    metric: g.metric || GoalMetric.Profit,
+                    targetValue: typeof g.targetValue === 'number' ? g.targetValue : 0,
+                    currentValue: typeof g.currentValue === 'number' ? g.currentValue : 0,
+                    status: g.status || GoalStatus.InProgress,
+                    createdAt: g.createdAt || new Date().toISOString(),
+                    deadline: g.deadline || new Date().toISOString(),
+                    scope: (g.scope && typeof g.scope === 'object') ? g.scope : { type: 'all' },
+                };
+            })
+            .filter((g: any): g is Goal => g !== null),
+    };
+
+    return normalized;
+}
+
 const getUserState = async (env: Env, u: number): Promise<any | null> => {
     const json = await env.BOT_STATE.get(`tguser:${u}`);
     if (!json) return null;
     try {
-        return JSON.parse(json);
+        const parsedState = JSON.parse(json);
+        return normalizeState(parsedState); // Normalize on load
     } catch (e) {
         console.error(`CORRUPTED STATE for user ${u}. Deleting state. Error:`, e);
         await env.BOT_STATE.delete(`tguser:${u}`);
@@ -76,18 +107,6 @@ const getUserState = async (env: Env, u: number): Promise<any | null> => {
     }
 };
 const setUserState = (env: Env, u: number, s: any) => env.BOT_STATE.put(`tguser:${u}`, JSON.stringify(s));
-
-function normalizeState(state: any): any {
-    if (!state) return null;
-    // Ensure essential arrays and values exist to prevent runtime errors from old state schemas
-    return {
-        user: state.user || null,
-        bets: Array.isArray(state.bets) ? state.bets : [],
-        goals: Array.isArray(state.goals) ? state.goals : [],
-        bankroll: typeof state.bankroll === 'number' ? state.bankroll : 10000,
-        dialog: state.dialog || null,
-    };
-}
 
 
 // --- KEYBOARDS & CONSTANTS ---
@@ -115,8 +134,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 // --- ROUTERS ---
 async function handleMessage(msg: TelegramMessage, env: Env) {
     const text = msg.text || ''; const cid = msg.chat.id; const uid = msg.from.id;
-    const rawState = await getUserState(env, uid);
-    const state = normalizeState(rawState);
+    const state = await getUserState(env, uid);
 
     if (text.startsWith('/')) return handleCommand(text, cid, uid, env, state);
     if (/^\d{6}$/.test(text)) return handleAuthCode(text, cid, uid, env);
@@ -133,8 +151,7 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
     const data = cb.data; const cid = cb.message.chat.id; const mid = cb.message.message_id; const uid = cb.from.id;
     await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id);
     
-    const rawState = await getUserState(env, uid);
-    const state = normalizeState(rawState);
+    const state = await getUserState(env, uid);
     
     const [action] = data.split(':');
 
@@ -266,7 +283,7 @@ async function handleAddBetDialogCallback(data: string, cid: number, mid: number
             await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "✍️ Введите событие (например, `Команда 1 - Команда 2`):", backAndCancelKeyboard('add_bet', mid));
         } else if (action === 'add_bet_outcome') {
             dialog.data.outcome = value; dialog.name = 'add_bet_stake'; await setUserState(env, uid, state);
-            const recommended = calculateRiskManagedStake(state.bankroll, 2.0);
+            const recommended = calculateRiskManagedStake(state.bankroll, 2.0); // Using avg odds for suggestion
             const kb = recommended ? { inline_keyboard: [[{ text: `💡 Рекомендуемая: ${recommended.stake.toFixed(0)} ₽`, callback_data: `add_bet_stake:${recommended.stake.toFixed(0)}` }], ...backAndCancelKeyboard('add_bet_event', mid).inline_keyboard] } : backAndCancelKeyboard('add_bet_event', mid);
             await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "💰 Введите сумму ставки:", kb);
         } else if (action === 'add_bet_stake') {
@@ -283,17 +300,18 @@ async function handleAddBetDialogCallback(data: string, cid: number, mid: number
 }
 async function processAddBetEvent(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.name = 'add_bet_outcome'; state.dialog.data.event = msg.text; await setUserState(env, msg.from.id, state);
+    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
     const markets = MARKETS_BY_SPORT[state.dialog.data.sport] || ['П1', 'X', 'П2'];
     const marketButtons = chunkArray(markets.map(m => ({text:m, callback_data:`add_bet_outcome:${m}`})), 3);
     await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "🎯 Выберите исход:", { inline_keyboard: [...marketButtons, ...backAndCancelKeyboard('add_bet', state.dialog.msgId).inline_keyboard]});
 }
 async function processAddBetStake(msg: TelegramMessage, state: any, env: Env) {
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id); // delete user input
+    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
     state.dialog.name = 'add_bet_odds'; state.dialog.data.stake = parseFloat(msg.text || '0'); await setUserState(env, msg.from.id, state);
     await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "📈 Введите коэффициент:", backAndCancelKeyboard(`add_bet_outcome:${state.dialog.data.outcome}`, state.dialog.msgId));
 }
 async function processAddBetOdds(msg: TelegramMessage, state: any, env: Env) {
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id); // delete user input
+    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
     state.dialog.data.odds = parseFloat(msg.text || '0');
     const { sport, event, outcome, stake, odds } = state.dialog.data;
     const text = `👀 *Проверьте ставку:*\n\n*Спорт:* ${sport}\n*Событие:* ${event}\n*Исход:* ${outcome}\n*Ставка:* ${stake} ₽\n*Коэф.:* ${odds}`;
@@ -439,6 +457,7 @@ async function processAddGoalTitle(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.data.title = msg.text;
     state.dialog.name = 'add_goal_metric';
     await setUserState(env, msg.from.id, state);
+    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
     const kb = { inline_keyboard: [
         [{text: 'Прибыль', callback_data: 'add_goal_metric:profit'}, {text: 'ROI', callback_data: 'add_goal_metric:roi'}],
         [{text: 'Процент побед', callback_data: 'add_goal_metric:win_rate'}, {text: 'Кол-во ставок', callback_data: 'add_goal_metric:bet_count'}],
