@@ -46,7 +46,7 @@ interface TelegramMessage { message_id: number; from: TelegramFrom; chat: Telegr
 interface TelegramCallbackQuery { id: string; from: TelegramFrom; message: TelegramMessage; data: string; }
 interface TelegramWebhookRequest { message?: TelegramMessage; callback_query?: TelegramCallbackQuery; }
 interface KVNamespace { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; delete(key: string): Promise<void>; }
-interface Env { TELEGRAM_API_TOKEN: string; GEMINI_API_KEY: string; BOT_STATE: KVNamespace; }
+interface Env { TELEGRAM_BOT_TOKEN: string; GEMINI_API_KEY: string; BOT_STATE: KVNamespace; }
 interface EventContext<E> { request: Request; env: E; }
 type PagesFunction<E = unknown> = (context: EventContext<E>) => Response | Promise<Response>;
 
@@ -71,11 +71,11 @@ const answerCallbackQuery = (t: string, i: string, x?: string) => apiRequest(t, 
 const reportError = async (env: Env, chatId: number | undefined, error: any, context: string) => {
     const fullErrorMessage = `Context: ${context}\nError: ${error.message}\nStack: ${error.stack}`;
     console.error(`--- ERROR REPORT ---\n${fullErrorMessage}`);
-    if (chatId && env.TELEGRAM_API_TOKEN) {
+    if (chatId && env.TELEGRAM_BOT_TOKEN) {
         try {
             // Send a simplified, plain text error message to avoid parsing issues.
             const userMessage = `An error occurred.\nContext: ${context}\nMessage: ${error.message}`;
-            await fetch(`https://api.telegram.org/bot${env.TELEGRAM_API_TOKEN}/sendMessage`, {
+            await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: chatId, text: userMessage.slice(0, 4096) })
@@ -147,13 +147,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     let chatId: number | undefined;
 
     try {
-        console.log('TELEGRAM_API_TOKEN is set:', !!env.TELEGRAM_API_TOKEN);
-        console.log('BOT_STATE KV is bound:', !!env.BOT_STATE);
-
-        if (!env.TELEGRAM_API_TOKEN || !env.BOT_STATE) {
-            const missing = [!env.TELEGRAM_API_TOKEN && "TELEGRAM_API_TOKEN", !env.BOT_STATE && "BOT_STATE KV Binding"].filter(Boolean).join(", ");
-            throw new Error(`Server configuration error: Missing environment variables: ${missing}`);
+        if (!env.TELEGRAM_BOT_TOKEN || !env.BOT_STATE) {
+            const missing = [!env.TELEGRAM_BOT_TOKEN && "TELEGRAM_BOT_TOKEN", !env.BOT_STATE && "BOT_STATE KV Binding"].filter(Boolean).join(", ");
+            console.error(`Server configuration error: Missing environment variables: ${missing}`);
+            // Cannot report error to user if token is missing, so just log and exit.
+            return new Response('Configuration Error', { status: 500 });
         }
+        console.log('TELEGRAM_BOT_TOKEN is set:', !!env.TELEGRAM_BOT_TOKEN);
+        console.log('BOT_STATE KV is bound:', !!env.BOT_STATE);
 
         const body: TelegramWebhookRequest = await request.json();
         chatId = body.message?.chat.id || body.callback_query?.message.chat.id;
@@ -199,9 +200,9 @@ async function handleMessage(msg: TelegramMessage, env: Env) {
     }
     
     if (state?.user) {
-        await sendMessage(env.TELEGRAM_API_TOKEN, cid, `👋 Привет, ${state.user.nickname}! Чем могу помочь?`, mainMenuKeyboard);
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, `👋 Привет, ${state.user.nickname}! Чем могу помочь?`, mainMenuKeyboard);
     } else {
-        await sendMessage(env.TELEGRAM_API_TOKEN, cid, "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт, сгенерировав код в приложении.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт, сгенерировав код в приложении.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
     }
 }
 
@@ -216,12 +217,12 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
 
     const publicActions = ['register', 'main_menu'];
     if (!state && !publicActions.includes(action)) {
-        await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id, "Ваша сессия истекла. Пожалуйста, перезапустите бота.");
-        return await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, sessionExpiredText, sessionExpiredKeyboard);
+        await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, cb.id, "Ваша сессия истекла. Пожалуйста, перезапустите бота.");
+        return await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, sessionExpiredText, sessionExpiredKeyboard);
     }
     
     // Always answer the callback query immediately to prevent the UI from hanging.
-    await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id);
+    await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, cb.id);
 
     const handlers: { [key: string]: Function } = {
         main_menu: showMainMenu, stats: handleStats, add_bet: startAddBet, manage_bets: showPendingBets, show_bet: showBetStatusOptions,
@@ -254,7 +255,7 @@ async function handleDialog(msg: TelegramMessage, state: any, env: Env) {
         console.error(`[DIALOG] No handler for dialog step: ${name}`);
         state.dialog = null;
         await setUserState(env, msg.from.id, state);
-        await sendMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, "Произошла ошибка в диалоге, он был сброшен.", mainMenuKeyboard);
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, "Произошла ошибка в диалоге, он был сброшен.", mainMenuKeyboard);
     }
 }
 
@@ -267,13 +268,13 @@ async function handleCommand(text: string, cid: number, uid: number, env: Env, s
 async function handleAuthCode(code: string, cid: number, uid: number, env: Env) {
     const dataJson = await env.BOT_STATE.get(`tgauth:${code}`);
     if (!dataJson) {
-        return await sendMessage(env.TELEGRAM_API_TOKEN, cid, "❌ Неверный или истекший код.");
+        return await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, "❌ Неверный или истекший код.");
     }
     const data = JSON.parse(dataJson);
     const normalizedData = normalizeState(data);
     await setUserState(env, uid, normalizedData);
     await env.BOT_STATE.delete(`tgauth:${code}`);
-    await sendMessage(env.TELEGRAM_API_TOKEN, cid, `✅ Аккаунт ${normalizedData.user.nickname} успешно привязан!`, mainMenuKeyboard);
+    await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, `✅ Аккаунт ${normalizedData.user.nickname} успешно привязан!`, mainMenuKeyboard);
 }
 
 // --- MENU HANDLERS ---
@@ -282,13 +283,13 @@ async function showMainMenu(data: string, cid: number, mid: number | undefined, 
     if (state?.dialog) { state.dialog = null; await setUserState(env, uid, state); }
     if (state?.user) {
         const welcomeText = text || `🏠 Главное меню, ${state.user.nickname}!`;
-        if (messageId > 0) await editMessageText(env.TELEGRAM_API_TOKEN, cid, messageId, welcomeText, mainMenuKeyboard);
-        else await sendMessage(env.TELEGRAM_API_TOKEN, cid, welcomeText, mainMenuKeyboard);
+        if (messageId > 0) await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, messageId, welcomeText, mainMenuKeyboard);
+        else await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, welcomeText, mainMenuKeyboard);
     } else {
         const notLoggedInText = "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт.";
         const kb = { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] };
-        if (messageId > 0) await editMessageText(env.TELEGRAM_API_TOKEN, cid, messageId, notLoggedInText, kb);
-        else await sendMessage(env.TELEGRAM_API_TOKEN, cid, notLoggedInText, kb);
+        if (messageId > 0) await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, messageId, notLoggedInText, kb);
+        else await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, notLoggedInText, kb);
     }
 }
 
@@ -297,8 +298,8 @@ async function handleStatefulAction(mid: number | undefined, cid: number, state:
     if (!state || !state.user) {
         const text = sessionExpiredText;
         const kb = sessionExpiredKeyboard;
-        if (mid) return await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, text, kb);
-        else return await sendMessage(env.TELEGRAM_API_TOKEN, cid, text, kb);
+        if (mid) return await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, text, kb);
+        else return await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, text, kb);
     }
     return await actionFn();
 }
@@ -310,32 +311,32 @@ async function handleStats(data: string, cid: number, mid: number, env: Env, uid
         const settled = bets.filter((b: Bet) => b.status !== 'pending');
         const profit = settled.reduce((a: number, b: Bet) => a + (calculateProfit(b) || 0), 0);
         const text = `📊 Ваша статистика\n\nБанк: ${bankroll.toFixed(2)} ₽\nПрибыль: ${profit.toFixed(2)} ₽\nВсего ставок: ${settled.length}`;
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, text, backToMenuKeyboard(mid));
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, text, backToMenuKeyboard(mid));
     });
 }
 
 // --- REGISTRATION ---
 async function startRegistration(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await setUserState(env, uid, { ...state, dialog: { name: 'registration_email', data: {}, msgId: mid } });
-    await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "📝 Давайте зарегистрируемся. Введите ваш E-mail:", cancelKeyboard(mid));
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "📝 Давайте зарегистрируемся. Введите ваш E-mail:", cancelKeyboard(mid));
 }
 async function processRegistrationEmail(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.data.email = msg.text; state.dialog.name = 'registration_nickname';
     await setUserState(env, msg.from.id, state);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "👍 Отлично. Теперь введите ваш никнейм:", backAndCancelKeyboard('register', state.dialog.msgId));
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "👍 Отлично. Теперь введите ваш никнейм:", backAndCancelKeyboard('register', state.dialog.msgId));
 }
 async function processRegistrationNickname(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.data.nickname = msg.text; state.dialog.name = 'registration_password';
     await setUserState(env, msg.from.id, state);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "🔒 Теперь придумайте пароль (рекомендуем удалить сообщение после ввода):", backAndCancelKeyboard('registration_email', state.dialog.msgId));
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "🔒 Теперь придумайте пароль (рекомендуем удалить сообщение после ввода):", backAndCancelKeyboard('registration_email', state.dialog.msgId));
 }
 async function processRegistrationPassword(msg: TelegramMessage, state: any, env: Env) {
     const { email, nickname } = state.dialog.data;
     const newUser = { email, nickname, password_hash: mockHash(msg.text || ''), registeredAt: new Date().toISOString() };
     const initialData = { user: newUser, bets: [], bankroll: 10000, goals: [], dialog: null };
     await setUserState(env, msg.from.id, normalizeState(initialData));
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, `✅ Регистрация завершена! Добро пожаловать, ${nickname}!`, mainMenuKeyboard);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, `✅ Регистрация завершена! Добро пожаловать, ${nickname}!`, mainMenuKeyboard);
 }
 
 // --- BET CREATION ---
@@ -343,7 +344,7 @@ async function startAddBet(data: string, cid: number, mid: number, env: Env, uid
     await handleStatefulAction(mid, cid, state, env, async () => {
         await setUserState(env, uid, { ...state, dialog: { name: 'add_bet_sport', data: {}, msgId: mid } });
         const sportButtons = chunkArray(SPORTS.map(s => ({text: s, callback_data: `add_bet_sport:${s}`})), 3);
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "👇 Выберите вид спорта:", { inline_keyboard: [...sportButtons, cancelKeyboard(mid).inline_keyboard[0]] });
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "👇 Выберите вид спорта:", { inline_keyboard: [...sportButtons, cancelKeyboard(mid).inline_keyboard[0]] });
     });
 }
 async function handleAddBetDialogCallback(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
@@ -353,43 +354,43 @@ async function handleAddBetDialogCallback(data: string, cid: number, mid: number
 
         if (action === 'add_bet_sport') {
             dialog.data.sport = value; dialog.name = 'add_bet_event'; await setUserState(env, uid, state);
-            await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "✍️ Введите событие (например, `Команда 1 - Команда 2`):", backAndCancelKeyboard('add_bet', mid));
+            await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "✍️ Введите событие (например, `Команда 1 - Команда 2`):", backAndCancelKeyboard('add_bet', mid));
         } else if (action === 'add_bet_outcome') {
             dialog.data.outcome = value; dialog.name = 'add_bet_stake'; await setUserState(env, uid, state);
             const recommended = calculateRiskManagedStake(state.bankroll, 2.0); // Using avg odds for suggestion
             const kb = recommended ? { inline_keyboard: [[{ text: `💡 Рекомендуемая: ${recommended.stake.toFixed(0)} ₽`, callback_data: `add_bet_stake:${recommended.stake.toFixed(0)}` }], ...backAndCancelKeyboard('add_bet_event', mid).inline_keyboard] } : backAndCancelKeyboard('add_bet_event', mid);
-            await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "💰 Введите сумму ставки:", kb);
+            await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "💰 Введите сумму ставки:", kb);
         } else if (action === 'add_bet_stake') {
             dialog.name = 'add_bet_odds'; dialog.data.stake = parseFloat(value || '0'); await setUserState(env, uid, state);
-            await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "📈 Введите коэффициент:", backAndCancelKeyboard(`add_bet_outcome:${dialog.data.outcome}`, mid));
+            await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "📈 Введите коэффициент:", backAndCancelKeyboard(`add_bet_outcome:${dialog.data.outcome}`, mid));
         } else if (action === 'add_bet_confirm') {
             const { sport, event, outcome, stake, odds } = dialog.data;
             const [homeTeam, awayTeam] = event.split('-').map((s: string) => s.trim());
             const newBet: Bet = { id: new Date().toISOString(), createdAt: new Date().toISOString(), event: `${event} - ${outcome}`, sport, betType: BetType.Single, stake, odds, status: BetStatus.Pending, legs: [{homeTeam, awayTeam, market: outcome}], bookmaker: 'Telegram' };
             state.bets.unshift(newBet); state.dialog = null; await setUserState(env, uid, state);
-            await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, `✅ Ставка добавлена:\n${newBet.event} @ ${odds} на ${stake} ₽`, backToMenuKeyboard(mid));
+            await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, `✅ Ставка добавлена:\n${newBet.event} @ ${odds} на ${stake} ₽`, backToMenuKeyboard(mid));
         }
     });
 }
 async function processAddBetEvent(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.name = 'add_bet_outcome'; state.dialog.data.event = msg.text; await setUserState(env, msg.from.id, state);
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
     const markets = MARKETS_BY_SPORT[state.dialog.data.sport] || ['П1', 'X', 'П2'];
     const marketButtons = chunkArray(markets.map(m => ({text:m, callback_data:`add_bet_outcome:${m}`})), 3);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "🎯 Выберите исход:", { inline_keyboard: [...marketButtons, ...backAndCancelKeyboard('add_bet', state.dialog.msgId).inline_keyboard]});
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "🎯 Выберите исход:", { inline_keyboard: [...marketButtons, ...backAndCancelKeyboard('add_bet', state.dialog.msgId).inline_keyboard]});
 }
 async function processAddBetStake(msg: TelegramMessage, state: any, env: Env) {
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
     state.dialog.name = 'add_bet_odds'; state.dialog.data.stake = parseFloat(msg.text || '0'); await setUserState(env, msg.from.id, state);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "📈 Введите коэффициент:", backAndCancelKeyboard(`add_bet_outcome:${state.dialog.data.outcome}`, state.dialog.msgId));
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "📈 Введите коэффициент:", backAndCancelKeyboard(`add_bet_outcome:${state.dialog.data.outcome}`, state.dialog.msgId));
 }
 async function processAddBetOdds(msg: TelegramMessage, state: any, env: Env) {
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
     state.dialog.data.odds = parseFloat(msg.text || '0');
     const { sport, event, outcome, stake, odds } = state.dialog.data;
     const text = `👀 Проверьте ставку:\n\nСпорт: ${sport}\nСобытие: ${event}\nИсход: ${outcome}\nСтавка: ${stake} ₽\nКоэф.: ${odds}`;
     await setUserState(env, msg.from.id, state);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, text, { inline_keyboard: [[{text: '✅ Подтвердить', callback_data: 'add_bet_confirm'}], ...backAndCancelKeyboard(`add_bet_stake:${stake}`, state.dialog.msgId).inline_keyboard] });
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, text, { inline_keyboard: [[{text: '✅ Подтвердить', callback_data: 'add_bet_confirm'}], ...backAndCancelKeyboard(`add_bet_stake:${stake}`, state.dialog.msgId).inline_keyboard] });
 }
 
 // --- BET MANAGEMENT ---
@@ -397,9 +398,9 @@ async function showPendingBets(data: string, cid: number, mid: number, env: Env,
     await handleStatefulAction(mid, cid, state, env, async () => {
         const { bets } = state;
         const pending = bets.filter((b: Bet) => b.status === 'pending');
-        if (pending.length === 0) return editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "Нет ожидающих ставок.", backToMenuKeyboard(mid));
+        if (pending.length === 0) return editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "Нет ожидающих ставок.", backToMenuKeyboard(mid));
         const keyboard = pending.map((b: Bet) => [{ text: `${b.event} @ ${b.odds}`, callback_data: `show_bet:${b.id}` }]);
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "👇 Выберите ставку для обновления:", { inline_keyboard: [...keyboard, ...backToMenuKeyboard(mid).inline_keyboard] });
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "👇 Выберите ставку для обновления:", { inline_keyboard: [...keyboard, ...backToMenuKeyboard(mid).inline_keyboard] });
     });
 }
 async function showBetStatusOptions(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
@@ -407,20 +408,20 @@ async function showBetStatusOptions(data: string, cid: number, mid: number, env:
         const { bets } = state;
         const betId = data.split(':').slice(1).join(':');
         const bet = bets.find((b: Bet) => b.id === betId);
-        if (!bet) return editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "❌ Ставка не найдена.", backToMenuKeyboard(mid));
+        if (!bet) return editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "❌ Ставка не найдена.", backToMenuKeyboard(mid));
         const kb = { inline_keyboard: [[{ text: "✅ Выигрыш", callback_data: `set_status:won:${betId}` }, { text: "❌ Проигрыш", callback_data: `set_status:lost:${betId}` }], [{ text: "🔄 Возврат", callback_data: `set_status:void:${betId}` }], [{ text: "⬅️ Назад", callback_data: 'manage_bets' }]] };
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, `Ставка:\n${bet.event}\n\nВыберите новый статус:`, kb);
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, `Ставка:\n${bet.event}\n\nВыберите новый статус:`, kb);
     });
 }
 async function setBetStatus(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await handleStatefulAction(mid, cid, state, env, async () => {
         const parts = data.split(':'); const status = parts[1]; const betId = parts.slice(2).join(':');
         const betIdx = state.bets.findIndex((b: Bet) => b.id === betId);
-        if (betIdx === -1) return editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "❌ Ставка не найдена.", backToMenuKeyboard(mid));
+        if (betIdx === -1) return editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "❌ Ставка не найдена.", backToMenuKeyboard(mid));
         state.bets[betIdx].status = status as BetStatus;
         const profit = calculateProfit(state.bets[betIdx]);
         state.bets[betIdx].profit = profit; state.bankroll += profit; await setUserState(env, uid, state);
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, `✅ Статус ставки обновлен на ${status}.`, { inline_keyboard: [[{ text: "⬅️ К списку ставок", callback_data: 'manage_bets' }], ...backToMenuKeyboard(mid).inline_keyboard] });
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, `✅ Статус ставки обновлен на ${status}.`, { inline_keyboard: [[{ text: "⬅️ К списку ставок", callback_data: 'manage_bets' }], ...backToMenuKeyboard(mid).inline_keyboard] });
     });
 }
 
@@ -429,35 +430,35 @@ async function showBankMenu(data: string, cid: number, mid: number, env: Env, ui
     await handleStatefulAction(mid, cid, state, env, async () => {
         const text = `🏦 Управление банком\n\nТекущий баланс: ${state.bankroll.toFixed(2)} ₽`;
         const kb = { inline_keyboard: [[{text: "➕ Пополнить", callback_data: "bank_deposit"}, {text: "➖ Снять", callback_data: "bank_withdraw"}], ...backToMenuKeyboard(mid).inline_keyboard] };
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, text, kb);
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, text, kb);
     });
 }
 async function handleBankDialogCallback(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await handleStatefulAction(mid, cid, state, env, async () => {
         const type = data.startsWith('bank_deposit') ? 'deposit' : 'withdraw';
         await setUserState(env, uid, {...state, dialog: { name: 'bank_adjust', type, msgId: mid }});
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, type === 'deposit' ? "➕ Введите сумму пополнения:" : "➖ Введите сумму для снятия:", cancelKeyboard(mid));
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, type === 'deposit' ? "➕ Введите сумму пополнения:" : "➖ Введите сумму для снятия:", cancelKeyboard(mid));
     });
 }
 async function processBankAdjustment(msg: TelegramMessage, state: any, env: Env) {
     const amount = parseFloat(msg.text || '0');
-    if (isNaN(amount) || amount <= 0) return sendMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, "❌ Неверная сумма. Попробуйте еще раз.");
+    if (isNaN(amount) || amount <= 0) return sendMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, "❌ Неверная сумма. Попробуйте еще раз.");
     state.bankroll += (state.dialog.type === 'deposit' ? amount : -amount);
     const mid = state.dialog.msgId; state.dialog = null; await setUserState(env, msg.from.id, state);
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, mid, `✅ Баланс обновлен! Новый баланс: ${state.bankroll.toFixed(2)} ₽`, backToMenuKeyboard(mid));
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, mid, `✅ Баланс обновлен! Новый баланс: ${state.bankroll.toFixed(2)} ₽`, backToMenuKeyboard(mid));
 }
 
 // --- AI CHAT ---
 async function startAiChat(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await handleStatefulAction(mid, cid, state, env, async () => {
         await setUserState(env, uid, { ...state, dialog: { name: 'ai_chat_active', msgId: mid } });
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "🤖 Вы вошли в чат с AI-Аналитиком. Задайте вопрос.", { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: `exit_ai_chat:${mid}` }]] });
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "🤖 Вы вошли в чат с AI-Аналитиком. Задайте вопрос.", { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: `exit_ai_chat:${mid}` }]] });
     });
 }
 async function processAiChatMessage(msg: TelegramMessage, state: any, env: Env) {
     const cid = msg.chat.id;
-    const thinkingMsg = await sendMessage(env.TELEGRAM_API_TOKEN, cid, "🤖 Думаю...");
+    const thinkingMsg = await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, "🤖 Думаю...");
     const thinkingMsgId = (thinkingMsg as any).result.message_id;
 
     const ai = new GoogleGenAI({apiKey: env.GEMINI_API_KEY});
@@ -465,13 +466,13 @@ async function processAiChatMessage(msg: TelegramMessage, state: any, env: Env) 
     const context = `User stats: bankroll=${state.bankroll}, total_profit=${profit}. User question: ${msg.text}`;
     
     const res = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{role: 'user', parts: [{text: context}]}] });
-    await editMessageText(env.TELEGRAM_API_TOKEN, cid, thinkingMsgId, res.text);
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, thinkingMsgId, res.text);
 }
 
 // --- COMPETITIONS ---
 async function showCompetitions(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await handleStatefulAction(mid, cid, state, env, async () => {
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "🏆 Функция соревнований в разработке.", backToMenuKeyboard(mid));
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "🏆 Функция соревнований в разработке.", backToMenuKeyboard(mid));
     });
 }
 
@@ -491,16 +492,16 @@ async function showGoals(data: string, cid: number, mid: number, env: Env, uid: 
             text += "_У вас нет активных целей._";
         }
         const keyboard = { inline_keyboard: [[{ text: "➕ Новая цель", callback_data: "add_goal" }], ...buttons, ...backToMenuKeyboard(mid).inline_keyboard] };
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, text, keyboard);
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, text, keyboard);
     });
 }
 async function promptDeleteGoal(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await handleStatefulAction(mid, cid, state, env, async () => {
         const goalId = data.split(':')[1];
         const goal = state.goals.find((g: Goal) => g.id === goalId);
-        if (!goal) return editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "❌ Цель не найдена.", { inline_keyboard: [[{ text: "⬅️ К целям", callback_data: 'goals' }]] });
+        if (!goal) return editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "❌ Цель не найдена.", { inline_keyboard: [[{ text: "⬅️ К целям", callback_data: 'goals' }]] });
         const kb = { inline_keyboard: [[{ text: `✅ Да, удалить`, callback_data: `delete_goal_confirm:${goalId}` }, { text: "⬅️ Нет", callback_data: 'goals' }]] };
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, `Вы уверены, что хотите удалить цель "${goal.title}"?`, kb);
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, `Вы уверены, что хотите удалить цель "${goal.title}"?`, kb);
     });
 }
 async function deleteGoal(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
@@ -515,20 +516,20 @@ async function startAddGoal(data: string, cid: number, mid: number, env: Env, ui
     await handleStatefulAction(mid, cid, state, env, async () => {
         state.dialog = { name: 'add_goal_title', data: {}, msgId: mid };
         await setUserState(env, uid, state);
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "✍️ Введите название цели:", cancelKeyboard(mid));
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "✍️ Введите название цели:", cancelKeyboard(mid));
     });
 }
 async function processAddGoalTitle(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.data.title = msg.text;
     state.dialog.name = 'add_goal_metric';
     await setUserState(env, msg.from.id, state);
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
     const kb = { inline_keyboard: [
         [{text: 'Прибыль', callback_data: 'add_goal_metric:profit'}, {text: 'ROI', callback_data: 'add_goal_metric:roi'}],
         [{text: 'Процент побед', callback_data: 'add_goal_metric:win_rate'}, {text: 'Кол-во ставок', callback_data: 'add_goal_metric:bet_count'}],
         ...backAndCancelKeyboard('add_goal', state.dialog.msgId).inline_keyboard
     ]};
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "📊 Выберите метрику:", kb);
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "📊 Выберите метрику:", kb);
 }
 
 async function handleAddGoalDialogCallback(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
@@ -540,7 +541,7 @@ async function handleAddGoalDialogCallback(data: string, cid: number, mid: numbe
             dialog.data.metric = value;
             dialog.name = 'add_goal_target';
             await setUserState(env, uid, state);
-            await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "🎯 Введите целевое значение:", backAndCancelKeyboard('add_goal_metric', mid));
+            await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "🎯 Введите целевое значение:", backAndCancelKeyboard('add_goal_metric', mid));
         }
     });
 }
@@ -548,19 +549,19 @@ async function handleAddGoalDialogCallback(data: string, cid: number, mid: numbe
 async function processAddGoalTarget(msg: TelegramMessage, state: any, env: Env) {
     const target = parseFloat(msg.text || '0');
     if (isNaN(target) || target <= 0) {
-        return sendMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, "❌ Неверное значение. Введите положительное число.");
+        return sendMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, "❌ Неверное значение. Введите положительное число.");
     }
     state.dialog.data.target = target;
     state.dialog.name = 'add_goal_deadline';
     await setUserState(env, msg.from.id, state);
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "🗓️ Введите дедлайн в формате ГГГГ-ММ-ДД:", backAndCancelKeyboard(`add_goal_metric:${state.dialog.data.metric}`, state.dialog.msgId));
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, state.dialog.msgId, "🗓️ Введите дедлайн в формате ГГГГ-ММ-ДД:", backAndCancelKeyboard(`add_goal_metric:${state.dialog.data.metric}`, state.dialog.msgId));
 }
 
 async function processAddGoalDeadline(msg: TelegramMessage, state: any, env: Env) {
     const deadline = msg.text || '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline) || isNaN(new Date(deadline).getTime())) {
-         return sendMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, "❌ Неверный формат даты. Введите ГГГГ-ММ-ДД.");
+         return sendMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, "❌ Неверный формат даты. Введите ГГГГ-ММ-ДД.");
     }
     state.dialog.data.deadline = deadline;
     const { title, metric, target } = state.dialog.data;
@@ -583,6 +584,6 @@ async function processAddGoalDeadline(msg: TelegramMessage, state: any, env: Env
     state.dialog = null;
     await setUserState(env, msg.from.id, state);
 
-    await deleteMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, msg.message_id);
-    await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, mid, `✅ Новая цель "${title}" создана!`, backToMenuKeyboard(mid));
+    await deleteMessage(env.TELEGRAM_BOT_TOKEN, msg.chat.id, msg.message_id);
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, msg.chat.id, mid, `✅ Новая цель "${title}" создана!`, backToMenuKeyboard(mid));
 }
