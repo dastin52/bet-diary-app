@@ -34,13 +34,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
   
-  // This effect will sync the currentUser state if another tab updates the referrer's buttercups
+  // This effect will sync the currentUser state if another tab updates the user data
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'betting_app_users' && currentUser) {
-        const latestUser = userStore.findUserBy(u => u.email === currentUser.email);
+      // Handle login/logout from other tabs
+      if (event.key === SESSION_STORAGE_KEY) {
+        if (event.newValue) {
+          const newSessionUser = JSON.parse(event.newValue);
+          // Update if the user is different or was null
+          if (JSON.stringify(newSessionUser) !== JSON.stringify(currentUser)) {
+            setCurrentUser(newSessionUser);
+          }
+        } else if (currentUser !== null) {
+          // Logged out from another tab
+          setCurrentUser(null);
+        }
+      }
+
+      // Handle updates to user data (e.g., buttercups from a referral)
+      if (event.key === 'betting_app_users' && currentUser && event.newValue) {
+        const users = JSON.parse(event.newValue);
+        const latestUser = users.find((u: User) => u.email === currentUser.email);
         if (latestUser && JSON.stringify(latestUser) !== JSON.stringify(currentUser)) {
           setCurrentUser(latestUser);
+          // Also update the session storage for this tab to keep it in sync
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(latestUser));
         }
       }

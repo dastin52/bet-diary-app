@@ -23,15 +23,15 @@ type PagesFunction<E = unknown> = (
 
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-    try {
-        const { BOT_STATE } = env;
-        if (!BOT_STATE) {
-            console.error("Cloudflare KV Namespace 'BOT_STATE' is not bound.");
-            return new Response(JSON.stringify({ error: 'Storage is not configured on the server.' }), {
-                status: 500, headers: { 'Content-Type': 'application/json' },
-            });
-        }
+    // Critical check for KV binding
+    if (!env.BOT_STATE) {
+        console.error("FATAL: BOT_STATE KV Namespace is not bound in Cloudflare. Cannot generate auth codes.");
+        return new Response(JSON.stringify({ error: 'Server configuration error: Storage service is not available.' }), {
+            status: 500, headers: { 'Content-Type': 'application/json' },
+        });
+    }
 
+    try {
         const body = await request.json() as CodeGenerationRequest;
         const { email } = body;
 
@@ -44,7 +44,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         
         // Store the code in KV with a 5-minute TTL. Key: `authcode:<code>`, Value: `email`
-        await BOT_STATE.put(`authcode:${code}`, email, { expirationTtl: 300 });
+        await env.BOT_STATE.put(`authcode:${code}`, email, { expirationTtl: 300 });
+
+        console.log(`Generated Telegram auth code ${code} for user ${email}`);
 
         return new Response(JSON.stringify({ code }), {
             status: 200,

@@ -1,3 +1,5 @@
+// functions/api/gemini.ts
+
 import { GoogleGenAI } from "@google/genai";
 
 // This defines the expected structure of the incoming request from the frontend
@@ -6,24 +8,36 @@ interface ApiProxyRequest {
     payload: any;
 }
 
+// Define the environment variables and bindings expected by this function
+interface Env {
+    GEMINI_API_KEY: string;
+}
+
+interface EventContext<E> {
+    request: Request;
+    env: E;
+}
+
+type PagesFunction<E = unknown> = (
+    context: EventContext<E>
+) => Response | Promise<Response>;
+
+
 // This is the main function handler for Cloudflare Pages
-// The env object contains environment variables set in the Cloudflare dashboard.
-// FIX: Replaced 'PagesFunction' with an explicit type for the context object, as the 'PagesFunction' type was not found.
-export const onRequestPost = async ({ request, env }: { request: Request; env: { API_KEY: string } }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     try {
-        // FIX: The default Request.json() method is not generic. Cast the result to the expected type.
         const body = await request.json() as ApiProxyRequest;
         const { endpoint, payload } = body;
 
         // Ensure the API key is available from Cloudflare's environment variables
-        if (!env.API_KEY) {
+        if (!env.GEMINI_API_KEY) {
             return new Response(JSON.stringify({ error: 'API Key for Gemini is not configured on the server.' }), {
                 status: 500,
                 headers: { 'Content-Type': 'application/json' },
             });
         }
         
-        const ai = new GoogleGenAI({ apiKey: env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
         
         let responseData;
         
