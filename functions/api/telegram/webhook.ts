@@ -73,6 +73,8 @@ function normalizeState(state: any): any {
     const bankroll = (typeof state.bankroll === 'number' && !isNaN(state.bankroll)) ? state.bankroll : 10000;
     const dialog = (state.dialog && typeof state.dialog === 'object') ? state.dialog : null;
     
+    // CRITICAL FIX: The original code referenced `data.goals` which caused a ReferenceError.
+    // It should be `state.goals`.
     const goals = (Array.isArray(state.goals) ? state.goals : [])
       .map((g: any) => {
         if (!g || typeof g !== 'object') return null;
@@ -120,6 +122,8 @@ const cancelKeyboard = (mid?: number) => ({ inline_keyboard: [[{ text: "❌ От
 const backAndCancelKeyboard = (backCb: string, mid?: number) => ({ inline_keyboard: [[{ text: "⬅️ Назад", callback_data: backCb }, { text: "❌ Отмена", callback_data: `main_menu${mid ? ':'+mid : ''}` }]] });
 const sessionExpiredText = "⚠️ Ваша сессия истекла или данные были повреждены. Пожалуйста, перезапустите бота.";
 const sessionExpiredKeyboard = { inline_keyboard: [[{ text: "🔄 Перезапустить (/start)", callback_data: "main_menu" }]] };
+const internalErrorText = "Произошла внутренняя ошибка. Пожалуйста, попробуйте еще раз. Если проблема повторится, обратитесь в поддержку.";
+
 
 // --- MAIN HANDLER ---
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -136,55 +140,80 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
 // --- ROUTERS ---
 async function handleMessage(msg: TelegramMessage, env: Env) {
-    const text = msg.text || ''; const cid = msg.chat.id; const uid = msg.from.id;
-    const state = await getUserState(env, uid);
+    const cid = msg.chat.id;
+    try {
+        const text = msg.text || '';
+        const uid = msg.from.id;
+        const state = await getUserState(env, uid);
 
-    if (text.startsWith('/')) return handleCommand(text, cid, uid, env, state);
-    if (/^\d{6}$/.test(text)) return handleAuthCode(text, cid, uid, env);
-    if (state?.dialog?.name) return handleDialog(msg, state, env);
-    
-    if (state?.user) {
-        await sendMessage(env.TELEGRAM_API_TOKEN, cid, `👋 Привет, ${state.user.nickname}! Чем могу помочь?`, mainMenuKeyboard);
-    } else {
-        await sendMessage(env.TELEGRAM_API_TOKEN, cid, "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт, сгенерировав код в приложении.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
+        if (text.startsWith('/')) return handleCommand(text, cid, uid, env, state);
+        if (/^\d{6}$/.test(text)) return handleAuthCode(text, cid, uid, env);
+        if (state?.dialog?.name) return handleDialog(msg, state, env);
+        
+        if (state?.user) {
+            await sendMessage(env.TELEGRAM_API_TOKEN, cid, `👋 Привет, ${state.user.nickname}! Чем могу помочь?`, mainMenuKeyboard);
+        } else {
+            await sendMessage(env.TELEGRAM_API_TOKEN, cid, "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт, сгенерировав код в приложении.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
+        }
+    } catch (e: any) {
+        console.error("Error in handleMessage:", e.message, e.stack);
+        await sendMessage(env.TELEGRAM_API_TOKEN, cid, internalErrorText);
     }
 }
 
 async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
-    const data = cb.data; const cid = cb.message.chat.id; const mid = cb.message.message_id; const uid = cb.from.id;
-    
-    const state = await getUserState(env, uid);
-    const [action] = data.split(':');
+    const cid = cb.message.chat.id;
+    try {
+        const data = cb.data; 
+        const mid = cb.message.message_id; 
+        const uid = cb.from.id;
+        
+        const state = await getUserState(env, uid);
+        const [action] = data.split(':');
 
-    const publicActions = ['register', 'main_menu'];
-    if (!state && !publicActions.includes(action)) {
-        await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id, "Ваша сессия истекла. Пожалуйста, перезапустите бота.");
-        return await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, sessionExpiredText, sessionExpiredKeyboard);
+        const publicActions = ['register', 'main_menu'];
+        if (!state && !publicActions.includes(action)) {
+            await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id, "Ваша сессия истекла. Пожалуйста, перезапустите бота.");
+            return await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, sessionExpiredText, sessionExpiredKeyboard);
+        }
+        
+        await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id);
+
+        const handlers: { [key: string]: (d: string, c: number, m: number, e: Env, u: number, s: any) => Promise<void> } = {
+            main_menu: showMainMenu, stats: handleStats, add_bet: startAddBet, manage_bets: showPendingBets, show_bet: showBetStatusOptions,
+            set_status: setBetStatus, manage_bank: showBankMenu, ai_chat: startAiChat, exit_ai_chat: showMainMenu, competitions: showCompetitions,
+            goals: showGoals, add_goal: startAddGoal, delete_goal_prompt: promptDeleteGoal, delete_goal_confirm: deleteGoal, register: startRegistration,
+        };
+        if (action.startsWith('add_bet_')) return handleAddBetDialogCallback(data, cid, mid, env, uid, state);
+        if (action.startsWith('bank_')) return handleBankDialogCallback(data, cid, mid, env, uid, state);
+        if (action.startsWith('add_goal_')) return handleAddGoalDialogCallback(data, cid, mid, env, uid, state);
+        if (handlers[action]) await handlers[action](data, cid, mid, env, uid, state);
+    } catch (e: any) {
+        console.error("Error in handleCallbackQuery:", e.message, e.stack);
+        await sendMessage(env.TELEGRAM_API_TOKEN, cid, internalErrorText);
     }
-    
-    await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id);
-
-    const handlers: { [key: string]: (d: string, c: number, m: number, e: Env, u: number, s: any) => Promise<void> } = {
-        main_menu: showMainMenu, stats: handleStats, add_bet: startAddBet, manage_bets: showPendingBets, show_bet: showBetStatusOptions,
-        set_status: setBetStatus, manage_bank: showBankMenu, ai_chat: startAiChat, exit_ai_chat: showMainMenu, competitions: showCompetitions,
-        goals: showGoals, add_goal: startAddGoal, delete_goal_prompt: promptDeleteGoal, delete_goal_confirm: deleteGoal, register: startRegistration,
-    };
-    if (action.startsWith('add_bet_')) return handleAddBetDialogCallback(data, cid, mid, env, uid, state);
-    if (action.startsWith('bank_')) return handleBankDialogCallback(data, cid, mid, env, uid, state);
-    if (action.startsWith('add_goal_')) return handleAddGoalDialogCallback(data, cid, mid, env, uid, state);
-    if (handlers[action]) await handlers[action](data, cid, mid, env, uid, state);
 }
 
 async function handleDialog(msg: TelegramMessage, state: any, env: Env) {
-    const name = state.dialog.name;
-    const handlers: Record<string, Function> = {
-        ai_chat_active: processAiChatMessage,
-        registration_email: processRegistrationEmail, registration_nickname: processRegistrationNickname, registration_password: processRegistrationPassword,
-        add_bet_event: processAddBetEvent, add_bet_stake: processAddBetStake, add_bet_odds: processAddBetOdds,
-        bank_adjust: processBankAdjustment,
-        add_goal_title: processAddGoalTitle, add_goal_target: processAddGoalTarget, add_goal_deadline: processAddGoalDeadline
-    };
-    if (handlers[name]) await handlers[name](msg, state, env);
+    try {
+        const name = state.dialog.name;
+        const handlers: Record<string, Function> = {
+            ai_chat_active: processAiChatMessage,
+            registration_email: processRegistrationEmail, registration_nickname: processRegistrationNickname, registration_password: processRegistrationPassword,
+            add_bet_event: processAddBetEvent, add_bet_stake: processAddBetStake, add_bet_odds: processAddBetOdds,
+            bank_adjust: processBankAdjustment,
+            add_goal_title: processAddGoalTitle, add_goal_target: processAddGoalTarget, add_goal_deadline: processAddGoalDeadline
+        };
+        if (handlers[name]) await handlers[name](msg, state, env);
+    } catch(e: any) {
+        console.error("Error in handleDialog:", e.message, e.stack);
+        await sendMessage(env.TELEGRAM_API_TOKEN, msg.chat.id, internalErrorText);
+        // Reset dialog to prevent getting stuck
+        if (state) {
+            state.dialog = null;
+            await setUserState(env, msg.from.id, state);
+        }
+    }
 }
 
 // --- STATE-CHECKING WRAPPER ---
