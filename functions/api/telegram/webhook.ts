@@ -64,8 +64,8 @@ const apiRequest = async (token: string, method: string, body: object) => {
     return response.json();
 };
 
-const sendMessage = (t: string, c: number, x: string, r = {}) => apiRequest(t, 'sendMessage', { chat_id: c, text: x, reply_markup: r });
-const editMessageText = (t: string, c: number, m: number, x: string, r = {}) => apiRequest(t, 'editMessageText', { chat_id: c, message_id: m, text: x, reply_markup: r });
+const sendMessage = (t: string, c: number, x: string, r = {}) => apiRequest(t, 'sendMessage', { chat_id: c, text: x, reply_markup: r, parse_mode: 'Markdown' });
+const editMessageText = (t: string, c: number, m: number, x: string, r = {}) => apiRequest(t, 'editMessageText', { chat_id: c, message_id: m, text: x, reply_markup: r, parse_mode: 'Markdown' });
 const deleteMessage = (t: string, c: number, m: number) => apiRequest(t, 'deleteMessage', { chat_id: c, message_id: m });
 const answerCallbackQuery = (t: string, i: string, x?: string) => apiRequest(t, 'answerCallbackQuery', { callback_query_id: i, text: x });
 
@@ -75,7 +75,7 @@ const reportError = async (env: Env, chatId: number | undefined, error: any, con
     console.error(`--- ERROR REPORT ---\n${fullErrorMessage}`);
     if (chatId && env.TELEGRAM_BOT_TOKEN) {
         try {
-            const userMessage = `Произошла ошибка.\nКонтекст: ${context}\nСообщение: ${error.message}`;
+            const userMessage = `Произошла ошибка.\nКонтекст: ${context}\nСообщение: ${JSON.stringify(error.message)}`;
             await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: chatId, text: userMessage.slice(0, 4096) })
@@ -197,7 +197,7 @@ async function handleMessage(msg: TelegramMessage, env: Env) {
     if (state?.user) {
         await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, `👋 Привет, ${state.user.nickname}! Чем могу помочь?`, mainMenuKeyboard);
     } else {
-        const welcomeText = `👋 Добро пожаловать!\n\nЗарегистрируйтесь, чтобы начать, или войдите в существующий аккаунт.`;
+        const welcomeText = `👋 Добро пожаловать!\n\nЗарегистрируйтесь, чтобы начать, или войдите в существующий аккаунт.\n\n*Для привязки аккаунта:* сгенерируйте 6-значный код в приложении ('Настройки' -> 'Интеграция с Telegram') и просто отправьте его мне.`;
         const kb = { inline_keyboard: [[{ text: "➡️ Войти", callback_data: "login" }, { text: "📝 Регистрация", callback_data: "register" }]] };
         await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, welcomeText, kb);
     }
@@ -329,7 +329,7 @@ async function showMainMenu(data: string, cid: number, mid: number | undefined, 
         if (messageId > 0) await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, messageId, welcomeText, mainMenuKeyboard);
         else await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, welcomeText, mainMenuKeyboard);
     } else {
-        const notLoggedInText = `👋 Добро пожаловать!\n\nЗарегистрируйтесь, чтобы начать, или войдите в существующий аккаунт.`;
+        const notLoggedInText = `👋 Добро пожаловать!\n\nЗарегистрируйтесь, чтобы начать, или войдите в существующий аккаунт.\n\n*Для привязки аккаунта:* сгенерируйте 6-значный код в приложении ('Настройки' -> 'Интеграция с Telegram') и просто отправьте его мне.`;
         const kb = { inline_keyboard: [[{ text: "➡️ Войти", callback_data: "login" }, { text: "📝 Регистрация", callback_data: "register" }]] };
         if (messageId > 0) await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, messageId, notLoggedInText, kb);
         else await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, notLoggedInText, kb);
@@ -350,7 +350,7 @@ async function handleStatefulAction(mid: number | undefined, cid: number, state:
 // --- ANALYTICS ---
 function calculateBotAnalytics(bets: Bet[]) {
     const settled = bets.filter(b => b.status !== BetStatus.Pending);
-    if (settled.length === 0) return { totalProfit: 0, roi: 0, winRate: 0, wonCount: 0, lostCount: 0 };
+    if (settled.length === 0) return { totalProfit: 0, roi: 0, winRate: 0, wonCount: 0, lostCount: 0, betCount: 0 };
     
     const totalStaked = settled.reduce((acc, bet) => acc + bet.stake, 0);
     const totalProfit = settled.reduce((acc, bet) => acc + (calculateProfit(bet) || 0), 0);
@@ -371,14 +371,14 @@ async function handleStats(data: string, cid: number, mid: number, env: Env, uid
         const { bankroll, bets } = state;
         const analytics = calculateBotAnalytics(bets);
         
-        const text = `📊 Ваша статистика\n\n`+
-                     `💰 Банк: *${bankroll.toFixed(2)} ₽*\n`+
-                     `📈 Прибыль: *${analytics.totalProfit.toFixed(2)} ₽*\n`+
-                     `🎯 ROI: *${analytics.roi.toFixed(2)}%*\n`+
-                     `✅ Выигрыши: *${analytics.wonCount}*\n`+
-                     `❌ Проигрыши: *${analytics.lostCount}*\n`+
-                     `📊 Проходимость: *${analytics.winRate.toFixed(2)}%*\n`+
-                     `📋 Всего ставок: *${analytics.betCount}*`;
+        const text = `📊 *Ваша статистика*\n\n`+
+                     `💰 *Банк:* ${bankroll.toFixed(2)} ₽\n`+
+                     `📈 *Прибыль:* ${analytics.totalProfit.toFixed(2)} ₽\n`+
+                     `🎯 *ROI:* ${analytics.roi.toFixed(2)}%\n`+
+                     `✅ *Выигрыши:* ${analytics.wonCount}\n`+
+                     `❌ *Проигрыши:* ${analytics.lostCount}\n`+
+                     `📊 *Проходимость:* ${analytics.winRate.toFixed(2)}%*\n`+
+                     `📋 *Всего ставок:* ${analytics.betCount}*`;
 
         await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, text, backToMenuKeyboard(mid));
     });
@@ -533,36 +533,39 @@ async function processBankAdjustment(msg: TelegramMessage, state: any, env: Env)
 // --- AI CHAT ---
 async function startAiChat(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await handleStatefulAction(mid, cid, state, env, async () => {
+        // Clear previous history when starting a new chat
         await setUserState(env, uid, { ...state, dialog: { name: 'ai_chat_active', msgId: mid, aiHistory: [] } });
         await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, mid, "🤖 Вы вошли в чат с AI-Аналитиком. Задайте вопрос.", { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: `exit_ai_chat:${mid}` }]] });
     });
 }
+
 async function processAiChatMessage(msg: TelegramMessage, state: any, env: Env) {
     const cid = msg.chat.id;
     const uid = msg.from.id;
+    const text = msg.text || '';
+    if (!text.trim()) return;
+
     const thinkingMsg = await sendMessage(env.TELEGRAM_BOT_TOKEN, cid, "🤖 Думаю...");
     const thinkingMsgId = (thinkingMsg as any).result.message_id;
 
-    // Build context with history
-    const userMessage = { role: 'user', parts: [{ text: msg.text }] };
+    const userMessage = { role: 'user', parts: [{ text }] };
     state.dialog.aiHistory.push(userMessage);
 
     const analytics = calculateBotAnalytics(state.bets);
     const analyticsText = `User stats: bankroll=${state.bankroll}, total_profit=${analytics.totalProfit}, roi=${analytics.roi}, win_rate=${analytics.winRate}`;
     
-    // Prepend context only to the first user message of the session
     const contents = state.dialog.aiHistory.length === 1 
-        ? [{ role: 'user', parts: [{ text: `${analyticsText}\n\nUser question: ${msg.text}` }] }]
+        ? [{ role: 'user', parts: [{ text: `${analyticsText}\n\nUser question: ${text}` }] }]
         : state.dialog.aiHistory;
     
     const ai = new GoogleGenAI({apiKey: env.GEMINI_API_KEY});
-    const res = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: contents });
+    const result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: contents });
     
-    const modelResponse = { role: 'model', parts: [{ text: res.text }] };
+    const modelResponse = { role: 'model', parts: [{ text: result.text }] };
     state.dialog.aiHistory.push(modelResponse);
     await setUserState(env, uid, state);
     
-    await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, thinkingMsgId, res.text);
+    await editMessageText(env.TELEGRAM_BOT_TOKEN, cid, thinkingMsgId, result.text, {});
 }
 
 // --- COMPETITIONS ---
@@ -576,7 +579,7 @@ async function showCompetitions(data: string, cid: number, mid: number, env: Env
 async function showGoals(data: string, cid: number, mid: number, env: Env, uid: number, state: any) {
     await handleStatefulAction(mid, cid, state, env, async () => {
         const { goals } = state;
-        let text = "🎯 Ваши Цели\n\n";
+        let text = "🎯 *Ваши Цели*\n\n";
         const buttons = [];
         if (goals && goals.length > 0) {
             goals.forEach((g: Goal) => {
