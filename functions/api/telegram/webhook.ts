@@ -2,10 +2,13 @@
 
 // --- TYPE DEFINITIONS ---
 import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, User, Goal, GoalMetric, GoalStatus } from '../../../src/types';
-import { SPORTS, BOOKMAKERS, BET_STATUS_OPTIONS, MARKETS_BY_SPORT } from '../../../src/constants';
+import { SPORTS, BOOKMAKERS, BET_STATUS_OPTIONS, BET_TYPE_OPTIONS } from '../../../src/constants';
+import { GoogleGenAI } from "@google/genai";
+
 
 interface Env {
     TELEGRAM_BOT_TOKEN: string;
+    GEMINI_API_KEY: string;
     BOT_STATE: KVNamespace;
 }
 
@@ -35,6 +38,11 @@ interface DialogState {
     action: string;
     data: any;
 }
+
+type Message = {
+  role: 'user' | 'model';
+  text: string;
+};
 
 
 interface TelegramUpdate {
@@ -114,7 +122,7 @@ const calculateProfit = (bet: Omit<Bet, 'id' | 'createdAt' | 'event'>): number =
 
 
 // --- TELEGRAM API HELPERS ---
-async function apiRequest(token: string, method: string, body: object) {
+async function apiRequest(token: string, method: string, body: object): Promise<any> {
     const url = `https://api.telegram.org/bot${token}/${method}`;
     try {
         const response = await fetch(url, {
@@ -122,12 +130,14 @@ async function apiRequest(token: string, method: string, body: object) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
+        const data = await response.json();
         if (!response.ok) {
-            const errorData = await response.json();
-            console.error(`Telegram API error (${method}):`, errorData);
+            console.error(`Telegram API error (${method}):`, data);
         }
+        return data;
     } catch (error) {
         console.error(`Failed to call Telegram API (${method}):`, error);
+        return null;
     }
 }
 
@@ -160,7 +170,9 @@ const setDialogState = async (kv: KVNamespace, userId: number, state: DialogStat
     if (state === null) {
         await kv.delete(`dialog:${userId}`);
     } else {
-        await kv.put(`dialog:${userId}`, JSON.stringify(state), { expirationTtl: 300 }); // 5 min TTL for dialogs
+        // AI chat session can be longer
+        const ttl = state.action === 'ai_chat_active' ? 900 : 300; // 15 mins for AI, 5 for others
+        await kv.put(`dialog:${userId}`, JSON.stringify(state), { expirationTtl: ttl });
     }
 };
 const getEmailByNickname = async (kv: KVNamespace, nickname: string): Promise<string | null> => {
@@ -170,12 +182,70 @@ const saveNicknameMapping = async (kv: KVNamespace, nickname: string, email: str
     await kv.put(`nickname:${nickname.toLowerCase()}`, email);
 };
 
+// --- AI HELPERS ---
+const generalSystemInstruction = (currentDate: string) => `Вы — эксперт-аналитик по спортивным ставкам. Сегодняшняя дата: ${currentDate}. Всегда используй эту дату как точку отсчета для любых запросов о текущих или будущих событиях.
+
+Ваша цель — анализировать производительность пользователя или давать прогнозы на матчи.
+
+1.  **Анализ производительности:** Если пользователь просит проанализировать его эффективность, используйте предоставленные сводные данные и дайте высокоуровневые советы по стратегии.
+2.  **Прогноз на матч:**
+    - Когда вас просят проанализировать предстоящий или текущий матч, используйте поиск в реальном времени. Будьте внимательны к датам, ориентируясь на ${currentDate} как на "сегодня".
+    - Проводите глубокий анализ: статистика, форма, история встреч, новости.
+    - Предоставьте краткий, но содержательный обзор.
+    - **В завершение ОБЯЗАТЕЛЬНО дайте прогноз в процентном соотношении на основные исходы** (например, П1, X, П2) и порекомендуйте наиболее вероятный исход.
+
+Всегда поощряйте ответственную игру. Не давайте прямых финансовых советов. Отвечайте на русском языке.`;
+
+const calculateAnalytics = (bets: Bet[], bankroll: number, bankHistory: BankTransaction[]) => {
+    const settledBets = bets.filter(b => b.status !== BetStatus.Pending);
+    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
+    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
+    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
+    const betCount = settledBets.length;
+    const wonBets = settledBets.filter(b => b.status === BetStatus.Won).length;
+    const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void).length;
+    const winRate = nonVoidBets > 0 ? (wonBets / nonVoidBets) * 100 : 0;
+    
+    // Simplified profit arrays for bot context
+    const profitBySport = settledBets.reduce((acc, bet) => {
+        acc[bet.sport] = (acc[bet.sport] || 0) + (bet.profit ?? 0);
+        return acc;
+    }, {} as Record<string, number>);
+
+    const profitByBetType = settledBets.reduce((acc, bet) => {
+        acc[bet.betType] = (acc[bet.betType] || 0) + (bet.profit ?? 0);
+        return acc;
+    }, {} as Record<string, number>);
+
+    return {
+        totalProfit,
+        roi,
+        betCount,
+        winRate,
+        profitBySport: Object.entries(profitBySport).map(([sport, profit]) => ({ sport, profit })),
+        profitByBetType: Object.entries(profitByBetType).map(([type, profit]) => ({ type, profit })),
+    };
+};
+
+function analyticsToText(analytics: any): string {
+    return `
+Вот сводные данные по ставкам пользователя для анализа:
+- Общая прибыль: ${analytics.totalProfit.toFixed(2)}
+- ROI: ${analytics.roi.toFixed(2)}%
+- Количество ставок: ${analytics.betCount}
+- Процент выигрышей: ${analytics.winRate.toFixed(2)}%
+- Прибыль по видам спорта: ${JSON.stringify(analytics.profitBySport.map(p => `${p.sport}: ${p.profit.toFixed(2)}`))}
+- Прибыль по типам ставок: ${JSON.stringify(analytics.profitByBetType.map(p => `${p.type}: ${p.profit.toFixed(2)}`))}
+    `;
+}
+
 
 // --- MENUS ---
 const getMainMenu = (isLinked: boolean) => ({
     inline_keyboard: [
         [{ text: "📝 Добавить ставку", callback_data: "add_bet" }, { text: "📈 Управление ставками", callback_data: "manage_bets" }],
         [{ text: "📊 Просмотр статистики", callback_data: "view_stats" }, { text: "💰 Управление банком", callback_data: "bank_management" }],
+        [{ text: "🤖 AI-Аналитик", callback_data: "ai_chat" }],
     ]
 });
 
@@ -210,12 +280,14 @@ async function sendNewUserWelcome(token: string, chatId: number, messageId?: num
 
 // --- MAIN HANDLER ---
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-    if (!env.TELEGRAM_BOT_TOKEN || !env.BOT_STATE) {
-        console.error("FATAL: Telegram Bot Token or KV Namespace is not configured.");
+    if (!env.TELEGRAM_BOT_TOKEN || !env.BOT_STATE || !env.GEMINI_API_KEY) {
+        console.error("FATAL: Environment variables (Telegram Token, KV, Gemini Key) are not configured.");
         return new Response('Server configuration error', { status: 500 });
     }
-
+    
+    const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
     const requestClone = request.clone();
+    
     try {
         const update = await request.json() as TelegramUpdate;
         const message = update.message || update.callback_query?.message;
@@ -243,6 +315,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                         await sendNewUserWelcome(env.TELEGRAM_BOT_TOKEN, chatId);
                     }
                     return new Response('OK');
+                case '/aichat':
+                     if (userEmail) {
+                        await setDialogState(env.BOT_STATE, userId, { action: 'ai_chat_active', data: { history: [] } });
+                        const aiWelcomeText = "🤖 *Добро пожаловать в чат с AI-Аналитиком!*\n\nЗадайте свой вопрос.";
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, aiWelcomeText, { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: "main_menu" }]] });
+                     } else {
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Пожалуйста, сначала привяжите аккаунт или зарегистрируйтесь.");
+                        await sendNewUserWelcome(env.TELEGRAM_BOT_TOKEN, chatId);
+                     }
+                     return new Response('OK');
             }
         }
 
@@ -292,24 +374,29 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
             switch (action) {
                 case 'main_menu':
+                    await setDialogState(env.BOT_STATE, userId, null);
                     if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, `С возвращением, ${userData?.nickname || 'пользователь'}! 👋\n\nЧем могу помочь?`, getMainMenu(true));
+                    return new Response('OK');
+                
+                case 'ai_chat':
+                    await setDialogState(env.BOT_STATE, userId, { action: 'ai_chat_active', data: { history: [] } });
+                    const aiWelcomeText = "🤖 *Добро пожаловать в чат с AI-Аналитиком!*\n\n" +
+                                        "Вы можете задать вопрос о своей статистике, попросить проанализировать предстоящий матч или обсудить стратегию.\n\n" +
+                                        "*Например:*\n" +
+                                        "- `Проанализируй мою эффективность`\n" +
+                                        "- `Какие слабые места в моей стратегии?`\n" +
+                                        "- `Сделай прогноз на матч Реал Мадрид vs Бавария`";
+                    if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, aiWelcomeText, { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: "main_menu" }]] });
                     return new Response('OK');
 
                 case 'view_stats':
-                    const settledBets = userData.bets.filter(b => b.status !== 'pending');
-                    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
-                    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
-                    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
-                    const wonBets = settledBets.filter(b => b.status === 'won').length;
-                    const nonVoidBets = settledBets.filter(b => b.status !== 'void');
-                    const winRate = nonVoidBets.length > 0 ? (wonBets / nonVoidBets.length) * 100 : 0;
-
+                    const analytics = calculateAnalytics(userData.bets, userData.bankroll, userData.bankHistory);
                     const statsText = `📊 *Ваша статистика:*\n\n` +
                                       `💰 *Текущий банк:* ${userData.bankroll.toFixed(2)} ₽\n` +
-                                      `📈 *Общая прибыль:* ${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)} ₽\n` +
-                                      `🎯 *ROI:* ${roi.toFixed(2)}%\n` +
-                                      `✅ *Процент побед:* ${winRate.toFixed(2)}%\n` +
-                                      `📋 *Всего ставок:* ${settledBets.length}`;
+                                      `📈 *Общая прибыль:* ${analytics.totalProfit >= 0 ? '+' : ''}${analytics.totalProfit.toFixed(2)} ₽\n` +
+                                      `🎯 *ROI:* ${analytics.roi.toFixed(2)}%\n` +
+                                      `✅ *Процент побед:* ${analytics.winRate.toFixed(2)}%\n` +
+                                      `📋 *Всего ставок:* ${analytics.betCount}`;
                     
                     if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, statsText, { inline_keyboard: [[{ text: "⬅️ Назад в меню", callback_data: "main_menu" }]] });
                     return new Response('OK');
@@ -435,6 +522,55 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
             const userData = userEmail ? await getUserData(env.BOT_STATE, userEmail) : null;
 
             switch(dialogState.action) {
+                case 'ai_chat_active':
+                    if (!userEmail || !userData) { await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Ошибка сессии. Пожалуйста, /start"); return new Response('OK'); }
+
+                    const thinkingMsgResponse = await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🤖 Думаю...");
+                    const thinkingMsgId = thinkingMsgResponse?.result?.message_id;
+
+                    const history = (dialogState.data.history || []) as Message[];
+                    history.push({ role: 'user', text: text });
+
+                    const analytics = calculateAnalytics(userData.bets, userData.bankroll, userData.bankHistory);
+                    
+                    const currentDate = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+                    const systemInstruction = generalSystemInstruction(currentDate);
+                    
+                    const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
+                    
+                    if (history.length === 1 && (text.toLowerCase().includes('эффективность') || text.toLowerCase().includes('статистику'))) {
+                        contents[0].parts[0].text = `${analyticsToText(analytics)}\n\n${text}`;
+                    }
+
+                    try {
+                        const result = await ai.models.generateContent({
+                            model: "gemini-2.5-flash",
+                            contents: contents,
+                            config: { systemInstruction },
+                            tools: [{googleSearch: {}}],
+                        });
+
+                        const aiResponseText = result.text;
+                        history.push({ role: 'model', text: aiResponseText });
+
+                        await setDialogState(env.BOT_STATE, userId, { action: 'ai_chat_active', data: { history } });
+                        
+                        if(thinkingMsgId) {
+                            await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, thinkingMsgId, aiResponseText, { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: "main_menu" }]] });
+                        } else {
+                            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, aiResponseText, { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: "main_menu" }]] });
+                        }
+                    } catch (e) {
+                        console.error("Gemini call from bot failed:", e);
+                        const errorText = "Произошла ошибка при обращении к AI. Попробуйте снова.";
+                        if (thinkingMsgId) {
+                            await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, thinkingMsgId, errorText, { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: "main_menu" }]] });
+                        } else {
+                            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, errorText, { inline_keyboard: [[{ text: "⬅️ Выйти из чата", callback_data: "main_menu" }]] });
+                        }
+                    }
+                    return new Response('OK');
+
                 case 'link_ask_code':
                     const code = text.match(/\d{6}/)?.[0];
                     if (!code) {
@@ -444,11 +580,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                     const userDataString = await env.BOT_STATE.get(`tgauth:${code}`);
                     if (userDataString) {
                         const fullUserData = JSON.parse(userDataString) as UserData;
-                        // 1. Link Telegram ID to user's email
                         await env.BOT_STATE.put(`telegram:${userId}`, fullUserData.email);
-                        // 2. Save the full user data package for the bot to use
                         await saveUserData(env.BOT_STATE, fullUserData.email, fullUserData);
-                        // 3. Clean up the temporary auth code
                         await env.BOT_STATE.delete(`tgauth:${code}`);
                         
                         await setDialogState(env.BOT_STATE, userId, null);
