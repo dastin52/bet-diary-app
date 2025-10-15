@@ -59,34 +59,33 @@ const apiRequest = async (token: string, method: string, body: object) => {
     }
     return response;
 };
-const sendMessage = (t: string, c: number, x: string, r = {}) => apiRequest(t, 'sendMessage', { chat_id: c, text: x, parse_mode: 'Markdown', reply_markup: r });
-const editMessageText = (t: string, c: number, m: number, x: string, r = {}) => apiRequest(t, 'editMessageText', { chat_id: c, message_id: m, text: x, parse_mode: 'Markdown', reply_markup: r });
+const sendMessage = (t: string, c: number, x: string, r = {}) => apiRequest(t, 'sendMessage', { chat_id: c, text: x, reply_markup: r });
+const editMessageText = (t: string, c: number, m: number, x: string, r = {}) => apiRequest(t, 'editMessageText', { chat_id: c, message_id: m, text: x, reply_markup: r });
 const deleteMessage = (t: string, c: number, m: number) => apiRequest(t, 'deleteMessage', { chat_id: c, message_id: m });
 const answerCallbackQuery = (t: string, i: string, x?: string) => apiRequest(t, 'answerCallbackQuery', { callback_query_id: i, text: x });
 
 // --- ROBUST STATE MGMT & ERROR REPORTING ---
 const reportError = async (env: Env, chatId: number | undefined, error: any, context: string) => {
-    const errorMessage = `Контекст: ${context}\nОшибка: ${error.message}\nСтек: ${error.stack}`;
-    console.error(`--- ERROR --- \n${errorMessage}`);
+    const fullErrorMessage = `Context: ${context}\nError: ${error.message}\nStack: ${error.stack}`;
+    console.error(`--- ERROR REPORT ---\n${fullErrorMessage}`);
     if (chatId && env.TELEGRAM_API_TOKEN) {
         try {
-            const userMessage = `😞 Произошла внутренняя ошибка.\n\nДетали: \`${error.message}\`\n\nПожалуйста, попробуйте снова или перезапустите бота командой /start.`;
-            await sendMessage(env.TELEGRAM_API_TOKEN, chatId, userMessage);
-        } catch (e) {
-            console.error("Failed to send error report to user:", e);
+            // SIMPLIFIED, NO MARKDOWN
+            const userMessage = `An error occurred.\nContext: ${context}\nMessage: ${error.message}`;
+            await apiRequest(env.TELEGRAM_API_TOKEN, 'sendMessage', { chat_id: chatId, text: userMessage.slice(0, 4096) });
+        } catch (e: any) {
+            console.error("CRITICAL: Failed to send error report to user. Inner error:", e.message);
         }
     }
 };
 
 function normalizeState(state: any): any {
     if (!state || typeof state !== 'object') return null;
-    console.log('[NORMALIZE] Input state:', JSON.stringify(state));
     const user = (state.user && typeof state.user === 'object') ? state.user : null;
     const bets = Array.isArray(state.bets) ? state.bets : [];
     const bankroll = (typeof state.bankroll === 'number' && !isNaN(state.bankroll)) ? state.bankroll : 10000;
     const dialog = (state.dialog && typeof state.dialog === 'object') ? state.dialog : null;
     
-    // CRITICAL FIX: Changed `data.goals` to `state.goals`
     const goals = (Array.isArray(state.goals) ? state.goals : [])
       .map((g: any) => {
         if (!g || typeof g !== 'object') return null;
@@ -105,9 +104,7 @@ function normalizeState(state: any): any {
         };
       }).filter((g): g is Goal => g !== null);
 
-    const finalState = { user, bets, bankroll, dialog, goals };
-    console.log('[NORMALIZE] Output state:', JSON.stringify(finalState));
-    return finalState;
+    return { user, bets, bankroll, dialog, goals };
 }
 
 
@@ -123,7 +120,6 @@ const getUserState = async (env: Env, u: number): Promise<any | null> => {
     } catch (e) {
         console.error(`[STATE] CORRUPTED STATE for user ${u}. Deleting state. Error:`, e);
         await env.BOT_STATE.delete(`tguser:${u}`);
-        // Throw the error up to be caught by the global handler so the user gets notified
         throw new Error("Corrupted user data. State has been reset.");
     }
 };
@@ -140,18 +136,23 @@ const sessionExpiredKeyboard = { inline_keyboard: [[{ text: "🔄 Перезап
 
 // --- MAIN HANDLER ---
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-    console.log("--- Webhook received ---");
+    console.log("--- Webhook execution started ---");
     let chatId: number | undefined;
 
     try {
         if (!env.TELEGRAM_API_TOKEN || !env.BOT_STATE) {
-            console.error("FATAL: Environment variables (TELEGRAM_API_TOKEN or BOT_STATE) are not set.");
-            return new Response('OK');
+            const missing = [!env.TELEGRAM_API_TOKEN && "TELEGRAM_API_TOKEN", !env.BOT_STATE && "BOT_STATE KV Binding"].filter(Boolean).join(", ");
+            throw new Error(`Server configuration error: Missing environment variables: ${missing}`);
         }
 
         const body: TelegramWebhookRequest = await request.json();
         chatId = body.message?.chat.id || body.callback_query?.message.chat.id;
         console.log(`[ROUTER] Request body parsed. Chat ID: ${chatId}.`);
+
+        if (!chatId) {
+            console.log("Request received, but no chat_id found. Ignoring.", JSON.stringify(body));
+            return new Response('OK');
+        }
 
         if (body.callback_query) {
             console.log(`[ROUTER] Routing to handleCallbackQuery with data: ${body.callback_query.data}`);
@@ -163,10 +164,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
             console.log("[ROUTER] Unhandled request type.");
         }
     } catch (e: any) {
-        // This is the global "black box" error handler.
         await reportError(env, chatId, e, "Global onRequestPost");
+    } finally {
+        console.log("--- Webhook execution finished ---");
     }
-    console.log("--- Webhook processing finished ---");
     return new Response('OK');
 };
 
@@ -174,7 +175,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 async function handleMessage(msg: TelegramMessage, env: Env) {
     const cid = msg.chat.id;
     const uid = msg.from.id;
-    // CRITICAL: Added try...catch here as well to report errors with context.
     try {
         console.log(`[MESSAGE] Processing message from user ${uid} in chat ${cid}.`);
         const state = await getUserState(env, uid);
@@ -209,7 +209,6 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
     const uid = cb.from.id;
     const data = cb.data; 
     const mid = cb.message.message_id; 
-    // CRITICAL: Added try...catch here as well to report errors with context.
     try {
         console.log(`[CALLBACK] Processing callback from user ${uid} in chat ${cid}. Data: ${data}`);
         
@@ -513,7 +512,7 @@ async function showGoals(data: string, cid: number, mid: number, env: Env, uid: 
         const { goals } = state;
         let text = "🎯 *Ваши Цели*\n\n";
         const buttons = [];
-        if (goals.length > 0) {
+        if (goals && goals.length > 0) {
             goals.forEach((g: Goal) => {
                 const { label } = getGoalProgress(g);
                 text += `*${g.title}*\n_${label}_\n\n`;
