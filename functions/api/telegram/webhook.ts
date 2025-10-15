@@ -1,138 +1,176 @@
 // functions/api/telegram/webhook.ts
 
+// --- TYPE DEFINITIONS ---
 interface KVNamespace {
     put(key: string, value: string, options?: { expiration?: number; expirationTtl?: number; metadata?: any; }): Promise<void>;
-    get(key: string, type?: "text" | "json" | "arrayBuffer" | "stream"): Promise<string | any | ArrayBuffer | ReadableStream | null>;
+    get(key: string, type?: "text" | "json" | "arrayBuffer" | "stream"): Promise<string | null>;
+    delete(key: string): Promise<void>;
 }
-
-interface EventContext<Env> {
-    request: Request;
-    env: Env;
-}
-
-type PagesFunction<Env = unknown> = (
-    context: EventContext<Env>
-) => Response | Promise<Response>;
 
 interface Env {
     BOT_STATE: KVNamespace;
     TELEGRAM_BOT_TOKEN: string;
 }
 
-// --- Telegram API Helper ---
+interface EventContext<E> {
+    request: Request;
+    env: E;
+}
+
+type PagesFunction<E = unknown> = (context: EventContext<E>) => Response | Promise<Response>;
+
+// Telegram API Types
+interface TelegramUser {
+    id: number;
+    is_bot: boolean;
+    first_name: string;
+    username?: string;
+}
+interface TelegramChat {
+    id: number;
+    type: 'private' | 'group' | 'supergroup' | 'channel';
+}
+interface TelegramMessage {
+    message_id: number;
+    from: TelegramUser;
+    chat: TelegramChat;
+    date: number;
+    text?: string;
+}
+interface TelegramUpdate {
+    update_id: number;
+    message?: TelegramMessage;
+}
+
+
+// --- TELEGRAM API HELPER ---
 const telegramApi = async (token: string, methodName: string, body: object) => {
-    try {
-        const response = await fetch(`https://api.telegram.org/bot${token}/${methodName}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
+    const response = await fetch(`https://api.telegram.org/bot${token}/${methodName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
         const result = await response.json();
-        if (!result.ok) {
-            console.error(`Telegram API error (${methodName}):`, result.description);
-        }
-        return result;
-    } catch (error) {
-        console.error(`Failed to call Telegram API (${methodName}):`, error);
-        // Re-throw to be caught by the main handler
-        throw new Error(`Network error calling Telegram API: ${methodName}`);
+        console.error(`Telegram API error (${methodName}):`, result.description);
+        throw new Error(`Telegram API responded with status ${response.status}: ${result.description}`);
     }
+    return response.json();
 };
 
-// --- Main Handler ---
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-    let chatId: number | undefined;
+// --- CORE LOGIC HANDLERS ---
+async function handleStart(token: string, chatId: number) {
+    await telegramApi(token, 'sendMessage', {
+        chat_id: chatId,
+        text: "👋 Добро пожаловать в Дневник Ставок!\n\n" +
+              "Чтобы привязать свой аккаунт, сгенерируйте 6-значный код в приложении ('Настройки' ➔ 'Интеграция с Telegram') и отправьте его мне.",
+    });
+}
 
+async function handleStats(token: string, chatId: number, fromId: number, kv: KVNamespace) {
+    const userEmail = await kv.get(`user:tg:${fromId}`);
+    if (userEmail) {
+        await telegramApi(token, 'sendMessage', {
+            chat_id: chatId,
+            text: `✅ Вы авторизованы как ${userEmail}.\n\nФункционал просмотра статистики и добавления ставок через Telegram находится в разработке.`
+        });
+    } else {
+        await telegramApi(token, 'sendMessage', {
+            chat_id: chatId,
+            text: `⚠️ Вы не авторизованы. Пожалуйста, привяжите ваш аккаунт, отправив 6-значный код из настроек на сайте.`
+        });
+    }
+}
+
+async function handleAuthCode(token: string, chatId: number, fromId: number, code: string, kv: KVNamespace) {
+    const authKey = `authcode:${code}`;
+    const email = await kv.get(authKey);
+
+    if (email) {
+        await kv.put(`user:tg:${fromId}`, email);
+        await kv.delete(authKey); // Delete the code after use
+        await telegramApi(token, 'sendMessage', {
+           chat_id: chatId,
+           text: `✅ Аккаунт для ${email} успешно привязан! Теперь вы можете использовать команду /stats для проверки статуса.`
+        });
+    } else {
+        await telegramApi(token, 'sendMessage', {
+           chat_id: chatId,
+           text: `❌ Неверный или истекший код. Пожалуйста, сгенерируйте новый код на сайте и попробуйте снова.`
+        });
+    }
+}
+
+async function handleUnknownCommand(token: string, chatId: number) {
+     await telegramApi(token, 'sendMessage', {
+        chat_id: chatId,
+        text: `Я не понял вашу команду. Доступные команды:\n/start - Начало работы\n/stats - Проверить статус аккаунта`
+     });
+}
+
+// --- MAIN FUNCTION HANDLER ---
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+    // 1. Critical Environment Checks
+    if (!env.TELEGRAM_BOT_TOKEN) {
+        console.error("FATAL: TELEGRAM_BOT_TOKEN environment variable is not set.");
+        return new Response('OK'); // Respond OK to prevent Telegram retries
+    }
+    if (!env.BOT_STATE) {
+        console.error("FATAL: BOT_STATE KV Namespace is not bound.");
+        return new Response('OK');
+    }
+    
     try {
-        // 1. Critical Environment Variable & Binding Checks
-        if (!env.TELEGRAM_BOT_TOKEN) {
-            console.error("FATAL: TELEGRAM_BOT_TOKEN environment variable is not set in Cloudflare.");
-            return new Response('Bot configuration error: Token missing', { status: 500 });
-        }
-        if (!env.BOT_STATE) {
-            console.error("FATAL: BOT_STATE KV Namespace is not bound in Cloudflare.");
-            return new Response('Bot configuration error: KV missing', { status: 500 });
-        }
-        
-        const update = await request.json() as any;
+        // FIX: The .json() method on Request does not take a generic. Cast the result instead.
+        const update = await request.json() as TelegramUpdate;
         const message = update.message;
 
-        if (!message || !message.chat || !message.chat.id) {
-            console.log("Received a non-message update, skipping.");
-            return new Response('OK');
-        }
-        
-        // Set chatId as early as possible for error reporting
-        chatId = message.chat.id;
-
-        if (!message.text || !message.from || !message.from.id) {
-            console.log("Message is missing text or sender info, skipping.");
+        if (!message || !message.chat?.id || !message.from?.id || !message.text) {
+            console.log("Received a non-text message update, skipping.");
             return new Response('OK');
         }
 
-        const text = message.text.trim();
+        const chatId = message.chat.id;
         const fromId = message.from.id;
+        const text = message.text.trim();
+        const token = env.TELEGRAM_BOT_TOKEN;
 
         console.log(`Processing message from chat ID ${chatId}: "${text}"`);
 
+        // Routing logic
         if (text === '/start') {
-            await telegramApi(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
-                chat_id: chatId,
-                text: "👋 Добро пожаловать в Дневник Ставок!\n\n" +
-                      "Чтобы привязать свой аккаунт, сгенерируйте 6-значный код в приложении ('Настройки' ➔ 'Интеграция с Telegram') и отправьте его мне.",
-            });
+            await handleStart(token, chatId);
         } else if (text === '/stats') {
-            const userEmail = await env.BOT_STATE.get(`user:tg:${fromId}`);
-            if (userEmail) {
-                await telegramApi(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
-                    chat_id: chatId,
-                    text: `✅ Вы авторизованы как ${userEmail}.\n\nФункционал просмотра статистики и добавления ставок через Telegram находится в разработке.`
-                });
-            } else {
-                await telegramApi(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
-                    chat_id: chatId,
-                    text: `⚠️ Вы не авторизованы. Пожалуйста, привяжите ваш аккаунт, отправив 6-значный код из настроек на сайте.`
-                });
-            }
+            await handleStats(token, chatId, fromId, env.BOT_STATE);
         } else if (/^\d{6}$/.test(text)) {
-            const code = text;
-            const email = await env.BOT_STATE.get(`authcode:${code}`);
+            await handleAuthCode(token, chatId, fromId, text, env.BOT_STATE);
+        } else {
+            await handleUnknownCommand(token, chatId);
+        }
 
-            if (email) {
-                await env.BOT_STATE.put(`user:tg:${fromId}`, email);
-                await telegramApi(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
-                   chat_id: chatId,
-                   text: `✅ Аккаунт для ${email} успешно привязан! Теперь вы можете использовать команду /stats для проверки статуса.`
-                });
-            } else {
-                await telegramApi(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
-                   chat_id: chatId,
-                   text: `❌ Неверный или истекший код. Пожалуйста, сгенерируйте новый код на сайте и попробуйте снова.`
-                });
-            }
-         } else {
-             await telegramApi(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
-                chat_id: chatId,
-                text: `Я не понял вашу команду. Доступные команды:\n/start - Начало работы\n/stats - Проверить статус аккаунта`
-             });
-         }
     } catch (e: any) {
+        // This is the most important part for debugging.
+        // It logs the error to Cloudflare console BEFORE trying to send a message.
         console.error("FATAL ERROR in webhook handler:", e.stack || e.message || e);
-        // **DEBUGGING FEATURE**: Report the error back to the user's chat.
-        // This will expose server errors to the user, so it should be removed in a stable production environment.
-        if (chatId && env.TELEGRAM_BOT_TOKEN) {
-             const errorMessage = `🚧 Произошла внутренняя ошибка сервера.\n\nТехнические детали:\n${e.message}`;
-             try {
+        
+        // Try to inform the user about the error, but don't let this fail the function.
+        try {
+             // A simplified way to get chat_id if the main parsing failed.
+             // FIX: The .json() method on Request does not take a generic. Cast the result instead.
+             const reqBodyForError = await request.clone().json() as any;
+             const errorChatId = reqBodyForError?.message?.chat?.id;
+             if (errorChatId) {
+                const errorMessage = `🚧 Произошла внутренняя ошибка сервера.\n\nАдминистратор был уведомлен. Пожалуйста, попробуйте позже.\n\nТехнические детали:\n${e.message}`;
                 await telegramApi(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
-                    chat_id: chatId,
-                    text: errorMessage.substring(0, 4096) // Telegram message limit
+                    chat_id: errorChatId,
+                    text: errorMessage.substring(0, 4096)
                 });
-             } catch (sendError) {
-                 console.error("Failed to even send the error message to Telegram:", sendError);
              }
+        } catch (sendError) {
+             console.error("Failed to send the error message to Telegram:", sendError);
         }
     }
     
-    // Always respond to Telegram with 200 OK to prevent message retries.
+    // Always respond 200 OK to Telegram to acknowledge receipt and prevent retries.
     return new Response('OK');
 };

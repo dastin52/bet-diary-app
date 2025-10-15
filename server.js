@@ -15,37 +15,17 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // --- GEMINI SETUP ---
-if (!process.env.API_KEY) {
-    console.error("API_KEY is not set in .env file. AI features will not work.");
+if (!process.env.GEMINI_API_KEY) {
+    console.error("GEMINI_API_KEY is not set in .env file. AI features will not work.");
 }
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-
-// In-memory store for Telegram codes for local development
-const authCodes = {}; 
 
 // --- WEB APP API ROUTES ---
 
-// Endpoint for the web app to generate a temporary code for Telegram bot authentication
-app.post('/api/telegram/generate-code', (req, res) => {
-    const { email } = req.body;
-    if (!email) {
-        return res.status(400).json({ error: 'Email is required.' });
-    }
-    
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes expiry
-
-    // This is for local dev only. In production, this logic is handled by a Cloudflare Function.
-    authCodes[code] = { email, expiresAt };
-    
-    console.log(`Generated code ${code} for user ${email}`);
-    res.json({ code });
-});
-
 // Secure proxy endpoint for the web app to communicate with the Gemini API
 app.post('/api/gemini', async (req, res) => {
-  if (!process.env.API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return res.status(500).json({ error: 'API Key for Gemini is not configured on the server.' });
   }
 
