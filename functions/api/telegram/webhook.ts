@@ -68,38 +68,36 @@ const answerCallbackQuery = (t: string, i: string, x?: string) => apiRequest(t, 
 function normalizeState(state: any): any {
     if (!state || typeof state !== 'object') return null;
 
-    const normalized = {
-        user: state.user && typeof state.user === 'object' ? state.user : null,
-        bets: Array.isArray(state.bets) ? state.bets : [],
-        bankroll: typeof state.bankroll === 'number' && !isNaN(state.bankroll) ? state.bankroll : 10000,
-        dialog: state.dialog && typeof state.dialog === 'object' ? state.dialog : null,
-        goals: (Array.isArray(state.goals) ? state.goals : [])
-            .map((g: any) => {
-                if (!g || typeof g !== 'object') return null;
-                return {
-                    id: g.id || `goal_${Date.now()}_${Math.random()}`,
-                    title: g.title || 'Без названия',
-                    metric: g.metric || GoalMetric.Profit,
-                    targetValue: typeof g.targetValue === 'number' ? g.targetValue : 0,
-                    currentValue: typeof g.currentValue === 'number' ? g.currentValue : 0,
-                    status: g.status || GoalStatus.InProgress,
-                    createdAt: g.createdAt || new Date().toISOString(),
-                    deadline: g.deadline || new Date().toISOString(),
-                    scope: (g.scope && typeof g.scope === 'object') ? g.scope : { type: 'all' },
-                };
-            })
-            .filter((g: any): g is Goal => g !== null),
-    };
+    const user = (state.user && typeof state.user === 'object') ? state.user : null;
+    const bets = Array.isArray(state.bets) ? state.bets : [];
+    const bankroll = (typeof state.bankroll === 'number' && !isNaN(state.bankroll)) ? state.bankroll : 10000;
+    const dialog = (state.dialog && typeof state.dialog === 'object') ? state.dialog : null;
+    const goals = Array.isArray(state.goals) ? state.goals : [];
+    
+    const normalizedGoals = goals.map((g: any) => {
+        if (!g || typeof g !== 'object') return null;
+        const scope = (g.scope && typeof g.scope === 'object' && g.scope.type) ? g.scope : { type: 'all' };
+        return {
+            id: typeof g.id === 'string' ? g.id : `goal_${Date.now()}_${Math.random()}`,
+            title: typeof g.title === 'string' ? g.title : 'Без названия',
+            metric: Object.values(GoalMetric).includes(g.metric) ? g.metric : GoalMetric.Profit,
+            targetValue: typeof g.targetValue === 'number' ? g.targetValue : 0,
+            currentValue: typeof g.currentValue === 'number' ? g.currentValue : 0,
+            status: Object.values(GoalStatus).includes(g.status) ? g.status : GoalStatus.InProgress,
+            createdAt: typeof g.createdAt === 'string' ? g.createdAt : new Date().toISOString(),
+            deadline: typeof g.deadline === 'string' ? g.deadline : new Date().toISOString(),
+            scope: scope,
+        };
+    }).filter((g): g is Goal => g !== null);
 
-    return normalized;
+    return { user, bets, bankroll, dialog, goals: normalizedGoals };
 }
-
 const getUserState = async (env: Env, u: number): Promise<any | null> => {
     const json = await env.BOT_STATE.get(`tguser:${u}`);
     if (!json) return null;
     try {
         const parsedState = JSON.parse(json);
-        return normalizeState(parsedState); // Normalize on load
+        return normalizeState(parsedState);
     } catch (e) {
         console.error(`CORRUPTED STATE for user ${u}. Deleting state. Error:`, e);
         await env.BOT_STATE.delete(`tguser:${u}`);
@@ -114,9 +112,8 @@ const mainMenuKeyboard = { inline_keyboard: [[{ text: "📊 Статистика
 const backToMenuKeyboard = (mid?: number) => ({ inline_keyboard: [[{ text: "⬅️ В меню", callback_data: `main_menu${mid ? ':'+mid : ''}` }]] });
 const cancelKeyboard = (mid?: number) => ({ inline_keyboard: [[{ text: "❌ Отмена", callback_data: `main_menu${mid ? ':'+mid : ''}` }]] });
 const backAndCancelKeyboard = (backCb: string, mid?: number) => ({ inline_keyboard: [[{ text: "⬅️ Назад", callback_data: backCb }, { text: "❌ Отмена", callback_data: `main_menu${mid ? ':'+mid : ''}` }]] });
-
-const sessionExpiredText = "⚠️ Сессия истекла или данные повреждены. Пожалуйста, перезапустите бота командой /start.";
-const sessionExpiredKeyboard = { inline_keyboard: [[{ text: "🔄 Перезапустить", callback_data: "main_menu" }]] };
+const sessionExpiredText = "⚠️ Ваша сессия истекла или данные были повреждены. Пожалуйста, перезапустите бота.";
+const sessionExpiredKeyboard = { inline_keyboard: [[{ text: "🔄 Перезапустить (/start)", callback_data: "main_menu" }]] };
 
 // --- MAIN HANDLER ---
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -133,6 +130,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
 // --- ROUTERS ---
 async function handleMessage(msg: TelegramMessage, env: Env) {
+    console.log("Handling message...");
     const text = msg.text || ''; const cid = msg.chat.id; const uid = msg.from.id;
     const state = await getUserState(env, uid);
 
@@ -148,17 +146,20 @@ async function handleMessage(msg: TelegramMessage, env: Env) {
 }
 
 async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
+    console.log("Handling callback query...");
     const data = cb.data; const cid = cb.message.chat.id; const mid = cb.message.message_id; const uid = cb.from.id;
-    await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id);
     
     const state = await getUserState(env, uid);
-    
     const [action] = data.split(':');
 
-    if (!state && !['register', 'main_menu'].includes(action)) {
-        return editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "⚠️ Сначала привяжите аккаунт или зарегистрируйтесь.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
+    const publicActions = ['register', 'main_menu'];
+    if (!state && !publicActions.includes(action)) {
+        await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id, "Ваша сессия истекла. Пожалуйста, перезапустите бота.");
+        return await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, sessionExpiredText, sessionExpiredKeyboard);
     }
     
+    await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id);
+
     const handlers: { [key: string]: (d: string, c: number, m: number, e: Env, u: number, s: any) => Promise<void> } = {
         main_menu: showMainMenu, stats: handleStats, add_bet: startAddBet, manage_bets: showPendingBets, show_bet: showBetStatusOptions,
         set_status: setBetStatus, manage_bank: showBankMenu, ai_chat: startAiChat, exit_ai_chat: showMainMenu, competitions: showCompetitions,
@@ -171,15 +172,14 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
 }
 
 async function handleDialog(msg: TelegramMessage, state: any, env: Env) {
+    console.log(`Handling dialog: ${state.dialog.name}`);
     const name = state.dialog.name;
     const handlers: Record<string, Function> = {
         ai_chat_active: processAiChatMessage,
         registration_email: processRegistrationEmail, registration_nickname: processRegistrationNickname, registration_password: processRegistrationPassword,
         add_bet_event: processAddBetEvent, add_bet_stake: processAddBetStake, add_bet_odds: processAddBetOdds,
         bank_adjust: processBankAdjustment,
-        add_goal_title: processAddGoalTitle, 
-        add_goal_target: processAddGoalTarget, 
-        add_goal_deadline: processAddGoalDeadline
+        add_goal_title: processAddGoalTitle, add_goal_target: processAddGoalTarget, add_goal_deadline: processAddGoalDeadline
     };
     if (handlers[name]) await handlers[name](msg, state, env);
 }
@@ -206,7 +206,7 @@ async function handleAuthCode(code: string, cid: number, uid: number, env: Env) 
         const dataJson = await env.BOT_STATE.get(`tgauth:${code}`);
         if (!dataJson) return sendMessage(env.TELEGRAM_API_TOKEN, cid, "❌ Неверный или истекший код.");
         const data = JSON.parse(dataJson);
-        const normalizedData = normalizeState(data); // Normalize data on first link
+        const normalizedData = normalizeState(data);
         await setUserState(env, uid, normalizedData);
         await env.BOT_STATE.delete(`tgauth:${code}`);
         await sendMessage(env.TELEGRAM_API_TOKEN, cid, `✅ Аккаунт *${normalizedData.user.nickname}* успешно привязан!`, mainMenuKeyboard);
@@ -511,7 +511,7 @@ async function processAddGoalDeadline(msg: TelegramMessage, state: any, env: Env
         deadline,
         currentValue: 0,
         status: GoalStatus.InProgress,
-        scope: { type: 'all' } // simplified for now
+        scope: { type: 'all' }
     };
 
     if (!state.goals) state.goals = [];
