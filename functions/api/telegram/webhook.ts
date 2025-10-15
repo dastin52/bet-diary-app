@@ -45,17 +45,21 @@ interface TelegramUpdate {
 
 // --- TELEGRAM API HELPER ---
 const telegramApi = async (token: string, methodName: string, body: object) => {
-    const response = await fetch(`https://api.telegram.org/bot${token}/${methodName}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-        const result = await response.json();
-        console.error(`Telegram API error (${methodName}):`, result.description);
-        throw new Error(`Telegram API responded with status ${response.status}: ${result.description}`);
+    try {
+        const response = await fetch(`https://api.telegram.org/bot${token}/${methodName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+            const result = await response.json();
+            console.error(`Telegram API error (${methodName}):`, result.description);
+            // Don't re-throw here to prevent function from crashing
+        }
+        return response;
+    } catch (error) {
+        console.error(`Network error calling Telegram API (${methodName}):`, error instanceof Error ? error.message : String(error));
     }
-    return response.json();
 };
 
 // --- CORE LOGIC HANDLERS ---
@@ -120,14 +124,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         return new Response('OK');
     }
 
-    const requestClone = request.clone(); // Clone immediately for emergency logging
-
     try {
-        const update = (await request.json()) as TelegramUpdate;
+        // Safely get the raw body text first. This is less likely to fail than .json()
+        const rawBody = await request.text();
+        console.log("Received raw request body:", rawBody);
+
+        let update: TelegramUpdate;
+        try {
+            // Now, safely parse the text.
+            update = JSON.parse(rawBody);
+        } catch (jsonError: any) {
+            console.error("Failed to parse incoming JSON:", jsonError.message);
+            return new Response('OK'); // Not a valid JSON, but acknowledge receipt.
+        }
+
         const message = update.message;
 
         if (!message || !message.chat?.id || !message.from?.id || !message.text) {
-            console.log("Received a non-text message update, skipping.");
+            console.log("Received a non-text message or incomplete update, skipping.");
             return new Response('OK');
         }
 
@@ -150,18 +164,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         }
 
     } catch (e: any) {
-        // Emergency logging: This block is crucial for debugging silent errors.
-        console.error("--- FATAL ERROR IN WEBHOOK ---");
+        console.error("--- UNHANDLED FATAL ERROR IN WEBHOOK ---");
         console.error("Error message:", e.message);
         console.error("Error stack:", e.stack);
-
-        try {
-            const rawBody = await requestClone.text();
-            console.error("Raw request body that caused the error:", rawBody);
-        } catch (bodyError: any) {
-            console.error("Additionally, failed to read request body as text:", bodyError.message);
-        }
-        console.error("------------------------------");
     }
     
     // Always respond 200 OK to Telegram to acknowledge receipt and prevent retries.
