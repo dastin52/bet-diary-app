@@ -72,26 +72,32 @@ function normalizeState(state: any): any {
     const bets = Array.isArray(state.bets) ? state.bets : [];
     const bankroll = (typeof state.bankroll === 'number' && !isNaN(state.bankroll)) ? state.bankroll : 10000;
     const dialog = (state.dialog && typeof state.dialog === 'object') ? state.dialog : null;
-    const goals = Array.isArray(state.goals) ? state.goals : [];
     
-    const normalizedGoals = goals.map((g: any) => {
+    const goals = (Array.isArray(state.goals) ? state.goals : [])
+      .map((g: any) => {
         if (!g || typeof g !== 'object') return null;
+        
         const scope = (g.scope && typeof g.scope === 'object' && g.scope.type) ? g.scope : { type: 'all' };
+        const targetValue = (typeof g.targetValue === 'number' && !isNaN(g.targetValue)) ? g.targetValue : 0;
+        const currentValue = (typeof g.currentValue === 'number' && !isNaN(g.currentValue)) ? g.currentValue : 0;
+        
         return {
             id: typeof g.id === 'string' ? g.id : `goal_${Date.now()}_${Math.random()}`,
             title: typeof g.title === 'string' ? g.title : 'Без названия',
             metric: Object.values(GoalMetric).includes(g.metric) ? g.metric : GoalMetric.Profit,
-            targetValue: typeof g.targetValue === 'number' ? g.targetValue : 0,
-            currentValue: typeof g.currentValue === 'number' ? g.currentValue : 0,
+            targetValue: targetValue,
+            currentValue: currentValue,
             status: Object.values(GoalStatus).includes(g.status) ? g.status : GoalStatus.InProgress,
-            createdAt: typeof g.createdAt === 'string' ? g.createdAt : new Date().toISOString(),
-            deadline: typeof g.deadline === 'string' ? g.deadline : new Date().toISOString(),
+            createdAt: typeof g.createdAt === 'string' && !isNaN(new Date(g.createdAt).getTime()) ? g.createdAt : new Date().toISOString(),
+            deadline: typeof g.deadline === 'string' && !isNaN(new Date(g.deadline).getTime()) ? g.deadline : new Date().toISOString(),
             scope: scope,
         };
-    }).filter((g): g is Goal => g !== null);
+      })
+      .filter((g): g is Goal => g !== null);
 
-    return { user, bets, bankroll, dialog, goals: normalizedGoals };
+    return { user, bets, bankroll, dialog, goals };
 }
+
 const getUserState = async (env: Env, u: number): Promise<any | null> => {
     const json = await env.BOT_STATE.get(`tguser:${u}`);
     if (!json) return null;
@@ -130,7 +136,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
 // --- ROUTERS ---
 async function handleMessage(msg: TelegramMessage, env: Env) {
-    console.log("Handling message...");
     const text = msg.text || ''; const cid = msg.chat.id; const uid = msg.from.id;
     const state = await getUserState(env, uid);
 
@@ -146,7 +151,6 @@ async function handleMessage(msg: TelegramMessage, env: Env) {
 }
 
 async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
-    console.log("Handling callback query...");
     const data = cb.data; const cid = cb.message.chat.id; const mid = cb.message.message_id; const uid = cb.from.id;
     
     const state = await getUserState(env, uid);
@@ -172,7 +176,6 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
 }
 
 async function handleDialog(msg: TelegramMessage, state: any, env: Env) {
-    console.log(`Handling dialog: ${state.dialog.name}`);
     const name = state.dialog.name;
     const handlers: Record<string, Function> = {
         ai_chat_active: processAiChatMessage,

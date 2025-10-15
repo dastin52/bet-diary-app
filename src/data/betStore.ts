@@ -19,28 +19,30 @@ export interface UserBetData {
 // Function to sanitize and provide defaults for user data
 const normalizeUserData = (data: Partial<UserBetData>): UserBetData => {
     const bets = Array.isArray(data.bets) ? data.bets : [];
-    const bankroll = typeof data.bankroll === 'number' && !isNaN(data.bankroll) ? data.bankroll : 10000;
+    const bankroll = (typeof data.bankroll === 'number' && !isNaN(data.bankroll)) ? data.bankroll : 10000;
     const bankHistory = Array.isArray(data.bankHistory) ? data.bankHistory : [];
 
     const goals = (Array.isArray(data.goals) ? data.goals : [])
-      .map(g => {
-        // If g is not a valid object, discard it.
+      .map((g: any) => {
         if (!g || typeof g !== 'object') return null;
         
-        // Return a fully-structured goal object with defaults for missing fields.
+        const scope = (g.scope && typeof g.scope === 'object' && g.scope.type) ? g.scope : { type: 'all' };
+        const targetValue = (typeof g.targetValue === 'number' && !isNaN(g.targetValue)) ? g.targetValue : 0;
+        const currentValue = (typeof g.currentValue === 'number' && !isNaN(g.currentValue)) ? g.currentValue : 0;
+        
         return {
-            id: g.id || `goal_${Date.now()}_${Math.random()}`,
-            title: g.title || 'Без названия',
-            metric: g.metric || GoalMetric.Profit,
-            targetValue: typeof g.targetValue === 'number' ? g.targetValue : 0,
-            currentValue: typeof g.currentValue === 'number' ? g.currentValue : 0,
-            status: g.status || GoalStatus.InProgress,
-            createdAt: g.createdAt || new Date().toISOString(),
-            deadline: g.deadline || new Date().toISOString(),
-            scope: (g.scope && typeof g.scope === 'object') ? g.scope : { type: 'all' },
+            id: typeof g.id === 'string' ? g.id : `goal_${Date.now()}_${Math.random()}`,
+            title: typeof g.title === 'string' ? g.title : 'Без названия',
+            metric: Object.values(GoalMetric).includes(g.metric) ? g.metric : GoalMetric.Profit,
+            targetValue: targetValue,
+            currentValue: currentValue,
+            status: Object.values(GoalStatus).includes(g.status) ? g.status : GoalStatus.InProgress,
+            createdAt: typeof g.createdAt === 'string' && !isNaN(new Date(g.createdAt).getTime()) ? g.createdAt : new Date().toISOString(),
+            deadline: typeof g.deadline === 'string' && !isNaN(new Date(g.deadline).getTime()) ? g.deadline : new Date().toISOString(),
+            scope: scope,
         };
       })
-      .filter((g): g is Goal => g !== null); // Filter out nulls and type guard
+      .filter((g): g is Goal => g !== null);
 
     return { bets, bankroll, goals, bankHistory };
 };
@@ -48,7 +50,6 @@ const normalizeUserData = (data: Partial<UserBetData>): UserBetData => {
 
 export const loadUserData = (userKey: string): UserBetData => {
   if (userKey === 'demo_user') {
-    // Normalize demo state as well, just in case
     return normalizeUserData(DEMO_STATE);
   }
 
@@ -60,7 +61,6 @@ export const loadUserData = (userKey: string): UserBetData => {
     const storedHistory = localStorage.getItem(bankHistoryKey);
     const storedGoals = localStorage.getItem(goalsKey);
 
-    // Parse data, providing empty arrays as fallback
     const rawData: Partial<UserBetData> = {
         bets: storedBets ? JSON.parse(storedBets) : [],
         bankroll: storedBankroll ? parseFloat(storedBankroll) : 10000,
@@ -68,12 +68,10 @@ export const loadUserData = (userKey: string): UserBetData => {
         goals: storedGoals ? JSON.parse(storedGoals) : [],
     };
     
-    // Always run data through the normalizer
     return normalizeUserData(rawData);
     
   } catch (error) {
     console.error(`Error loading data from localStorage for user: ${userKey}, returning default normalized data.`, error);
-    // On any parsing error, return safe, default, normalized data.
     return normalizeUserData({});
   }
 };
