@@ -14,14 +14,26 @@ interface Goal { id: string; title: string; metric: GoalMetric; targetValue: num
 interface Achievement { id: string; name: string; description: string; icon: string; }
 const SPORTS = [ 'Футбол', 'Баскетбол', 'Теннис', 'Хоккей', 'ММА', 'Киберспорт' ];
 const MARKETS_BY_SPORT: Record<string, string[]> = {
-  'Футбол': ['П1', 'X', 'П2', '1X', 'X2', 'Обе забьют - Да', 'Тотал > 2.5', 'Тотал < 2.5'],
-  'Баскетбол': ['П1 (с ОТ)', 'П2 (с ОТ)', 'Тотал > 220.5', 'Тотал < 220.5'], 'Теннис': ['П1', 'П2', 'Тотал по геймам > 21.5', 'Тотал по геймам < 21.5'],
-  'Хоккей': ['П1', 'X', 'П2', 'Тотал > 5.5', 'Тотал < 5.5'], 'Бейсбол': ['П1', 'П2'], 'ММА': ['П1', 'П2'], 'Бокс': ['П1', 'П2'], 'Киберспорт': ['П1', 'П2']
+  'Футбол': [ 'П1', 'X', 'П2', '1X', '12', 'X2', 'Обе забьют - Да', 'Обе забьют - Нет', 'Тотал > 1.5', 'Тотал > 2.5', 'Тотал < 2.5', 'Тотал < 3.5' ],
+  'Баскетбол': ['П1 (с ОТ)', 'П2 (с ОТ)', 'Тотал > 210.5', 'Тотал < 210.5', 'Фора 1 (-5.5)', 'Фора 2 (+5.5)'],
+  'Теннис': ['П1', 'П2', 'Тотал по геймам > 21.5', 'Тотал по геймам < 21.5', 'Фора 1 по геймам (-2.5)', 'Фора 2 по геймам (+2.5)'],
+  'Хоккей': ['П1', 'X', 'П2', '1X', 'X2', 'Тотал > 5.5', 'Тотал < 5.5'],
+  'ММА': ['П1', 'П2', 'Тотал раундов > 1.5', 'Тотал раундов < 1.5'],
+  'Киберспорт': ['П1', 'П2', 'Тотал карт > 2.5', 'Тотал карт < 2.5']
 };
 const calculateProfit = (b: {status: BetStatus, stake: number, odds: number, profit?: number}) => b.status === 'won' ? b.stake * (b.odds - 1) : b.status === 'lost' ? -b.stake : (b.profit ?? 0);
 const mockHash = (s: string) => `hashed_${s}`;
 const calculateRiskManagedStake = (bank:number, odds:number) => { if (bank <= 0 || odds <= 1) return null; let p = odds < 1.5 ? 0.025 : odds < 2.5 ? 0.015 : 0.0075; const stake = bank * p; return stake < 1 ? null : { stake, percentage: p * 100 }; };
 // --- END OF COPIED TYPES & UTILS ---
+
+// --- NEW UTILITY ---
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+  return result;
+}
 
 // --- TELEGRAM & CF TYPES ---
 interface TelegramFrom { id: number; }
@@ -53,12 +65,21 @@ const backAndCancelKeyboard = (backCb: string, mid?: number) => ({ inline_keyboa
 
 // --- MAIN HANDLER ---
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-    if (!env.TELEGRAM_API_TOKEN || !env.BOT_STATE) return new Response('OK');
+    if (!env.TELEGRAM_API_TOKEN) {
+        console.error("TELEGRAM_API_TOKEN is not set.");
+        return new Response('OK');
+    }
+    if (!env.BOT_STATE) {
+        console.error("BOT_STATE KV Namespace is not bound.");
+        return new Response('OK');
+    }
     try {
         const body = await request.json() as TelegramWebhookRequest;
         if (body.callback_query) await handleCallbackQuery(body.callback_query, env);
         else if (body.message) await handleMessage(body.message, env);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error("Top-level error in webhook:", e);
+    }
     return new Response('OK');
 };
 
@@ -66,20 +87,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 async function handleMessage(msg: TelegramMessage, env: Env) {
     const text = msg.text || ''; const cid = msg.chat.id; const uid = msg.from.id;
     const state = await getUserState(env, uid);
-    if (text.startsWith('/')) return handleCommand(text, cid, uid, env);
+    if (text.startsWith('/')) return handleCommand(text, cid, uid, env, state);
     if (/^\d{6}$/.test(text)) return handleAuthCode(text, cid, uid, env);
     if (state?.dialog?.name) return handleDialog(msg, state, env);
-    await sendMessage(env.TELEGRAM_API_TOKEN, cid, "🤖 Привет! Я бот-помощник для вашего Дневника Ставок. Используйте меню ниже для навигации.", mainMenuKeyboard);
+    
+    if (state?.user) {
+        await sendMessage(env.TELEGRAM_API_TOKEN, cid, `👋 Привет, ${state.user.nickname}! Чем могу помочь?`, mainMenuKeyboard);
+    } else {
+        await sendMessage(env.TELEGRAM_API_TOKEN, cid, "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт, сгенерировав код в приложении.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
+    }
 }
 
 async function handleCallbackQuery(cb: TelegramCallbackQuery, env: Env) {
     const data = cb.data; const cid = cb.message.chat.id; const mid = cb.message.message_id; const uid = cb.from.id;
     await answerCallbackQuery(env.TELEGRAM_API_TOKEN, cb.id);
     const state = await getUserState(env, uid);
-    if (!state && !['register', 'main_menu'].includes(data.split(':')[0])) {
+    const [action] = data.split(':');
+
+    if (!state && !['register', 'main_menu'].includes(action)) {
         return sendMessage(env.TELEGRAM_API_TOKEN, cid, "⚠️ Сначала привяжите аккаунт или зарегистрируйтесь.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
     }
-    const [action] = data.split(':');
+    
     const actionHandlers: Record<string, Function> = {
         main_menu: showMainMenu, stats: handleStats, add_bet: startAddBet, manage_bets: showPendingBets, show_bet: showBetStatusOptions,
         set_status: setBetStatus, manage_bank: showBankMenu, ai_chat: startAiChat, exit_ai_chat: showMainMenu, competitions: showCompetitions,
@@ -102,11 +130,10 @@ async function handleDialog(msg: TelegramMessage, state: any, env: Env) {
 }
 
 // --- COMMANDS & AUTH ---
-async function handleCommand(text: string, cid: number, uid: number, env: Env) {
-    const state = await getUserState(env, uid);
+async function handleCommand(text: string, cid: number, uid: number, env: Env, state: any) {
     if (text === '/start' || text === '/help') {
-        if (state) await showMainMenu('', cid, undefined, env, uid, state, `👋 Привет, ${state.user.nickname}!`);
-        else await sendMessage(env.TELEGRAM_API_TOKEN, cid, "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
+        if (state?.user) await showMainMenu('', cid, undefined, env, uid, state, `👋 Привет, ${state.user.nickname}!`);
+        else await sendMessage(env.TELEGRAM_API_TOKEN, cid, "👋 Добро пожаловать! Зарегистрируйтесь или привяжите аккаунт, сгенерировав код в приложении.", { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] });
     }
 }
 async function handleAuthCode(code: string, cid: number, uid: number, env: Env) {
@@ -120,11 +147,24 @@ async function handleAuthCode(code: string, cid: number, uid: number, env: Env) 
 
 // --- CORE FEATURES ---
 async function showMainMenu(data: string, cid: number, mid: number | undefined, env: Env, uid: number, state: any, text?: string) {
-    await setUserState(env, uid, { ...state, dialog: null });
     const messageId = mid ?? parseInt(data.split(':')[1] || '0');
-    if (messageId > 0) await editMessageText(env.TELEGRAM_API_TOKEN, cid, messageId, text || "🏠 Главное меню", mainMenuKeyboard);
-    else await sendMessage(env.TELEGRAM_API_TOKEN, cid, text || "🏠 Главное меню", mainMenuKeyboard);
+
+    if (state) {
+        if (state.dialog) {
+            state.dialog = null;
+            await setUserState(env, uid, state);
+        }
+        const welcomeText = text || (state.user ? `🏠 Главное меню, ${state.user.nickname}!` : "🏠 Главное меню");
+        if (messageId > 0) await editMessageText(env.TELEGRAM_API_TOKEN, cid, messageId, welcomeText, mainMenuKeyboard);
+        else await sendMessage(env.TELEGRAM_API_TOKEN, cid, welcomeText, mainMenuKeyboard);
+    } else {
+        const notLoggedInText = "⚠️ Вы не авторизованы. Пожалуйста, зарегистрируйтесь или привяжите аккаунт.";
+        const registerKeyboard = { inline_keyboard: [[{ text: "📝 Регистрация", callback_data: "register" }]] };
+        if (messageId > 0) await editMessageText(env.TELEGRAM_API_TOKEN, cid, messageId, notLoggedInText, registerKeyboard);
+        else await sendMessage(env.TELEGRAM_API_TOKEN, cid, notLoggedInText, registerKeyboard);
+    }
 }
+
 
 async function handleStats(data: string, cid: number, mid: number | undefined, env: Env, uid: number, state: any) {
     const { bets, bankroll } = state;
@@ -178,10 +218,17 @@ async function handleAddBetDialogCallback(data: string, cid: number, mid: number
     } else if (action === 'add_bet_outcome') {
         dialog.data.outcome = value; dialog.name = 'add_bet_stake';
         await setUserState(env, uid, state);
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "💰 Введите сумму ставки:", backAndCancelKeyboard('add_bet_event', mid));
+        const recommended = calculateRiskManagedStake(state.bankroll, 2.0); // Assume avg odds for suggestion
+        const kb = recommended ? { inline_keyboard: [[{ text: `💡 Рекомендуемая: ${recommended.stake.toFixed(0)} ₽`, callback_data: `add_bet_stake:${recommended.stake.toFixed(0)}` }], ...backAndCancelKeyboard('add_bet_event', mid).inline_keyboard] } : backAndCancelKeyboard('add_bet_event', mid);
+        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "💰 Введите сумму ставки:", kb);
+    } else if (action === 'add_bet_stake') {
+        dialog.name = 'add_bet_odds'; dialog.data.stake = parseFloat(value || '0');
+        await setUserState(env, uid, state);
+        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "📈 Введите коэффициент:", backAndCancelKeyboard('add_bet_outcome', mid));
     } else if (action === 'add_bet_confirm') {
         const { sport, event, outcome, stake, odds } = dialog.data;
-        const newBet: Bet = { id: new Date().toISOString(), createdAt: new Date().toISOString(), event: `${event} - ${outcome}`, sport, betType: BetType.Single, stake, odds, status: BetStatus.Pending, legs: [], bookmaker: 'Telegram' };
+        const [homeTeam, awayTeam] = event.split('-').map((s: string) => s.trim());
+        const newBet: Bet = { id: new Date().toISOString(), createdAt: new Date().toISOString(), event: `${event} - ${outcome}`, sport, betType: BetType.Single, stake, odds, status: BetStatus.Pending, legs: [{homeTeam, awayTeam, market: outcome}], bookmaker: 'Telegram' };
         state.bets.push(newBet);
         state.dialog = null;
         await setUserState(env, uid, state);
@@ -192,7 +239,9 @@ async function processAddBetEvent(msg: TelegramMessage, state: any, env: Env) {
     state.dialog.name = 'add_bet_outcome'; state.dialog.data.event = msg.text;
     await setUserState(env, msg.from.id, state);
     const markets = MARKETS_BY_SPORT[state.dialog.data.sport] || ['П1', 'X', 'П2'];
-    const keyboard = { inline_keyboard: [markets.map(m => ({text:m, callback_data:`add_bet_outcome:${m}`})), backAndCancelKeyboard('add_bet', state.dialog.msgId).inline_keyboard[0]]};
+    const marketButtons = markets.map(m => ({text:m, callback_data:`add_bet_outcome:${m}`}));
+    const chunkedButtons = chunkArray(marketButtons, 3);
+    const keyboard = { inline_keyboard: [...chunkedButtons, ...backAndCancelKeyboard('add_bet', state.dialog.msgId).inline_keyboard]};
     await editMessageText(env.TELEGRAM_API_TOKEN, msg.chat.id, state.dialog.msgId, "🎯 Выберите исход:", keyboard);
 }
 async function processAddBetStake(msg: TelegramMessage, state: any, env: Env) {
@@ -266,17 +315,30 @@ async function startAiChat(data: string, cid: number, mid: number, env: Env, uid
 }
 async function processAiChatMessage(msg: TelegramMessage, state: any, env: Env) {
     const cid = msg.chat.id;
-    const thinkingMsg = await sendMessage(env.TELEGRAM_API_TOKEN, cid, "🤖 Думаю...");
-    const thinkingMsgJson: any = await thinkingMsg.json();
-    const mid = thinkingMsgJson.result.message_id;
-    const ai = new GoogleGenAI({apiKey: env.GEMINI_API_KEY});
-    const profit = state.bets.filter((b:Bet)=>b.status!=='pending').reduce((a:number, b:Bet)=>a+(calculateProfit(b)),0);
-    const context = `User stats: bankroll=${state.bankroll}, total_profit=${profit}. User question: ${msg.text}`;
+    let thinkingMessageId: number | null = null;
     try {
+        const thinkingMsgResponse = await sendMessage(env.TELEGRAM_API_TOKEN, cid, "🤖 Думаю...");
+        if (thinkingMsgResponse.ok) {
+            const thinkingMsgJson: any = await thinkingMsgResponse.json();
+            thinkingMessageId = thinkingMsgJson.result.message_id;
+        } else {
+            console.error("Failed to send 'thinking' message to Telegram");
+            return;
+        }
+        const ai = new GoogleGenAI({apiKey: env.GEMINI_API_KEY});
+        const profit = state.bets.filter((b:Bet)=>b.status!=='pending').reduce((a:number, b:Bet)=>a+(calculateProfit(b)),0);
+        const context = `User stats: bankroll=${state.bankroll}, total_profit=${profit}. User question: ${msg.text}`;
+        
         const res = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{role: 'user', parts: [{text: context}]}] });
-        await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, res.text);
-    } catch (e) { await editMessageText(env.TELEGRAM_API_TOKEN, cid, mid, "❌ Ошибка при обращении к AI."); }
+        await editMessageText(env.TELEGRAM_API_TOKEN, cid, thinkingMessageId, res.text);
+    } catch (e) { 
+        console.error("AI chat error:", e);
+        if (thinkingMessageId) {
+            await editMessageText(env.TELEGRAM_API_TOKEN, cid, thinkingMessageId, "❌ Ошибка при обращении к AI.");
+        }
+    }
 }
+
 
 // --- COMPETITIONS & GOALS ---
 async function showCompetitions(data: string, cid: number, mid: number, env: Env) {
