@@ -205,9 +205,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                 case '/menu':
                     if (userEmail) {
                         const userData = await getUserData(env.BOT_STATE, userEmail);
-                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `С возвращением, ${userData?.nickname || 'пользователь'}! 👋`, getMainMenu(true));
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `С возвращением, ${userData?.nickname || 'пользователь'}! 👋\n\nЧем могу помочь?`, getMainMenu(true));
                     } else {
-                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "👋 Добро пожаловать в Дневник Ставок! \n\nЧтобы начать, привяжите свой аккаунт с веб-сайта.", getRegistrationMenu());
+                        const welcomeText = "👋 *Добро пожаловать в Дневник Ставок!*\n\n" +
+                                            "Этот бот — ваш помощник для быстрого доступа к функциям сайта.\n\n" +
+                                            "Для начала работы необходимо *привязать ваш аккаунт*, созданный на сайте. " +
+                                            "Если у вас еще нет аккаунта, пожалуйста, сначала зарегистрируйтесь на сайте.";
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, welcomeText, getRegistrationMenu());
                     }
                     return new Response('OK');
             }
@@ -221,8 +225,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
             switch(action) {
                 case 'link_account':
                      await setDialogState(env.BOT_STATE, userId, { action: 'link_ask_code', data: {} });
-                     if (messageId) await deleteMessage(env.TELEGRAM_BOT_TOKEN, chatId, messageId);
-                     await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Пожалуйста, сгенерируйте 6-значный код в приложении ('Настройки' -> 'Интеграция с Telegram') и отправьте его мне.");
+                     const instructionText = "🔐 *Привязка аккаунта*\n\n" +
+                                             "1. Откройте сайт Дневника Ставок.\n" +
+                                             "2. Перейдите в *Настройки* ➝ *Интеграция с Telegram*.\n" +
+                                             "3. Нажмите *'Сгенерировать код'*.\n" +
+                                             "4. Отправьте полученный 6-значный код в этот чат.";
+
+                     if (messageId) await editMessageText(env.TELEGRAM_BOT_TOKEN, chatId, messageId, instructionText, { inline_keyboard: [[{ text: "⬅️ Отмена", callback_data: "main_menu" }]] });
+                     else await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, instructionText);
+                     
                      return new Response('OK');
             }
 
@@ -347,7 +358,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         }
 
         if (text && !userEmail && !dialogState) {
-            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Я не понимаю команду. Пожалуйста, используйте кнопки ниже.", getRegistrationMenu());
+            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Я не понимаю команду. Пожалуйста, используйте кнопки ниже или введите /start.", getRegistrationMenu());
         }
 
     } catch (error) {

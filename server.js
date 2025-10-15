@@ -63,15 +63,15 @@ app.post('/api/gemini', async (req, res) => {
 const tempAuthCodes = new Map();
 
 app.post('/api/telegram/generate-code', (req, res) => {
-    const { email } = req.body;
-    if (!email) {
-        return res.status(400).json({ error: 'Email is required.' });
+    const { email, userData } = req.body;
+    if (!email || !userData) {
+        return res.status(400).json({ error: 'Email and userData are required.' });
     }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     
     // Store with an expiry
     const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
-    tempAuthCodes.set(code, { email, expiry });
+    tempAuthCodes.set(code, { userData, expiry });
     
     // Cleanup expired codes periodically (simple approach)
     setTimeout(() => {
