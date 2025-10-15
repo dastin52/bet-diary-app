@@ -6,6 +6,7 @@ import { useSettingsContext } from '../contexts/SettingsContext';
 import { useAuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
+import { useBetContext } from '../contexts/BetContext';
 
 const SunIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.707.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM10 18a1 1 0 01-1-1v-1a1 1 0 112 0v1a1 1 0 01-1 1zm-4.95-.464a1 1 0 01-1.414 0l-.707-.707a1 1 0 011.414-1.414l.707.707a1 1 0 010 1.414zM4 10a1 1 0 01-1-1H2a1 1 0 110-2h1a1 1 0 011 1zm10.607-2.12a1 1 0 011.414 0l.707-.707a1 1 0 111.414 1.414l-.707.707a1 1 0 01-1.414-1.414zM10 18a1 1 0 01-1-1v-1a1 1 0 112 0v1a1 1 0 01-1 1z"/></svg>;
 const MoonIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>;
@@ -16,6 +17,7 @@ const TelegramIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-
 const SettingsPanel: React.FC = () => {
   const { settings, updateSettings, isLoading } = useSettingsContext();
   const { currentUser } = useAuthContext();
+  const { bets, bankroll, bankHistory, goals } = useBetContext();
   const { setTheme } = useTheme();
   const isDemoMode = !currentUser;
 
@@ -43,11 +45,21 @@ const SettingsPanel: React.FC = () => {
       setTgError(null);
       setTelegramCode(null);
       try {
-          // NOTE: This now calls the Express server, not a serverless function.
+          const userDataPayload = {
+            ...currentUser,
+            bets,
+            bankroll,
+            bankHistory,
+            goals,
+          };
+
           const response = await fetch('/api/telegram/generate-code', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: currentUser.email }),
+              body: JSON.stringify({
+                  email: currentUser.email,
+                  userData: userDataPayload,
+              }),
           });
           if (!response.ok) {
               const errorData = await response.json();

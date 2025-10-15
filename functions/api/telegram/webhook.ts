@@ -251,7 +251,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                     const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
                     const wonBets = settledBets.filter(b => b.status === 'won').length;
                     const nonVoidBets = settledBets.filter(b => b.status !== 'void');
-// FIX: The variable 'wonBets' is a number (a count), so it does not have a 'length' property. The '.length' should be removed.
                     const winRate = nonVoidBets.length > 0 ? (wonBets / nonVoidBets.length) * 100 : 0;
 
                     const statsText = `📊 *Ваша статистика:*\n\n` +
@@ -285,19 +284,26 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
                         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "Это не похоже на 6-значный код. Попробуйте еще раз.");
                         return new Response('OK');
                     }
-                    const linkedEmail = await env.BOT_STATE.get(`authcode:${code}`);
-                    if (linkedEmail) {
-                        await env.BOT_STATE.put(`telegram:${userId}`, linkedEmail);
-                        await env.BOT_STATE.delete(`authcode:${code}`);
+                    const userDataString = await env.BOT_STATE.get(`tgauth:${code}`);
+                    if (userDataString) {
+                        const fullUserData = JSON.parse(userDataString) as UserData;
+                        // 1. Link Telegram ID to user's email
+                        await env.BOT_STATE.put(`telegram:${userId}`, fullUserData.email);
+                        // 2. Save the full user data package for the bot to use
+                        await saveUserData(env.BOT_STATE, fullUserData.email, fullUserData);
+                        // 3. Clean up the temporary auth code
+                        await env.BOT_STATE.delete(`tgauth:${code}`);
+                        
                         await setDialogState(env.BOT_STATE, userId, null);
-                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `✅ Аккаунт для ${linkedEmail} успешно привязан!`, getMainMenu(true));
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `✅ Аккаунт для ${fullUserData.email} успешно привязан!`, getMainMenu(true));
                     } else {
-                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Неверный или истекший код. Пожалуйста, сгенерируйте новый.");
+                        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Неверный или истекший код. Пожалуйста, сгенерируйте новый на сайте.");
                     }
                     return new Response('OK');
                 
                 case 'add_bet_parse':
                     try {
+                        if (!userEmail) throw new Error("Сессия пользователя не найдена. Пожалуйста, /start");
                         const parts = text.split(',').map(p => p.trim());
                         if (parts.length !== 5) throw new Error("Неверный формат. Ожидалось 5 частей, разделенных запятой.");
                         

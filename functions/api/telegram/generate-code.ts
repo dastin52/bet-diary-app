@@ -1,8 +1,8 @@
-
 // functions/api/telegram/generate-code.ts
 
 interface CodeGenerationRequest {
     email: string;
+    userData: any; // Accept the full user data package
 }
 
 interface KVNamespace {
@@ -34,20 +34,20 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     try {
         const body = (await request.json()) as CodeGenerationRequest;
-        const { email } = body;
+        const { email, userData } = body;
 
-        if (!email) {
-            return new Response(JSON.stringify({ error: 'Email is required.' }), {
+        if (!email || !userData) {
+            return new Response(JSON.stringify({ error: 'Email and user data are required.' }), {
                 status: 400, headers: { 'Content-Type': 'application/json' },
             });
         }
         
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         
-        // Store the code in KV with a 5-minute TTL. Key: `authcode:<code>`, Value: `email`
-        await env.BOT_STATE.put(`authcode:${code}`, email, { expirationTtl: 300 });
+        // Store the entire user data payload, keyed by the auth code, with a 5-minute TTL.
+        await env.BOT_STATE.put(`tgauth:${code}`, JSON.stringify(userData), { expirationTtl: 300 });
 
-        console.log(`Generated Telegram auth code ${code} for user ${email}`);
+        console.log(`Generated Telegram auth code ${code} and stored data for user ${email}`);
 
         return new Response(JSON.stringify({ code }), {
             status: 200,
