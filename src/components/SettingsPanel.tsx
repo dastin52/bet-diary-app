@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import Card from './ui/Card';
 // FIX: Changed to a named import to match the updated export in ToggleSwitch.tsx.
@@ -46,7 +47,7 @@ const SettingsPanel: React.FC = () => {
       setTelegramCode(null);
       try {
           const userDataPayload = {
-            ...currentUser,
+            user: currentUser,
             bets,
             bankroll,
             bankHistory,
@@ -79,6 +80,8 @@ const SettingsPanel: React.FC = () => {
     return <div className="text-center text-gray-400">Загрузка настроек...</div>;
   }
   
+  // FIX: Explicitly type the theme options array to ensure type safety.
+  // FIX: Changed JSX.Element to React.ReactNode to resolve "Cannot find namespace 'JSX'" error.
   const themeOptions: { value: 'light' | 'dark' | 'system', label: string, icon: React.ReactNode }[] = [
       { value: 'light', label: 'Светлая', icon: <SunIcon/> },
       { value: 'dark', label: 'Темная', icon: <MoonIcon /> },
