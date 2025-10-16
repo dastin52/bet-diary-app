@@ -21,6 +21,7 @@ export interface UseBetsReturn {
   deleteGoal: (id: string) => void;
   analytics: {
     totalStaked: number;
+    turnover: number;
     totalProfit: number;
     roi: number;
     yield: number;
@@ -403,6 +404,7 @@ export const useBets = (userKey: string): UseBetsReturn => {
 
     return {
       totalStaked,
+      turnover: totalStaked,
       totalProfit,
       roi,
       yield: yield_,

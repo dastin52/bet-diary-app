@@ -1,4 +1,4 @@
-import { Bet, BankTransaction, Goal } from '../types';
+import { Bet, BankTransaction, Goal, GoalMetric, GoalStatus } from '../types';
 import { DEMO_STATE } from '../demoData';
 
 const getKeys = (userKey: string) => ({
@@ -15,30 +15,65 @@ export interface UserBetData {
   bankHistory: BankTransaction[];
 }
 
+
+// FIX: Add a normalization function to ensure data integrity when loading from localStorage.
+// Function to sanitize and provide defaults for user data
+const normalizeUserData = (data: Partial<UserBetData>): UserBetData => {
+    const bets = Array.isArray(data.bets) ? data.bets : [];
+    const bankroll = (typeof data.bankroll === 'number' && !isNaN(data.bankroll)) ? data.bankroll : 10000;
+    const bankHistory = Array.isArray(data.bankHistory) ? data.bankHistory : [];
+
+    const goals = (Array.isArray(data.goals) ? data.goals : [])
+      .map((g: any) => {
+        if (!g || typeof g !== 'object') return null;
+        
+        const scope = (g.scope && typeof g.scope === 'object' && g.scope.type) ? g.scope : { type: 'all' };
+        const targetValue = (typeof g.targetValue === 'number' && !isNaN(g.targetValue)) ? g.targetValue : 0;
+        const currentValue = (typeof g.currentValue === 'number' && !isNaN(g.currentValue)) ? g.currentValue : 0;
+        
+        return {
+            id: typeof g.id === 'string' ? g.id : `goal_${Date.now()}_${Math.random()}`,
+            title: typeof g.title === 'string' ? g.title : 'Без названия',
+            metric: Object.values(GoalMetric).includes(g.metric) ? g.metric : GoalMetric.Profit,
+            targetValue: targetValue,
+            currentValue: currentValue,
+            status: Object.values(GoalStatus).includes(g.status) ? g.status : GoalStatus.InProgress,
+            createdAt: typeof g.createdAt === 'string' && !isNaN(new Date(g.createdAt).getTime()) ? g.createdAt : new Date().toISOString(),
+            deadline: typeof g.deadline === 'string' && !isNaN(new Date(g.deadline).getTime()) ? g.deadline : new Date().toISOString(),
+            scope: scope,
+        };
+      })
+      .filter((g): g is Goal => g !== null);
+
+    return { bets, bankroll, goals, bankHistory };
+};
+
+
 export const loadUserData = (userKey: string): UserBetData => {
   if (userKey === 'demo_user') {
-    return { ...DEMO_STATE };
+    return normalizeUserData(DEMO_STATE);
   }
 
   const { betsKey, bankrollKey, goalsKey, bankHistoryKey } = getKeys(userKey);
 
   try {
     const storedBets = localStorage.getItem(betsKey);
-    const bets = storedBets ? JSON.parse(storedBets) : [];
-
     const storedBankroll = localStorage.getItem(bankrollKey);
-    const bankroll = storedBankroll ? parseFloat(storedBankroll) : 10000;
-
     const storedHistory = localStorage.getItem(bankHistoryKey);
-    const bankHistory = storedHistory ? JSON.parse(storedHistory) : [];
-
     const storedGoals = localStorage.getItem(goalsKey);
-    const goals = storedGoals ? JSON.parse(storedGoals) : [];
+
+    const rawData: Partial<UserBetData> = {
+        bets: storedBets ? JSON.parse(storedBets) : [],
+        bankroll: storedBankroll ? parseFloat(storedBankroll) : 10000,
+        bankHistory: storedHistory ? JSON.parse(storedHistory) : [],
+        goals: storedGoals ? JSON.parse(storedGoals) : [],
+    };
     
-    return { bets, bankroll, goals, bankHistory };
+    return normalizeUserData(rawData);
+    
   } catch (error) {
-    console.error(`Error loading data from localStorage for user: ${userKey}`, error);
-    return { bets: [], bankroll: 10000, goals: [], bankHistory: [] };
+    console.error(`Error loading data from localStorage for user: ${userKey}, returning default normalized data.`, error);
+    return normalizeUserData({});
   }
 };
 
