@@ -1,10 +1,10 @@
 // functions/api/telegram/webhook.ts
 
 import { GoogleGenAI } from "@google/genai";
-// FIX: Corrected the import path to resolve types correctly.
-import { User, Bet, Goal, BankTransaction } from '../../../src/types';
-// FIX: Corrected the import path to resolve types correctly.
+import { User, Bet, Goal, BankTransaction, BetStatus, BetType, GoalMetric, GoalStatus as GoalStatusEnum } from '../../../src/types';
 import { UserBetData } from "../../../src/data/betStore";
+import { SPORTS, MARKETS_BY_SPORT } from '../../../src/constants';
+
 
 // --- TYPE DEFINITIONS ---
 
@@ -140,7 +140,6 @@ async function setUserState(chatId: number, state: UserState, env: Env): Promise
     await env.BOT_STATE.put(key, JSON.stringify(state));
 }
 
-// FIX: Added missing type definitions for Cloudflare Pages function.
 interface EventContext<E> {
     request: Request;
     env: E;
@@ -190,13 +189,13 @@ async function handleMessage(message: TelegramMessage, env: Env): Promise<void> 
     const state = await getUserState(chatId, env);
 
     if (state.dialog?.step) {
-        await handleDialog(chatId, text, state, env);
+        await handleDialog(chatId, text, state, env, message);
         return;
     }
     
-    if (text.startsWith('/start')) {
+    if (text.startsWith('/start') || text.toLowerCase() === 'меню') {
         if (state.user) {
-            await showMainMenu(chatId, state, env, `Вы уже вошли как *${state.user.nickname}*.`);
+            await showMainMenu(chatId, state, env, `Вы вошли как *${state.user.nickname}*.`);
         } else {
             await showStartMenu(chatId, env);
         }
@@ -228,14 +227,32 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, env: En
     } else if (data.startsWith('cancel_dialog')) {
         state.dialog = null;
         await setUserState(chatId, state, env);
-        await showStartMenu(chatId, env, "Действие отменено.", callbackQuery.message.message_id);
-    } else {
-        // Handle other callbacks for authenticated users if needed
         if (state.user) {
-            await showMainMenu(chatId, state, env, "Неизвестное действие.");
+             await showMainMenu(chatId, state, env, "Действие отменено.");
         } else {
-            await showStartMenu(chatId, env, "Пожалуйста, сначала войдите.");
+            await showStartMenu(chatId, env, "Действие отменено.", callbackQuery.message.message_id);
         }
+    } else if (state.user) {
+         // --- Authenticated User Actions ---
+        if (data === 'show_stats') {
+            await handleStats(chatId, state, env);
+        } else if (data === 'add_bet') {
+            await startAddBetDialog(chatId, state, env);
+        } else if (data === 'show_competitions') {
+            await handleCompetitions(chatId, state, env);
+        } else if (data === 'show_goals') {
+            await handleGoals(chatId, state, env);
+        } else if (data === 'ai_chat') {
+            await startAiChat(chatId, state, env);
+        } else if (data.startsWith('dialog_')) {
+            // Handle dialog-specific button presses
+            await handleDialog(chatId, data, state, env);
+        }
+        else {
+             await showMainMenu(chatId, state, env, "Неизвестное действие.");
+        }
+    } else {
+        await showStartMenu(chatId, env, "Пожалуйста, сначала войдите.", callbackQuery.message.message_id);
     }
 }
 
@@ -270,7 +287,7 @@ async function showLoginOptions(chatId: number, env: Env, messageId: number) {
             inline_keyboard: [
                 [{ text: "🔑 Через Логин/Пароль", callback_data: "login_password" }],
                 [{ text: "🔗 Привязать аккаунт (через код с сайта)", callback_data: "login_code" }],
-                 [{ text: "⬅️ Назад", callback_data: "cancel_dialog" }]
+                 [{ text: "⬅️ Назад", callback_data: "cancel_dialog:start" }]
             ]
         }
     });
@@ -284,7 +301,7 @@ async function startRegistration(chatId: number, state: UserState, env: Env, mes
         message_id: messageId,
         text: "Давайте начнем! Введите ваш *email*:",
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog" }]] }
+        reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog:start" }]] }
     });
 }
 
@@ -296,7 +313,7 @@ async function startPasswordLogin(chatId: number, state: UserState, env: Env, me
         message_id: messageId,
         text: "Введите ваш *email*:",
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog" }]] }
+        reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog:login" }]] }
     });
 }
 
@@ -325,13 +342,15 @@ async function handleAuthCode(chatId: number, code: string, state: UserState, en
         const nickname = newState.user?.nickname || 'пользователь';
         await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
             chat_id: chatId,
-            text: `✅ *Аутентификация пройдена!*\n\nПривет, ${nickname}! Ваш аккаунт успешно привязан.`
+            text: `✅ *Аутентификация пройдена!*\n\nПривет, ${nickname}! Ваш аккаунт успешно привязан.`,
+            parse_mode: 'Markdown',
         });
         await showMainMenu(chatId, newState, env);
     } else {
         await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
             chat_id: chatId,
-            text: "❌ *Неверный или истекший код.* Пожалуйста, сгенерируйте новый код в веб-приложении и попробуйте снова."
+            text: "❌ *Неверный или истекший код.* Пожалуйста, сгенерируйте новый код в веб-приложении и попробуйте снова.",
+            parse_mode: 'Markdown',
         });
     }
 }
@@ -339,14 +358,15 @@ async function handleAuthCode(chatId: number, code: string, state: UserState, en
 
 // --- DIALOG HANDLER ---
 
-async function handleDialog(chatId: number, text: string, state: UserState, env: Env) {
+async function handleDialog(chatId: number, text: string, state: UserState, env: Env, message?: TelegramMessage) {
     const dialog = state.dialog!;
+    // Use the dialog's message ID by default, but allow overriding for new messages in the flow
     const messageId = dialog.messageId!;
 
     try {
         switch (dialog.step) {
+            // REGISTRATION
             case 'register_email': {
-                // TODO: Add proper email validation
                 const existingUser = await env.BOT_STATE.get(`user:${text.toLowerCase()}`);
                 if (existingUser) {
                     await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', { chat_id: chatId, text: "Этот email уже занят. Попробуйте другой." });
@@ -357,18 +377,17 @@ async function handleDialog(chatId: number, text: string, state: UserState, env:
                 await setUserState(chatId, state, env);
                 await apiRequest(env.TELEGRAM_BOT_TOKEN, 'editMessageText', {
                     chat_id: chatId, message_id: messageId, text: "Отлично! Теперь придумайте *никнейм*:", parse_mode: 'Markdown',
-                    reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog" }]] }
+                    reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog:start" }]] }
                 });
                 break;
             }
             case 'register_nickname': {
-                 // TODO: Check if nickname is taken
                 dialog.data.nickname = text;
                 dialog.step = 'register_password';
                 await setUserState(chatId, state, env);
                 await apiRequest(env.TELEGRAM_BOT_TOKEN, 'editMessageText', {
                     chat_id: chatId, message_id: messageId, text: "Теперь придумайте *пароль* (рекомендуем удалить сообщение после ввода):", parse_mode: 'Markdown',
-                    reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog" }]] }
+                    reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog:start" }]] }
                 });
                 break;
             }
@@ -383,16 +402,11 @@ async function handleDialog(chatId: number, text: string, state: UserState, env:
                     status: 'active',
                 };
                 
-                const finalState: UserState = {
-                    ...normalizeState(null), // start with fresh data
-                    user: newUser,
-                };
+                const finalState: UserState = { ...normalizeState(null), user: newUser };
 
-                // Save user data under multiple keys for lookup
                 await env.BOT_STATE.put(`user:${newUser.email}`, JSON.stringify(finalState));
                 await env.BOT_STATE.put(`user_by_nickname:${newUser.nickname.toLowerCase()}`, newUser.email);
 
-                // Add to global user list for admin panel
                 const userListJson = await env.BOT_STATE.get('users:list');
                 const userList = userListJson ? JSON.parse(userListJson) : [];
                 if (!userList.includes(newUser.email)) {
@@ -409,6 +423,7 @@ async function handleDialog(chatId: number, text: string, state: UserState, env:
                 await showMainMenu(chatId, finalState, env);
                 break;
             }
+            // LOGIN
             case 'login_email': {
                 const userStateStr = await env.BOT_STATE.get(`user:${text.toLowerCase()}`);
                 if (!userStateStr) {
@@ -420,7 +435,7 @@ async function handleDialog(chatId: number, text: string, state: UserState, env:
                 await setUserState(chatId, state, env);
                 await apiRequest(env.TELEGRAM_BOT_TOKEN, 'editMessageText', {
                     chat_id: chatId, message_id: messageId, text: "Введите ваш *пароль*:", parse_mode: 'Markdown',
-                    reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog" }]] }
+                    reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "cancel_dialog:login" }]] }
                 });
                 break;
             }
@@ -440,17 +455,49 @@ async function handleDialog(chatId: number, text: string, state: UserState, env:
                 }
                 break;
             }
+            // AI CHAT
+            case 'ai_chat_active': {
+                if (message) { // Ensure it's a new message
+                    const thinkingMsg = await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
+                        chat_id: chatId,
+                        text: "🤖 Думаю...",
+                    });
+                    
+                    dialog.data.history.push({ role: 'user', text: text });
+
+                    const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+                    const response = await ai.models.generateContent({
+                        model: 'gemini-2.5-flash',
+                        contents: dialog.data.history
+                    });
+                    const aiText = response.text;
+                    dialog.data.history.push({ role: 'model', text: aiText });
+                    
+                    await setUserState(chatId, state, env);
+                    await apiRequest(env.TELEGRAM_BOT_TOKEN, 'editMessageText', {
+                        chat_id: chatId,
+                        message_id: thinkingMsg.result.message_id,
+                        text: aiText
+                    });
+                }
+                break;
+            }
         }
     } catch (e) {
         await reportError(chatId, env, `Dialog[${dialog.step}]`, e);
         state.dialog = null;
         await setUserState(chatId, state, env);
-        await showStartMenu(chatId, env, "Произошла ошибка, попробуйте снова.", messageId);
+        if (state.user) {
+            await showMainMenu(chatId, state, env, "Произошла ошибка, попробуйте снова.");
+        } else {
+            await showStartMenu(chatId, env, "Произошла ошибка, попробуйте снова.", messageId);
+        }
     }
 }
 
 
-// --- MAIN MENU (for authenticated users) ---
+// --- MAIN MENU HANDLERS (for authenticated users) ---
+
 async function showMainMenu(chatId: number, state: UserState, env: Env, text?: string) {
     const payload = {
         chat_id: chatId,
@@ -467,6 +514,78 @@ async function showMainMenu(chatId: number, state: UserState, env: Env, text?: s
     await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', payload);
 }
 
-// NOTE: Other handlers (add_bet, show_stats, etc.) would go here.
-// They were removed for clarity to focus on the registration/login flow.
-// The full implementation would require re-adding them.
+async function handleStats(chatId: number, state: UserState, env: Env) {
+    const settledBets = state.bets.filter(b => b.status !== BetStatus.Pending);
+    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
+    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
+    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
+    const betCount = settledBets.length;
+    const wonBets = settledBets.filter(b => b.status === BetStatus.Won).length;
+    const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void).length;
+    const winRate = nonVoidBets > 0 ? (wonBets / nonVoidBets) * 100 : 0;
+
+    const statsText = `
+*📊 Ваша статистика*
+
+*Банк:* ${state.bankroll.toFixed(2)} ₽
+*Прибыль:* ${totalProfit.toFixed(2)} ₽
+*ROI:* ${roi.toFixed(2)}%
+*Проходимость:* ${winRate.toFixed(2)}%
+*Всего ставок:* ${betCount}
+    `;
+    await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
+        chat_id: chatId,
+        text: statsText,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: "⬅️ В меню", callback_data: "cancel_dialog:main" }]] }
+    });
+}
+
+async function startAddBetDialog(chatId: number, state: UserState, env: Env) {
+    const keyboard = SPORTS.map(sport => ({ text: sport, callback_data: `dialog_add_bet_sport:${sport}` }));
+    const rows = [];
+    for (let i = 0; i < keyboard.length; i += 3) {
+        rows.push(keyboard.slice(i, i + 3));
+    }
+    
+    state.dialog = { step: 'add_bet_sport', data: {} };
+    await setUserState(chatId, state, env);
+    await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
+        chat_id: chatId,
+        text: 'Выберите вид спорта:',
+        reply_markup: {
+            inline_keyboard: [
+                ...rows,
+                [{ text: '❌ Отмена', callback_data: 'cancel_dialog:main' }]
+            ]
+        }
+    });
+}
+
+async function handleCompetitions(chatId: number, state: UserState, env: Env) {
+    await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
+        chat_id: chatId,
+        text: '🏆 Раздел соревнований находится в разработке.',
+        reply_markup: { inline_keyboard: [[{ text: "⬅️ В меню", callback_data: "cancel_dialog:main" }]] }
+    });
+}
+
+async function handleGoals(chatId: number, state: UserState, env: Env) {
+     await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
+        chat_id: chatId,
+        text: '🎯 Раздел "Мои цели" находится в разработке.',
+        reply_markup: { inline_keyboard: [[{ text: "⬅️ В меню", callback_data: "cancel_dialog:main" }]] }
+    });
+}
+
+async function startAiChat(chatId: number, state: UserState, env: Env) {
+    state.dialog = { step: 'ai_chat_active', data: { history: [] } };
+    await setUserState(chatId, state, env);
+    await apiRequest(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
+        chat_id: chatId,
+        text: '🤖 Вы вошли в чат с AI-Аналитиком. Задайте вопрос.',
+        reply_markup: {
+            inline_keyboard: [[{ text: '⬅️ Выйти из чата', callback_data: 'cancel_dialog:main' }]]
+        }
+    });
+}
