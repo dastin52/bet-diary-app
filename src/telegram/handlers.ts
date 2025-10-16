@@ -1,89 +1,79 @@
 // src/telegram/handlers.ts
-import { handleDialog } from './dialogs';
+// FIX: File content implemented. This file acts as the main router for incoming Telegram updates.
+
+import { TelegramMessage, TelegramCallbackQuery, Env } from './types';
 import { getUserState } from './state';
-import { TelegramMessage, TelegramCallbackQuery, Env, UserState } from './types';
-import { 
-    handleStart, handleMenu, handleAuthCode, handleUnknownCommand, 
-    handleStartRegister, handleStartLogin, handleShowStats, handleStartAddBet, 
-    handleShowCompetitions, handleShowGoals, handleStartAiChat, handleCancelDialog 
-} from './commands';
-// FIX: Removed unused import 'showLoginOptions' which is not exported from './telegramApi'.
-import { showStartMenu } from './telegramApi';
+import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth } from './commands';
+import { continueAddBetDialog } from './dialogs';
+import { answerCallbackQuery, reportError } from './telegramApi';
 
-// Command map for authenticated users' callback queries
-const authenticatedCallbackMap: { [key: string]: (chatId: number, state: UserState, env: Env, messageId: number, data: string) => Promise<void> } = {
-    'show_stats': handleShowStats,
-    'add_bet': handleStartAddBet,
-    'show_competitions': handleShowCompetitions,
-    'show_goals': handleShowGoals,
-    'ai_chat': handleStartAiChat,
-    'cancel_dialog': handleCancelDialog,
-};
-
-// Command map for unauthenticated users' callback queries
-const unauthenticatedCallbackMap: { [key: string]: (chatId: number, state: UserState, env: Env, messageId: number, data: string) => Promise<void> } = {
-    'start_register': handleStartRegister,
-    'start_login': handleStartLogin,
-    'login_password': (chatId, state, env, mid) => handleDialog(chatId, 'start_login_password', state, env, mid),
-    'login_code': (chatId, state, env, mid) => handleDialog(chatId, 'start_login_code', state, env, mid),
-    'cancel_dialog': handleCancelDialog,
-};
-
-
-export async function handleMessage(message: TelegramMessage, env: Env): Promise<void> {
+export async function handleMessage(message: TelegramMessage, env: Env) {
     const chatId = message.chat.id;
-    const text = message.text?.trim() ?? '';
-    const state = await getUserState(chatId, env);
+    try {
+        const state = await getUserState(chatId, env);
 
-    // 1. Prioritize active dialogs
-    if (state.dialog?.step) {
-        await handleDialog(chatId, text, state, env, message.message_id);
-        return;
-    }
+        // If a dialog is active, all text messages go to it, unless it's a command.
+        if (state.dialog && message.text && !message.text.startsWith('/')) {
+            await continueAddBetDialog(message, state, env);
+            return;
+        }
 
-    // 2. Handle commands
-    if (text.startsWith('/start')) {
-        await handleStart(chatId, state, env);
-    } else if (text.startsWith('/menu')) {
-        await handleMenu(chatId, state, env);
-    } 
-    // 3. Handle specific patterns like auth codes
-    else if (/^\d{6}$/.test(text)) {
-        await handleAuthCode(chatId, text, state, env);
-    } 
-    // 4. Default handler for unknown messages
-    else {
-        await handleUnknownCommand(chatId, state, env);
+        const text = message.text || '';
+
+        // Check for commands
+        if (text.startsWith('/')) {
+            const command = text.split(' ')[0];
+            switch (command) {
+                case '/start':
+                    await handleStart(message, env);
+                    return;
+                case '/help':
+                    await handleHelp(message, env);
+                    return;
+                case '/reset':
+                    await handleReset(message, env);
+                    return;
+                case '/addbet':
+                    await handleAddBet(message, env);
+                    return;
+                case '/stats':
+                    await handleStats(message, env);
+                    return;
+            }
+        }
+        
+        // Check for 6-digit auth code
+        const authCodeMatch = text.match(/^\d{6}$/);
+        if (authCodeMatch) {
+            await handleAuth(message, authCodeMatch[0], env);
+            return;
+        }
+
+        // Default response if no command or dialog is matched
+        if (text.startsWith('/')) {
+            await sendMessage(chatId, "🤔 Неизвестная команда. Используйте /help, чтобы увидеть список доступных команд.", env);
+        }
+
+    } catch (error) {
+        await reportError(chatId, env, 'Message Handler', error);
     }
 }
 
 
-export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, env: Env): Promise<void> {
+export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, env: Env) {
     const chatId = callbackQuery.message.chat.id;
-    const messageId = callbackQuery.message.message_id;
-    const data = callbackQuery.data;
-    const state = await getUserState(chatId, env);
+    try {
+        const state = await getUserState(chatId, env);
+        
+        // Acknowledge the button press immediately to remove the "loading" state on the button.
+        await answerCallbackQuery(callbackQuery.id, env);
 
-    // Always answer the callback query to remove the loading spinner on the user's side
-    await env.TELEGRAM.answerCallbackQuery({ callback_query_id: callbackQuery.id });
-
-    const command = data.split(':')[0];
-
-    if (state.user) {
-        const handler = authenticatedCallbackMap[command];
-        if (handler) {
-            await handler(chatId, state, env, messageId, data);
+        if (state.dialog && callbackQuery.data.startsWith('dialog_')) {
+            await continueAddBetDialog(callbackQuery, state, env);
         } else {
-            console.warn(`Unknown authenticated callback command: ${command}`);
-            await handleMenu(chatId, state, env, "Неизвестное действие.");
+            console.warn(`Received unhandled callback_query data: ${callbackQuery.data} for chat ${chatId}`);
         }
-    } else {
-        const handler = unauthenticatedCallbackMap[command];
-        if (handler) {
-            await handler(chatId, state, env, messageId, data);
-        } else {
-            console.warn(`Unknown unauthenticated callback command: ${command}`);
-            await showStartMenu(chatId, env, "Пожалуйста, сначала войдите.", messageId);
-        }
+    } catch (error) {
+        await reportError(chatId, env, 'Callback Query Handler', error);
     }
 }

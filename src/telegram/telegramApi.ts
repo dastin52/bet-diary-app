@@ -1,110 +1,63 @@
 // src/telegram/telegramApi.ts
-import { Env, UserState } from './types';
+// FIX: File content implemented. This file contains wrappers for the Telegram Bot API.
 
-// This class wraps the raw fetch calls to the Telegram API for better type safety and error handling.
-class TelegramApi {
-    private token: string;
+import { Env } from './types';
 
-    constructor(token: string) {
-        this.token = token;
+async function callTelegramApi(method: string, token: string, body: object) {
+    const url = `https://api.telegram.org/bot${token}/${method}`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`Telegram API error for method ${method}: ${response.status} ${response.statusText}`, errorBody);
+        throw new Error(`Telegram API error: ${response.statusText}`);
     }
-
-    private async apiRequest(method: string, payload: object): Promise<any> {
-        const url = `https://api.telegram.org/bot${this.token}/${method}`;
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-
-            const responseBody = await response.json();
-
-            if (!response.ok || !responseBody.ok) {
-                console.error(`Telegram API Error: ${method} failed with status ${response.status}`, responseBody);
-                throw new Error(`Telegram API Error: ${method} failed. Response: ${JSON.stringify(responseBody)}`);
-            }
-            return responseBody;
-        } catch (error) {
-            console.error(`Failed to call Telegram API method ${method}`, error);
-            throw error;
-        }
-    }
-    
-    // --- Public methods for different API calls ---
-    
-    async sendMessage(payload: { chat_id: number; text: string; parse_mode?: string; reply_markup?: object; }): Promise<any> {
-        return this.apiRequest('sendMessage', payload);
-    }
-
-    async editMessageText(payload: { chat_id: number; message_id: number; text: string; parse_mode?: string; reply_markup?: object; }): Promise<any> {
-        return this.apiRequest('editMessageText', payload);
-    }
-    
-    async answerCallbackQuery(payload: { callback_query_id: string; text?: string; }): Promise<any> {
-        return this.apiRequest('answerCallbackQuery', payload);
-    }
+    return response.json();
 }
 
-// --- High-Level UI Functions ---
-
-export async function showMainMenu(chatId: number, state: UserState, env: Env, text?: string, messageId?: number) {
-    const payload = {
+export async function sendMessage(chatId: number, text: string, env: Env, reply_markup?: object) {
+    return callTelegramApi('sendMessage', env.TELEGRAM_BOT_TOKEN, {
         chat_id: chatId,
-        text: text || `*Главное меню*`,
+        text,
         parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "📊 Статистика", callback_data: "show_stats" }, { text: "➕ Добавить ставку", callback_data: "add_bet" }],
-                [{ text: "🏆 Соревнования", callback_data: "show_competitions" }, { text: "🎯 Мои цели", callback_data: "show_goals" }],
-                [{ text: "🤖 AI-Аналитик", callback_data: "ai_chat" }],
-            ]
-        }
-    };
-     if (messageId) {
-        await env.TELEGRAM.editMessageText({ ...payload, message_id: messageId });
-    } else {
-        await env.TELEGRAM.sendMessage(payload);
-    }
+        reply_markup,
+    });
 }
 
-export async function showStartMenu(chatId: number, env: Env, text?: string, messageId?: number) {
-    const payload = {
+export async function editMessageText(chatId: number, messageId: number, text: string, env: Env, reply_markup?: object) {
+    return callTelegramApi('editMessageText', env.TELEGRAM_BOT_TOKEN, {
         chat_id: chatId,
-        text: text || "👋 *Добро пожаловать!*\n\nПожалуйста, войдите или зарегистрируйтесь, чтобы начать.",
+        message_id: messageId,
+        text,
         parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "➡️ Войти", callback_data: "start_login" }],
-                [{ text: "📝 Регистрация", callback_data: "start_register" }]
-            ]
-        }
-    };
-    if (messageId) {
-        await env.TELEGRAM.editMessageText({ ...payload, message_id: messageId });
-    } else {
-        await env.TELEGRAM.sendMessage(payload);
-    }
+        reply_markup,
+    });
+}
+
+export async function answerCallbackQuery(callbackQueryId: string, env: Env, text?: string) {
+    return callTelegramApi('answerCallbackQuery', env.TELEGRAM_BOT_TOKEN, {
+        callback_query_id: callbackQueryId,
+        text,
+    });
 }
 
 export async function reportError(chatId: number, env: Env, context: string, error: any) {
-    console.error(`Error in ${context}:`, error);
-    const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-    try {
-        await env.TELEGRAM.sendMessage({
-            chat_id: chatId,
-            text: `Произошла ошибка.\nКонтекст: ${context}\nСообщение: ${errorMessage.substring(0, 500)}`,
-        });
-    } catch (reportErr) {
-        console.error("Critical: Failed to report error to user:", reportErr);
-    }
-}
+    const errorMessage = `🐞 *Произошла ошибка!*
+    
+Контекст: \`${context}\`
+    
+К сожалению, бот столкнулся с непредвиденной проблемой. Пожалуйста, попробуйте снова позже. Если ошибка повторяется, вы можете использовать команду /reset, чтобы сбросить свое состояние.`;
+    
+    console.error(`Error in ${context} for chat ${chatId}:`, error instanceof Error ? error.stack : error);
 
-// This function enhances the environment with a pre-configured Telegram API client.
-// It should be called at the start of the request.
-export function enhanceEnv(env: Env): Env {
-    if (!(env as any).TELEGRAM) {
-        (env as any).TELEGRAM = new TelegramApi(env.TELEGRAM_BOT_TOKEN);
+    try {
+        await sendMessage(chatId, errorMessage, env);
+    } catch (sendError) {
+        console.error(`Failed to even send error report to chat ${chatId}:`, sendError);
     }
-    return env;
 }
