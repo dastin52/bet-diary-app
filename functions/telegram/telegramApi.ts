@@ -17,15 +17,19 @@ async function apiRequest(method: string, token: string, body: object) {
 }
 
 export async function sendMessage(chatId: number, text: string, env: Env, reply_markup?: object) {
-    return apiRequest('sendMessage', env.TELEGRAM_BOT_TOKEN, {
-        chat_id: chatId, text, parse_mode: 'Markdown', reply_markup,
-    });
+    const payload: any = { chat_id: chatId, text, parse_mode: 'Markdown' };
+    if (reply_markup) {
+        payload.reply_markup = reply_markup;
+    }
+    return apiRequest('sendMessage', env.TELEGRAM_BOT_TOKEN, payload);
 }
 
 export async function editMessageText(chatId: number, messageId: number, text: string, env: Env, reply_markup?: object) {
-    return apiRequest('editMessageText', env.TELEGRAM_BOT_TOKEN, {
-        chat_id: chatId, message_id: messageId, text, parse_mode: 'Markdown', reply_markup,
-    });
+    const payload: any = { chat_id: chatId, message_id: messageId, text, parse_mode: 'Markdown' };
+     if (reply_markup) {
+        payload.reply_markup = reply_markup;
+    }
+    return apiRequest('editMessageText', env.TELEGRAM_BOT_TOKEN, payload);
 }
 
 export async function deleteMessage(chatId: number, messageId: number, env: Env) {
@@ -43,10 +47,10 @@ export async function answerCallbackQuery(callbackQueryId: string, env: Env, tex
 export async function reportError(chatId: number, env: Env, context: string, error: any) {
     const errorText = error instanceof Error ? error.stack : JSON.stringify(error);
     console.error(`Error in ${context} for chat ${chatId}:`, errorText);
-    const errorMessage = `Произошла ошибка.\nКонтекст: ${context}\nСообщение: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`;
+    const errorMessage = `🐞 *Произошла ошибка!*\n\nКонтекст: \`${context}\`\n\nПожалуйста, попробуйте снова. Если ошибка повторяется, используйте /reset.`;
     try {
         await sendMessage(chatId, errorMessage, env);
     } catch (sendError) {
-        console.error(`FATAL: Could not even send error report to chat ${chatId}:`, sendError);
+        console.error(`FATAL: Could not send error report to chat ${chatId}:`, sendError);
     }
 }

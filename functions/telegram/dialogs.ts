@@ -1,187 +1,178 @@
 // functions/telegram/dialogs.ts
-// This file manages multi-step conversations (dialogs).
-
-import { Bet, BetStatus, BetType, DialogState, Env, TelegramMessage, UserState, TelegramCallbackQuery, BankTransactionType } from './types';
+import { Bet, BetStatus, BetType, Dialog, Env, TelegramMessage, UserState, TelegramCallbackQuery, BankTransactionType } from './types';
 import { setUserState } from './state';
-import { editMessageText, sendMessage } from './telegramApi';
+// FIX: Import 'reportError' to make it available in catch blocks.
+import { editMessageText, sendMessage, reportError } from './telegramApi';
 import { BOOKMAKERS, SPORTS, BET_TYPE_OPTIONS } from '../constants';
 import { calculateProfit, generateEventString } from '../utils/betUtils';
 import { makeKeyboard } from './ui';
+import { showMainMenu } from './ui';
+import { GoogleGenAI } from '@google/genai';
 
-/**
- * This function replicates the bet creation logic from the `useBets` hook,
- * including calculating profit and creating a bank history transaction.
- * @param state The current user state.
- * @param betData The data for the new bet collected from the dialog.
- * @returns The updated user state.
- */
-function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'createdAt' | 'event'>): UserState {
-    const newBet: Bet = {
-        ...betData,
-        id: new Date().toISOString() + Math.random(),
-        createdAt: new Date().toISOString(),
-        event: generateEventString(betData.legs, betData.betType, betData.sport),
-    };
-    
-    const newState = { ...state };
-    let newBankroll = state.bankroll;
-    
-    if (newBet.status !== BetStatus.Pending) {
-        newBet.profit = calculateProfit(newBet);
-        if(newBet.profit !== 0) {
-            const type = newBet.profit > 0 ? BankTransactionType.BetWin : BankTransactionType.BetLoss;
-            const newBalance = newBankroll + newBet.profit;
-            const newTransaction = {
-                id: new Date().toISOString() + Math.random(),
-                timestamp: new Date().toISOString(),
-                type,
-                amount: newBet.profit,
-                previousBalance: newBankroll,
-                newBalance,
-                description: `Ставка рассчитана: ${newBet.event}`,
-                betId: newBet.id,
-            };
-            newState.bankHistory = [newTransaction, ...newState.bankHistory];
-            newBankroll = newBalance;
-        }
+// --- DIALOG ROUTER ---
+
+export async function continueDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
+    if (!state.dialog) return;
+    // FIX: Get chatId here to use in the default case.
+    const chatId = 'message' in update ? update.message.chat.id : update.chat.id;
+    switch (state.dialog.type) {
+        case 'add_bet':
+            await continueAddBetDialog(update, state, env);
+            break;
+        case 'ai_chat':
+            await continueAiChatDialog(update, state, env);
+            break;
+        // Другие типы диалогов (login, register) можно добавить сюда
+        default:
+            console.error(`Unknown dialog type: ${state.dialog.type}`);
+            state.dialog = null;
+            // FIX: Use the numeric 'chatId' instead of the string 'state.user.email'.
+            await setUserState(chatId, state, env);
     }
+}
+
+// --- ADD BET DIALOG ---
+
+const STEPS = {
+    EVENT: 'EVENT', STAKE: 'STAKE', ODDS: 'ODDS', CONFIRM: 'CONFIRM'
+};
+
+function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'createdAt' | 'event'>): UserState {
+    const newBet: Bet = { ...betData, id: `tg-${Date.now()}`, createdAt: new Date().toISOString(), event: generateEventString(betData.legs, betData.betType, betData.sport) };
+    if (newBet.status !== BetStatus.Pending) newBet.profit = calculateProfit(newBet);
     
-    newState.bets = [newBet, ...state.bets].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    newState.bankroll = newBankroll;
-    
+    const newState = { ...state, bets: [newBet, ...state.bets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())};
+
+    if (newBet.profit && newBet.profit !== 0) {
+        const type = newBet.profit > 0 ? BankTransactionType.BetWin : BankTransactionType.BetLoss;
+        const newBalance = newState.bankroll + newBet.profit;
+        const newTransaction = { id: `tx-tg-${Date.now()}`, timestamp: new Date().toISOString(), type, amount: newBet.profit, previousBalance: newState.bankroll, newBalance, description: `Ставка: ${newBet.event}`, betId: newBet.id };
+        newState.bankroll = newBalance;
+        newState.bankHistory = [newTransaction, ...newState.bankHistory];
+    }
     return newState;
 }
 
-const STEPS = {
-    SPORT: 'SPORT', EVENT: 'EVENT', BET_TYPE: 'BET_TYPE',
-    STAKE: 'STAKE', ODDS: 'ODDS', BOOKMAKER: 'BOOKMAKER', CONFIRM: 'CONFIRM',
-};
-
-const getDialogText = (data: DialogState['data']): string => `*📝 Новая ставка*
-
-- *Спорт:* ${data.sport || '_не указан_'}
-- *Событие:* ${data.event || '_не указано_'}
-- *Тип:* ${data.betType ? BET_TYPE_OPTIONS.find(o => o.value === data.betType)?.label : '_не указан_'}
-- *Сумма:* ${data.stake ? `${data.stake} ₽` : '_не указана_'}
-- *Коэф.:* ${data.odds || '_не указан_'}
-- *Букмекер:* ${data.bookmaker || '_не указан_'}
-    
-${getStepPrompt(data.step)}`;
-
+const getAddBetDialogText = (data: Dialog['data']): string => `*📝 Новая ставка*\n\n- *Событие:* ${data.event || '_не указано_'}\n- *Сумма:* ${data.stake ? `${data.stake} ₽` : '_не указана_'}\n- *Коэф.:* ${data.odds || '_не указан_'}\n\n${getStepPrompt(data.step)}`;
 const getStepPrompt = (step: string): string => {
-    switch(step) {
-        case STEPS.SPORT: return '👇 Выберите вид спорта:';
+    switch (step) {
         case STEPS.EVENT: return 'Введите событие в формате: *Команда 1 - Команда 2, Исход* (например: `Реал Мадрид - Барселона, П1`)';
-        case STEPS.BET_TYPE: return '👇 Выберите тип ставки:';
-        case STEPS.STAKE: return 'Введите сумму ставки (например: `100` или `150.50`)';
+        case STEPS.STAKE: return 'Введите сумму ставки (например: `100`)';
         case STEPS.ODDS: return 'Введите коэффициент (например: `1.85`)';
-        case STEPS.BOOKMAKER: return '👇 Выберите букмекера:';
         case STEPS.CONFIRM: return 'Всё верно?';
         default: return '';
     }
 };
 
 export async function startAddBetDialog(chatId: number, state: UserState, env: Env) {
-    const dialog: DialogState = { step: STEPS.SPORT, data: {} };
-
-    const keyboard = makeKeyboard([
-        SPORTS.slice(0, 4).map(s => ({ text: s, callback_data: `dialog_sport_${s}` })),
-        SPORTS.slice(4, 8).map(s => ({ text: s, callback_data: `dialog_sport_${s}` })),
-    ]);
-    const sentMessage = await sendMessage(chatId, getDialogText(dialog), env, keyboard);
-
+    const dialog: Dialog = { type: 'add_bet', step: STEPS.EVENT, data: {} };
+    const sentMessage = await sendMessage(chatId, getAddBetDialogText(dialog), env);
     dialog.messageId = sentMessage.result.message_id;
     state.dialog = dialog;
     await setUserState(chatId, state, env);
 }
 
-export async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = "message" in update ? update.message.chat.id : update.chat.id;
+async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
+    // FIX: Use a robust type guard to get chatId and prevent 'never' type errors.
+    const chatId = 'message' in update ? update.message.chat.id : update.chat.id;
     const dialog = state.dialog!;
-    
     const userInput = 'data' in update ? update.data : 'text' in update ? update.text : '';
 
     try {
         switch (dialog.step) {
-            case STEPS.SPORT:
-                if (!userInput?.startsWith('dialog_sport_')) return;
-                dialog.data.sport = userInput.replace('dialog_sport_', '');
-                dialog.step = STEPS.EVENT;
-                break;
             case STEPS.EVENT:
-                if (!userInput) return;
-                const parts = userInput.split(',').map(p => p.trim());
-                if (parts.length !== 2) throw new Error("Неверный формат. Используйте: `Команда 1 - Команда 2, Исход`");
-                const teams = parts[0].split('-').map(t => t.trim());
-                if (teams.length !== 2) throw new Error("Неверный формат команд. Используйте `-` для разделения.");
-                dialog.data.event = userInput;
-                dialog.data.legs = [{ homeTeam: teams[0], awayTeam: teams[1], market: parts[1] }];
-                dialog.step = STEPS.BET_TYPE;
-                break;
-            case STEPS.BET_TYPE:
-                if (!userInput?.startsWith('dialog_bettype_')) return;
-                dialog.data.betType = userInput.replace('dialog_bettype_', '');
+                const match = userInput.match(/(.+)\s*-\s*(.+),\s*(.+)/);
+                if (!match) throw new Error("Неверный формат. Используйте: `Команда 1 - Команда 2, Исход`");
+                const [, homeTeam, awayTeam, market] = match.map(s => s.trim());
+                dialog.data = { event: userInput, sport: 'Футбол', betType: 'single', legs: [{ homeTeam, awayTeam, market }], bookmaker: 'Telegram' };
                 dialog.step = STEPS.STAKE;
                 break;
             case STEPS.STAKE:
-                if (!userInput) return;
                 const stake = parseFloat(userInput);
-                if (isNaN(stake) || stake <= 0) throw new Error("Сумма ставки должна быть положительным числом.");
+                if (isNaN(stake) || stake <= 0) throw new Error("Сумма должна быть числом больше 0.");
                 dialog.data.stake = stake;
                 dialog.step = STEPS.ODDS;
                 break;
             case STEPS.ODDS:
-                if (!userInput) return;
                 const odds = parseFloat(userInput);
-                if (isNaN(odds) || odds <= 1) throw new Error("Коэффициент должен быть числом больше 1.");
+                if (isNaN(odds) || odds <= 1) throw new Error("Коэф. должен быть числом больше 1.");
                 dialog.data.odds = odds;
-                dialog.step = STEPS.BOOKMAKER;
-                break;
-            case STEPS.BOOKMAKER:
-                if (!userInput?.startsWith('dialog_bookie_')) return;
-                dialog.data.bookmaker = userInput.replace('dialog_bookie_', '');
                 dialog.step = STEPS.CONFIRM;
                 break;
             case STEPS.CONFIRM:
                 if (userInput === 'dialog_confirm') {
                     const finalBetData = { ...dialog.data, status: BetStatus.Pending };
-                    const newState = addBetToState(state, finalBetData as Omit<Bet, 'id'|'createdAt'|'event'>);
-                    await editMessageText(chatId, dialog.messageId!, `✅ Ставка на "${dialog.data.event}" успешно добавлена!`, env);
+                    const newState = addBetToState(state, finalBetData as any);
+                    await editMessageText(chatId, dialog.messageId!, `✅ Ставка "${dialog.data.event}" успешно добавлена!`, env);
                     newState.dialog = null;
                     await setUserState(chatId, newState, env);
+                    await showMainMenu(update, env);
                     return;
                 } else if (userInput === 'dialog_cancel') {
-                    await editMessageText(chatId, dialog.messageId!, "❌ Добавление ставки отменено.", env);
+                    await editMessageText(chatId, dialog.messageId!, "❌ Добавление отменено.", env);
                     state.dialog = null;
                     await setUserState(chatId, state, env);
+                    await showMainMenu(update, env);
                     return;
                 }
                 return;
         }
     } catch (error) {
-        await sendMessage(chatId, `⚠️ ${error instanceof Error ? error.message : 'Произошла ошибка.'}`, env);
+        await sendMessage(chatId, `⚠️ ${error instanceof Error ? error.message : 'Ошибка'}. Попробуйте еще раз.`, env);
     }
 
-    let keyboard;
-    switch(dialog.step) {
-        case STEPS.BET_TYPE:
-            keyboard = makeKeyboard([BET_TYPE_OPTIONS.filter(o => o.value !== BetType.System).map(o => ({ text: o.label, callback_data: `dialog_bettype_${o.value}`}))]);
-            break;
-        case STEPS.BOOKMAKER:
-             keyboard = makeKeyboard([
-                BOOKMAKERS.slice(0, 3).map(b => ({ text: b, callback_data: `dialog_bookie_${b}`})),
-                BOOKMAKERS.slice(3, 6).map(b => ({ text: b, callback_data: `dialog_bookie_${b}`})),
-                [{ text: 'Другое', callback_data: 'dialog_bookie_Другое' }]
-             ]);
-            break;
-        case STEPS.CONFIRM:
-            keyboard = makeKeyboard([
-                [{ text: '✅ Сохранить', callback_data: 'dialog_confirm'}, { text: '❌ Отмена', callback_data: 'dialog_cancel'}]
-            ]);
-            break;
-    }
-
-    await editMessageText(chatId, dialog.messageId!, getDialogText(dialog), env, keyboard);
+    const keyboard = dialog.step === STEPS.CONFIRM ? makeKeyboard([[{ text: '✅ Сохранить', callback_data: 'dialog_confirm' }, { text: '❌ Отмена', callback_data: 'dialog_cancel' }]]) : undefined;
+    await editMessageText(chatId, dialog.messageId!, getAddBetDialogText(dialog), env, keyboard);
     state.dialog = dialog;
     await setUserState(chatId, state, env);
+}
+
+// --- AI CHAT DIALOG ---
+
+export async function startAiChatDialog(chatId: number, state: UserState, env: Env) {
+    const dialog: Dialog = { type: 'ai_chat', step: 'active', data: { history: [] } };
+    const text = '🤖 AI-Аналитик слушает. О чем поговорим? Чтобы выйти, напишите /menu.';
+    const sentMessage = await sendMessage(chatId, text, env);
+    dialog.messageId = sentMessage.result.message_id;
+    state.dialog = dialog;
+    await setUserState(chatId, state, env);
+}
+
+async function continueAiChatDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
+    // FIX: Use a robust type guard to get chatId and prevent 'never' type errors.
+    const chatId = 'message' in update ? update.message.chat.id : update.chat.id;
+    const dialog = state.dialog!;
+    const userInput = 'text' in update ? update.text : '';
+
+    if (!userInput || userInput.toLowerCase() === '/menu') {
+        await sendMessage(chatId, "Возвращаю в главное меню.", env);
+        state.dialog = null;
+        await setUserState(chatId, state, env);
+        await showMainMenu(update, env);
+        return;
+    }
+
+    dialog.data.history.push({ role: 'user', text: userInput });
+
+    await sendMessage(chatId, "⏳ AI-Аналитик думает...", env);
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: dialog.data.history,
+          config: { systemInstruction: "You are a helpful sports betting analyst. Keep your answers concise and helpful. Respond in Russian."}
+        });
+
+        const aiResponse = response.text;
+        dialog.data.history.push({ role: 'model', text: aiResponse });
+
+        await sendMessage(chatId, aiResponse, env);
+
+        state.dialog = dialog;
+        await setUserState(chatId, state, env);
+    } catch (error) {
+        await reportError(chatId, env, 'AI Chat Dialog', error);
+        await sendMessage(chatId, "Произошла ошибка при обращении к AI. Попробуйте еще раз.", env);
+    }
 }

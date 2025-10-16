@@ -100,6 +100,7 @@ export interface TelegramCallbackQuery {
     id: string;
     from: TelegramUser;
     message: TelegramMessage;
+    chat: { id: number; }; // Добавлено поле chat для унификации
     data: string;
 }
 
