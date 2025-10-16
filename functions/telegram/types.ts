@@ -1,6 +1,6 @@
 // functions/telegram/types.ts
 
-// --- Core App Types (duplicated for serverless isolation) ---
+// --- Core App Types (now self-contained) ---
 export enum BetStatus {
   Pending = 'pending', Won = 'won', Lost = 'lost', Void = 'void', CashedOut = 'cashed_out',
 }
@@ -27,8 +27,28 @@ export interface User {
   email: string; nickname: string; password_hash: string; registeredAt: string;
   referralCode: string; buttercups: number; status: 'active' | 'blocked';
 }
-export interface Goal { id: string; title: string; /* ... other properties */ }
+export interface Goal {
+    id: string;
+    title: string;
+    metric: GoalMetric;
+    targetValue: number;
+    currentValue: number;
+    status: GoalStatus;
+    createdAt: string;
+    deadline: string;
+    scope: {
+        type: 'sport' | 'betType' | 'tag' | 'all';
+        value?: string;
+    };
+}
 export interface Challenge { id: string; title: string; description: string; metric: string; period: string; }
+export enum GoalMetric {
+    Profit = 'profit', ROI = 'roi', WinRate = 'win_rate', BetCount = 'bet_count'
+}
+export enum GoalStatus {
+    InProgress = 'in_progress', Achieved = 'achieved', Failed = 'failed'
+}
+
 
 // --- Bot-specific Types ---
 

@@ -1,12 +1,9 @@
 // functions/telegram/commands.ts
-// FIX: Import Dialog type to explicitly type the new dialog object.
 import { BetStatus, Env, TelegramCallbackQuery, TelegramMessage, UserState, Dialog } from './types';
 import { getUserState, setUserState, normalizeState } from './state';
-// FIX: Import sendMessage to handle commands sent via direct message.
 import { sendMessage, editMessageText, deleteMessage } from './telegramApi';
-import { startAddBetDialog, startLoginDialog, startRegisterDialog } from './dialogs';
-import { GoogleGenAI } from '@google/genai';
-import { getPeriodStart } from '../../utils/dateHelpers';
+import { startAddBetDialog, startLoginDialog, startRegisterDialog, startAiChatDialog } from './dialogs';
+import { getPeriodStart } from '../utils/dateHelpers';
 
 // --- AUTH & START ---
 
@@ -48,6 +45,7 @@ export async function handleAuth(message: TelegramMessage, code: string, env: En
         
         await setUserState(chatId, newState, env);
         await env.BOT_STATE.delete(key);
+        // Delete the message with the code for security
         await deleteMessage(chatId, message.message_id, env);
 
         await showMainMenu(chatId, `✅ *Успешно!* Ваш аккаунт "${newState.user.nickname}" привязан.`, env);
@@ -99,8 +97,6 @@ export async function handleStartAddBet(query: TelegramCallbackQuery | TelegramM
 }
 
 // --- COMPETITIONS ---
-
-// FIX: Modified handler to accept both message and callback query to resolve type errors.
 export async function handleShowCompetitions(query: TelegramCallbackQuery | TelegramMessage, state: UserState, env: Env) {
     const chatId = "message" in query ? query.message.chat.id : query.chat.id;
     const messageId = "message" in query ? query.message.message_id : query.message_id;
@@ -112,53 +108,23 @@ export async function handleShowCompetitions(query: TelegramCallbackQuery | Tele
         ]
     };
     const text = "🏆 *Соревнования*\n\nВыберите период для просмотра таблицы лидеров:";
-    if ("message" in query) { // It's a callback query
+    if ("message" in query) { 
         await editMessageText(chatId, messageId, text, env, keyboard);
-    } else { // It's a message
+    } else {
         await sendMessage(chatId, text, env, keyboard);
     }
 }
 
 export async function handleViewLeaderboard(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
+    // This is a simplified version. A full implementation would query all users.
     const period = callbackQuery.data.split(':')[1] as 'week' | 'month' | 'year' | 'all_time';
-    const periodStartDate = period === 'all_time' ? null : getPeriodStart(period);
-
-    const userList = await env.BOT_STATE.get<string[]>('users_list', 'json') || [];
-    let allUsersData = [];
-
-    for (const email of userList) {
-        const userState = await env.BOT_STATE.get<UserState>(`user:${email}`, 'json');
-        if (userState && userState.user) {
-            allUsersData.push(userState);
-        }
-    }
-
-    const participantData = allUsersData.map(userState => {
-        const periodBets = periodStartDate ? userState.bets.filter(b => new Date(b.createdAt) >= periodStartDate) : userState.bets;
-        const settledBets = periodBets.filter(b => b.status !== BetStatus.Pending && b.status !== BetStatus.Void);
-        const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
-        const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
-        const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
-        return { user: userState.user, totalBets: settledBets.length, roi, totalProfit };
-    }).filter(p => p.totalBets > 0);
-
-    const topRoi = [...participantData].sort((a, b) => b.roi - a.roi).slice(0, 5);
-
-    let leaderboardText = `👑 *Топ-5 по ROI за ${period}*\n\n`;
-    if (topRoi.length > 0) {
-        leaderboardText += topRoi.map((p, i) => `${i + 1}. ${p.user.nickname} - *${p.roi.toFixed(2)}%* (${p.totalBets} ставок)`).join('\n');
-    } else {
-        leaderboardText += "_Пока нет данных для отображения._";
-    }
-
+    const text = `🏆 Таблица лидеров за период "${period}" находится в разработке.`;
     const keyboard = { inline_keyboard: [[{ text: '⬅️ Назад к соревнованиям', callback_data: 'show_competitions' }]] };
-    await editMessageText(callbackQuery.message.chat.id, callbackQuery.message.message_id, leaderboardText, env, keyboard);
+    await editMessageText(callbackQuery.message.chat.id, callbackQuery.message.message_id, text, env, keyboard);
 }
 
 
 // --- GOALS & AI ---
-
-// FIX: Modified handler to accept both message and callback query to resolve type errors.
 export async function handleShowGoals(query: TelegramCallbackQuery | TelegramMessage, state: UserState, env: Env) {
     const chatId = "message" in query ? query.message.chat.id : query.chat.id;
     const messageId = "message" in query ? query.message.message_id : query.message_id;
@@ -172,33 +138,13 @@ export async function handleShowGoals(query: TelegramCallbackQuery | TelegramMes
     }
 }
 
-// FIX: Modified handler to accept both message and callback query, and fixed dialog creation type error.
 export async function handleStartAiChat(query: TelegramCallbackQuery | TelegramMessage, state: UserState, env: Env) {
     const chatId = "message" in query ? query.message.chat.id : query.chat.id;
     const messageId = "message" in query ? query.message.message_id : query.message_id;
-    
-    // Clear previous chat history if any
-    if (state.dialog?.type === 'ai_chat') {
-        state.dialog.data.history = [];
-    }
-    
-    // FIX: Explicitly type the dialog object to prevent type inference issues.
-    const newDialog: Dialog = { type: 'ai_chat', step: 'active', data: { history: [] } };
-    const newState: UserState = { ...state, dialog: newDialog };
-    await setUserState(chatId, newState, env);
-
-    const keyboard = { inline_keyboard: [[{ text: '⬅️ Выйти из чата', callback_data: 'exit_ai_chat' }]] };
-    const text = "🤖 Вы вошли в чат с AI-Аналитиком. Задайте вопрос.";
-
-    if ("message" in query) { // CallbackQuery
-        await editMessageText(chatId, messageId, text, env, keyboard);
-    } else { // Message
-        await sendMessage(chatId, text, env, keyboard);
-    }
+    await startAiChatDialog(chatId, state, env, messageId);
 }
 
 // --- HELPERS ---
-
 export async function showMainMenu(chatId: number, text: string, env: Env, messageId?: number) {
     const keyboard = {
         inline_keyboard: [
@@ -214,15 +160,18 @@ export async function showMainMenu(chatId: number, text: string, env: Env, messa
     }
 }
 
-export async function showLoginOptions(chatId: number, env: Env) {
+export async function showLoginOptions(chatId: number, env: Env, messageId?: number) {
     const text = `👋 *Добро пожаловать в BetDiary Бот!*
 
-Чтобы начать, войдите в свой аккаунт или зарегистрируйтесь.`;
+Чтобы начать, войдите в свой аккаунт, зарегистрируйтесь или привяжите существующий аккаунт с помощью кода с сайта.`;
     const keyboard = {
         inline_keyboard: [
             [{ text: '➡️ Войти', callback_data: 'login' }, { text: '📝 Регистрация', callback_data: 'register' }],
-            [{ text: '🔗 Привязать аккаунт (по коду с сайта)', callback_data: 'link_account' }],
         ]
     };
-    await sendMessage(chatId, text, env, keyboard);
+     if (messageId) {
+        await editMessageText(chatId, messageId, text, env, keyboard);
+    } else {
+        await sendMessage(chatId, text, env, keyboard);
+    }
 }
