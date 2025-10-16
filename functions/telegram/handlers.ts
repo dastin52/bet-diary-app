@@ -39,6 +39,7 @@ const unauthenticatedCallbackMap: { [key: string]: (cb: TelegramCallbackQuery, e
     'login': handleLogin,
 };
 
+// Map for exact callback data matches
 const authenticatedCallbackMap: { [key: string]: (cb: TelegramCallbackQuery, state: UserState, env: Env) => Promise<void> } = {
     'show_stats': handleShowStatsCallback,
     'add_bet': handleStartAddBetCallback,
@@ -46,7 +47,6 @@ const authenticatedCallbackMap: { [key: string]: (cb: TelegramCallbackQuery, sta
     'show_goals': handleShowGoalsCallback,
     'ai_chat': handleStartAiChatCallback,
     'main_menu': (cb, state, env) => showMainMenu(cb.message.chat.id, "Главное меню", env, cb.message.message_id),
-    'view_leaderboard': handleViewLeaderboard,
 };
 
 
@@ -122,33 +122,46 @@ export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, 
     const chatId = callbackQuery.message.chat.id;
     try {
         const state = await getUserState(chatId, env);
-        const action = callbackQuery.data.split(':')[0];
+        const data = callbackQuery.data;
 
         // Acknowledge the button press immediately.
         await answerCallbackQuery(callbackQuery.id, env);
 
-        // 1. Highest priority: Dialog actions
-        if (action.startsWith('dialog_')) {
+        // --- ROUTING LOGIC ---
+
+        // 1. Dialog actions are highest priority
+        if (data.startsWith('dialog_')) {
             await continueDialog(callbackQuery, state, env);
             return;
         }
         
-        // 2. Route based on authentication status
+        // 2. Handle based on authentication status
         if (state.user) {
-            const handler = authenticatedCallbackMap[action];
-            if (handler) {
-                await handler(callbackQuery, state, env);
+            // Check for exact matches in the authenticated map first
+            const staticHandler = authenticatedCallbackMap[data];
+            if (staticHandler) {
+                await staticHandler(callbackQuery, state, env);
                 return;
             }
-        } else {
-            const handler = unauthenticatedCallbackMap[action];
-            if (handler) {
-                await handler(callbackQuery, env);
+            
+            // Check for parameterized authenticated actions
+            if (data.startsWith('view_leaderboard:')) {
+                await handleViewLeaderboard(callbackQuery, state, env);
+                return;
+            }
+
+        } else { // User is NOT authenticated
+            const unauthHandler = unauthenticatedCallbackMap[data];
+            if (unauthHandler) {
+                await unauthHandler(callbackQuery, env);
                 return;
             }
         }
 
-        console.warn(`Received unhandled callback_query data: ${callbackQuery.data} for chat ${chatId}`);
+        // 3. Fallback for unhandled callbacks
+        console.warn(`Received unhandled callback_query data: "${data}" for chat ${chatId}`);
+        // Optionally, send a message to the user that the button is outdated or invalid.
+        // await sendMessage(chatId, "Эта кнопка больше не активна.", env);
 
     } catch (error) {
         await reportError(chatId, env, 'Callback Query Handler', error);
