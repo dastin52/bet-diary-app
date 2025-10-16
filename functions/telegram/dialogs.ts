@@ -5,7 +5,8 @@ import { setUserState, normalizeState } from './state';
 import { editMessageText, sendMessage, deleteMessage } from './telegramApi';
 import { BOOKMAKERS, SPORTS, BET_TYPE_OPTIONS } from '../constants';
 import { calculateProfit, generateEventString } from '../utils/betUtils';
-import { showMainMenu, showLoginOptions } from './commands';
+// FIX: Removed `showMainMenu` import to break circular dependency.
+import { showLoginOptions } from './commands';
 import * as userStore from '../data/userStore';
 import { GoogleGenAI } from "@google/genai";
 
@@ -32,7 +33,16 @@ export async function continueDialog(update: TelegramMessage | TelegramCallbackQ
         await deleteMessage(message.chat.id, state.dialog.messageId!, env);
 
         if (state.user) {
-            await showMainMenu(message.chat.id, "Главное меню", env);
+            // FIX: Manually inlined `showMainMenu` to avoid circular dependency.
+            const text = "Главное меню";
+            const keyboard = {
+                inline_keyboard: [
+                    [{ text: '📊 Статистика', callback_data: 'show_stats' }, { text: '➕ Добавить ставку', callback_data: 'add_bet' }],
+                    [{ text: '🏆 Соревнования', callback_data: 'show_competitions' }, { text: '🎯 Мои цели', callback_data: 'show_goals' }],
+                    [{ text: '🤖 AI-Аналитик', callback_data: 'ai_chat' }],
+                ]
+            };
+            await sendMessage(message.chat.id, text, env, keyboard);
         } else {
             await showLoginOptions(message.chat.id, env);
         }
@@ -126,8 +136,16 @@ async function continueRegisterDialog(message: TelegramMessage, state: UserState
                 await userStore.addUser(newUser, env);
                 const newState: UserState = { ...state, user: newUser, dialog: null, bets: [], bankroll: 10000, goals: [], bankHistory: [] };
                 await setUserState(chatId, newState, env);
-                // FIX: Combine success message and menu into one message edit. This resolves the error about argument count.
-                await showMainMenu(chatId, `✅ Регистрация успешна!\n\nДобро пожаловать, ${newUser.nickname}!`, env, dialog.messageId!);
+                // FIX: Inlined showMainMenu to break circular dependency and resolve argument count error.
+                const successTextRegister = `✅ Регистрация успешна!\n\nДобро пожаловать, ${newUser.nickname}!`;
+                const keyboard = {
+                    inline_keyboard: [
+                        [{ text: '📊 Статистика', callback_data: 'show_stats' }, { text: '➕ Добавить ставку', callback_data: 'add_bet' }],
+                        [{ text: '🏆 Соревнования', callback_data: 'show_competitions' }, { text: '🎯 Мои цели', callback_data: 'show_goals' }],
+                        [{ text: '🤖 AI-Аналитик', callback_data: 'ai_chat' }],
+                    ]
+                };
+                await editMessageText(chatId, dialog.messageId!, successTextRegister, env, keyboard);
                 await deleteMessage(chatId, message.message_id, env); // delete password message
                 return;
         }
@@ -171,8 +189,16 @@ async function continueLoginDialog(message: TelegramMessage, state: UserState, e
                 const newState = existingState ? normalizeState(existingState) : { ...state, user: storedUser, bets: [], bankroll: 10000, goals: [], bankHistory: [] };
                 
                 await setUserState(chatId, updateDialogState(newState, null), env);
-                // FIX: Combine success message and menu into one message edit. This resolves the error about argument count.
-                await showMainMenu(chatId, `✅ Вход успешен!\n\nС возвращением, ${storedUser.nickname}!`, env, dialog.messageId!);
+                // FIX: Inlined showMainMenu to break circular dependency and resolve argument count error.
+                const successTextLogin = `✅ Вход успешен!\n\nС возвращением, ${storedUser.nickname}!`;
+                const keyboard = {
+                    inline_keyboard: [
+                        [{ text: '📊 Статистика', callback_data: 'show_stats' }, { text: '➕ Добавить ставку', callback_data: 'add_bet' }],
+                        [{ text: '🏆 Соревнования', callback_data: 'show_competitions' }, { text: '🎯 Мои цели', callback_data: 'show_goals' }],
+                        [{ text: '🤖 AI-Аналитик', callback_data: 'ai_chat' }],
+                    ]
+                };
+                await editMessageText(chatId, dialog.messageId!, successTextLogin, env, keyboard);
                 await deleteMessage(chatId, message.message_id, env); // delete password message
                 return;
         }

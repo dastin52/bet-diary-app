@@ -175,3 +175,29 @@ export async function showLoginOptions(chatId: number, env: Env, messageId?: num
         await sendMessage(chatId, text, env, keyboard);
     }
 }
+
+// FIX: Add missing handleHelp function.
+export async function handleHelp(message: TelegramMessage, env: Env) {
+    const chatId = message.chat.id;
+    const helpText = `*Список доступных команд:*
+
+/start - Начало работы или главное меню
+/addbet - 📝 Добавить новую ставку
+/stats - 📊 Показать мою статистику
+/competitions - 🏆 Открыть раздел соревнований
+/goals - 🎯 Открыть раздел целей
+/ai - 🤖 Поговорить с AI-аналитиком
+/reset - ⚠️ Сбросить состояние (если что-то пошло не так)
+/help - ℹ️ Показать это сообщение
+
+Вы также можете просто отправить 6-значный код для привязки аккаунта.`;
+    await sendMessage(chatId, helpText, env);
+}
+
+// FIX: Add missing handleReset function.
+export async function handleReset(message: TelegramMessage, env: Env) {
+    const chatId = message.chat.id;
+    // Reset state by saving a normalized null, which provides a clean default state.
+    await setUserState(chatId, normalizeState(null), env);
+    await sendMessage(chatId, "Ваше состояние было сброшено. Отправьте /start, чтобы начать заново.", env);
+}
