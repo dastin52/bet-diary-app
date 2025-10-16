@@ -2,7 +2,7 @@
 import { TelegramMessage, TelegramCallbackQuery, Env, UserState } from './types';
 import { getUserState } from './state';
 import {
-    handleStart, handleAuth, handleLogin, handleRegister, showMainMenu, handleHelp, handleReset,
+    handleStart, handleAuth, handleLogin, handleRegister, handleHelp, handleReset,
     handleShowStatsCommand, handleShowStatsCallback,
     handleStartAddBetCommand, handleStartAddBetCallback,
     handleShowCompetitionsCommand, handleShowCompetitionsCallback,
@@ -12,6 +12,7 @@ import {
 } from './commands';
 import { continueDialog } from './dialogs';
 import { answerCallbackQuery, reportError, sendMessage } from './telegramApi';
+import { showMainMenu } from './ui';
 
 // --- Command and Callback Maps ---
 
@@ -57,48 +58,59 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
         const state = await getUserState(chatId, env);
         const text = message.text || '';
 
+        // 1. Highest priority: Active dialogs (unless a command is issued)
         if (state.dialog && !text.startsWith('/')) {
             await continueDialog(message, state, env);
             return;
         }
 
+        // 2. Handle commands
         if (text.startsWith('/')) {
             const command = text.split(' ')[0];
+            let handlerFound = false;
 
             if (state.user) {
                 const handler = authenticatedCommandMap[command];
                 if (handler) {
                     await handler(message, state, env);
-                    return;
+                    handlerFound = true;
                 }
             } else {
                 const handler = unauthenticatedCommandMap[command];
                 if (handler) {
                     await handler(message, env);
-                    return;
+                    handlerFound = true;
                 }
             }
             
-            const commonHandler = commonCommandMap[command];
-            if (commonHandler) {
-                await commonHandler(message, env);
+            if (!handlerFound) {
+                const commonHandler = commonCommandMap[command];
+                if (commonHandler) {
+                    await commonHandler(message, env);
+                    handlerFound = true;
+                }
+            }
+
+            if (handlerFound) {
                 return;
             }
         }
         
+        // 3. Handle 6-digit auth code if not in a dialog
         const authCodeMatch = text.match(/^\d{6}$/);
         if (authCodeMatch && !state.dialog) {
             await handleAuth(message, authCodeMatch[0], env);
             return;
         }
         
+        // 4. Fallback behavior
         if (text.startsWith('/')) {
              await sendMessage(chatId, "🤔 Неизвестная команда. Используйте /help для списка команд.", env);
-        } else if (state.user) {
-             // Do nothing for random text when logged in, to avoid spamming the user
-        } else {
+        } else if (!state.user && !state.dialog) {
+            // If the user is not logged in and not in a dialog, show the start message for any text
             await handleStart(message, env);
         }
+        // If logged in and it's not a command or dialog, do nothing to avoid spam.
 
     } catch (error) {
         await reportError(chatId, env, 'Message Handler', error);
@@ -112,13 +124,16 @@ export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, 
         const state = await getUserState(chatId, env);
         const action = callbackQuery.data.split(':')[0];
 
+        // Acknowledge the button press immediately.
         await answerCallbackQuery(callbackQuery.id, env);
 
+        // 1. Highest priority: Dialog actions
         if (action.startsWith('dialog_')) {
             await continueDialog(callbackQuery, state, env);
             return;
         }
         
+        // 2. Route based on authentication status
         if (state.user) {
             const handler = authenticatedCallbackMap[action];
             if (handler) {
