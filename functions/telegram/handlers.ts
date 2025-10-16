@@ -8,7 +8,9 @@ import {
     handleShowCompetitionsCommand, handleShowCompetitionsCallback,
     handleShowGoalsCommand, handleShowGoalsCallback,
     handleStartAiChatCommand, handleStartAiChatCallback,
-    handleViewLeaderboard
+    handleViewLeaderboard,
+    handleManage,
+    handleGetCode
 } from './commands';
 import { continueDialog } from './dialogs';
 import { answerCallbackQuery, reportError, sendMessage } from './telegramApi';
@@ -22,8 +24,12 @@ const unauthenticatedCommandMap: { [key: string]: (msg: TelegramMessage, env: En
 
 const authenticatedCommandMap: { [key: string]: (msg: TelegramMessage, state: UserState, env: Env) => Promise<void> } = {
     '/start': (msg, state, env) => showMainMenu(msg.chat.id, `Вы уже вошли как ${state.user?.nickname}.`, env),
-    '/stats': handleShowStatsCommand,
+    '/menu': (msg, state, env) => showMainMenu(msg.chat.id, `Главное меню`, env),
+    '/add': handleStartAddBetCommand, // Alias
     '/addbet': handleStartAddBetCommand,
+    '/manage': handleManage,
+    '/stats': handleShowStatsCommand,
+    '/getcode': handleGetCode,
     '/competitions': handleShowCompetitionsCommand,
     '/goals': handleShowGoalsCommand,
     '/ai': handleStartAiChatCommand,

@@ -87,7 +87,7 @@ async function showStatsLogic(chatId: number, messageId: number, state: UserStat
 
 async function startAddBetLogic(chatId: number, messageId: number, state: UserState, env: Env) {
     // We delete the menu message and start a new dialog message
-    await deleteMessage(chatId, messageId, env);
+    await deleteMessage(chatId, messageId, env).catch(() => {}); // Ignore error if message doesn't exist
     await startAddBetDialog(chatId, state, env);
 }
 
@@ -150,6 +150,21 @@ export async function handleStartAiChatCommand(message: TelegramMessage, state: 
 export async function handleStartAiChatCallback(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
     await startAiChatDialog(callbackQuery.message.chat.id, state, env, callbackQuery.message.message_id);
 }
+
+export async function handleManage(message: TelegramMessage, state: UserState, env: Env) {
+    const sentMessage = await sendMessage(message.chat.id, "Загрузка...", env);
+    await editMessageText(message.chat.id, sentMessage.result.message_id, "🚧 Управление ставками доступно в веб-интерфейсе. Эта функция в боте находится в разработке.", env, {
+        inline_keyboard: [[{ text: '⬅️ В меню', callback_data: 'main_menu' }]]
+    });
+}
+
+export async function handleGetCode(message: TelegramMessage, state: UserState, env: Env) {
+    const sentMessage = await sendMessage(message.chat.id, "Загрузка...", env);
+    await editMessageText(message.chat.id, sentMessage.result.message_id, "ℹ️ Код используется для привязки аккаунта к боту (генерируется на сайте). Для входа на сайт используйте ваш email и пароль.", env, {
+        inline_keyboard: [[{ text: '⬅️ В меню', callback_data: 'main_menu' }]]
+    });
+}
+
 
 // This doesn't need a command wrapper as it's only ever a callback
 export async function handleViewLeaderboard(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {

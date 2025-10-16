@@ -227,14 +227,14 @@ async function continueRegisterDialog(message: TelegramMessage, state: UserState
         switch (dialog.step) {
             case 'email':
                 if (!/^\S+@\S+\.\S+$/.test(textInput)) throw new Error("Неверный формат email.");
-                // FIX: Pass env object to userStore.findUserBy.
+                // FIX: Pass env object to userStore.findUserBy to match its signature.
                 if (await userStore.findUserBy(u => u.email === textInput, env)) throw new Error("Этот email уже используется.");
                 dialog.data.email = textInput;
                 dialog.step = 'nickname';
                 break;
             case 'nickname':
                 if (textInput.length < 3) throw new Error("Никнейм должен быть не менее 3 символов.");
-                // FIX: Pass env object to userStore.findUserBy.
+                // FIX: Pass env object to userStore.findUserBy to match its signature.
                 if (await userStore.findUserBy(u => u.nickname.toLowerCase() === textInput.toLowerCase(), env)) throw new Error("Этот никнейм уже занят.");
                 dialog.data.nickname = textInput;
                 dialog.step = 'password';
@@ -284,7 +284,7 @@ async function continueLoginDialog(message: TelegramMessage, state: UserState, e
      try {
         switch (dialog.step) {
             case 'email':
-                // FIX: Pass env object to userStore.findUserBy.
+                // FIX: Pass env object to userStore.findUserBy to match its signature.
                 const user = await userStore.findUserBy(u => u.email === textInput, env);
                 if (!user) throw new Error("Пользователь с таким email не найден.");
                 dialog.data.user = user;
