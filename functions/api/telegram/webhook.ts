@@ -1,6 +1,6 @@
 // functions/api/telegram/webhook.ts
-import { handleRequest } from '../../src/telegram/handler';
-import { Env, TelegramUpdate } from '../../src/telegram/types';
+import { handleRequest } from '../telegram/handler';
+import { Env } from '../telegram/types';
 
 interface EventContext {
     request: Request;

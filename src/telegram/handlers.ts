@@ -5,7 +5,8 @@ import { TelegramMessage, TelegramCallbackQuery, Env } from './types';
 import { getUserState } from './state';
 import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth } from './commands';
 import { continueAddBetDialog } from './dialogs';
-import { answerCallbackQuery, reportError } from './telegramApi';
+// FIX: sendMessage was not found. It's imported here from telegramApi.
+import { answerCallbackQuery, reportError, sendMessage } from './telegramApi';
 
 export async function handleMessage(message: TelegramMessage, env: Env) {
     const chatId = message.chat.id;
