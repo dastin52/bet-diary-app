@@ -6,6 +6,7 @@ import { editMessageText, sendMessage, deleteMessage } from './telegramApi';
 import { BOOKMAKERS, SPORTS, BET_TYPE_OPTIONS } from '../constants';
 import { calculateProfit, generateEventString } from '../utils/betUtils';
 // FIX: Removed `showMainMenu` import to break circular dependency.
+// FIX: Removed `showLoginOptions` import to break circular dependency.
 import { showLoginOptions } from './commands';
 import * as userStore from '../data/userStore';
 import { GoogleGenAI } from "@google/genai";
@@ -44,7 +45,17 @@ export async function continueDialog(update: TelegramMessage | TelegramCallbackQ
             };
             await sendMessage(message.chat.id, text, env, keyboard);
         } else {
-            await showLoginOptions(message.chat.id, env);
+            // FIX: Inlined showLoginOptions to resolve circular dependency error.
+            // The call was `await showLoginOptions(message.chat.id, env);`
+            const text = `👋 *Добро пожаловать в BetDiary Бот!*
+
+Чтобы начать, войдите в свой аккаунт, зарегистрируйтесь или привяжите существующий аккаунт с помощью кода с сайта.`;
+            const keyboard = {
+                inline_keyboard: [
+                    [{ text: '➡️ Войти', callback_data: 'login' }, { text: '📝 Регистрация', callback_data: 'register' }],
+                ]
+            };
+            await sendMessage(message.chat.id, text, env, keyboard);
         }
         await setUserState(message.chat.id, updateDialogState(state, null), env);
         return;
