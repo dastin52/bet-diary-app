@@ -126,9 +126,8 @@ async function continueRegisterDialog(message: TelegramMessage, state: UserState
                 await userStore.addUser(newUser, env);
                 const newState: UserState = { ...state, user: newUser, dialog: null, bets: [], bankroll: 10000, goals: [], bankHistory: [] };
                 await setUserState(chatId, newState, env);
-                await editMessageText(chatId, dialog.messageId!, `✅ Регистрация успешна!`, env);
-                // FIX: Pass the 'env' argument to showMainMenu.
-                await showMainMenu(chatId, `Добро пожаловать, ${newUser.nickname}!`, env);
+                // FIX: Combine success message and menu into one message edit. This resolves the error about argument count.
+                await showMainMenu(chatId, `✅ Регистрация успешна!\n\nДобро пожаловать, ${newUser.nickname}!`, env, dialog.messageId!);
                 await deleteMessage(chatId, message.message_id, env); // delete password message
                 return;
         }
@@ -172,9 +171,8 @@ async function continueLoginDialog(message: TelegramMessage, state: UserState, e
                 const newState = existingState ? normalizeState(existingState) : { ...state, user: storedUser, bets: [], bankroll: 10000, goals: [], bankHistory: [] };
                 
                 await setUserState(chatId, updateDialogState(newState, null), env);
-                await editMessageText(chatId, dialog.messageId!, `✅ Вход успешен!`, env);
-                // FIX: Pass the 'env' argument to showMainMenu.
-                await showMainMenu(chatId, `С возвращением, ${storedUser.nickname}!`, env);
+                // FIX: Combine success message and menu into one message edit. This resolves the error about argument count.
+                await showMainMenu(chatId, `✅ Вход успешен!\n\nС возвращением, ${storedUser.nickname}!`, env, dialog.messageId!);
                 await deleteMessage(chatId, message.message_id, env); // delete password message
                 return;
         }
