@@ -1,9 +1,11 @@
-
 // functions/telegram/commands.ts
 import { BetStatus, Env, TelegramMessage, UserState, TelegramCallbackQuery } from './types';
 import { setUserState, normalizeState } from './state';
 import { sendMessage } from './telegramApi';
-import { showMainMenu, showLoginOptions } from './ui';
+import { showMainMenu, showLoginOptions, makeKeyboard } from './ui';
+import { CB } from './router';
+import { calculateBotAnalytics, formatAnalyticsToText } from './analytics';
+
 
 export async function handleStart(message: TelegramMessage, state: UserState, env: Env) {
     if (state.user) {
@@ -29,8 +31,8 @@ export async function handleReset(chatId: number, env: Env) {
     await sendMessage(chatId, "Ваше состояние было сброшено. Отправьте /start, чтобы начать заново.", env);
 }
 
-export async function showStats(update: TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = update.message.chat.id;
+export async function showStats(update: TelegramCallbackQuery | TelegramMessage, state: UserState, env: Env) {
+    const chatId = 'message' in update ? update.message.chat.id : update.chat.id;
 
     const settledBets = state.bets.filter(b => b.status !== BetStatus.Pending);
     if (settledBets.length === 0) {
@@ -38,23 +40,39 @@ export async function showStats(update: TelegramCallbackQuery, state: UserState,
         return;
     }
     
-    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
-    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
-    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
-    const wonBets = settledBets.filter(b => b.status === BetStatus.Won).length;
-    const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void);
-    const winRate = nonVoidBets.length > 0 ? (wonBets / nonVoidBets.length) * 100 : 0;
+    const analytics = calculateBotAnalytics(state);
 
     const statsText = `*📊 Ваша статистика*
 
 - *Текущий банк:* ${state.bankroll.toFixed(2)} ₽
-- *Общая прибыль:* ${totalProfit > 0 ? '+' : ''}${totalProfit.toFixed(2)} ₽
-- *ROI:* ${roi.toFixed(2)}%
-- *Процент выигрышей:* ${winRate.toFixed(2)}%
-- *Всего рассчитанных ставок:* ${settledBets.length}`;
+- *Общая прибыль:* ${analytics.totalProfit > 0 ? '+' : ''}${analytics.totalProfit.toFixed(2)} ₽
+- *ROI:* ${analytics.roi.toFixed(2)}%
+- *Оборот:* ${analytics.turnover.toFixed(2)} ₽
+- *Процент выигрышей:* ${analytics.winRate.toFixed(2)}%
+- *Всего ставок:* ${analytics.betCount}
+- *Проигрышей:* ${analytics.lostBetsCount}`;
+    
+    const keyboard = makeKeyboard([
+        [{ text: '📋 Подробный отчет', callback_data: CB.SHOW_BANK_HISTORY }],
+        [{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]
+    ]);
 
-    await sendMessage(chatId, statsText, env);
+    await sendMessage(chatId, statsText, env, keyboard);
 }
+
+
+export async function handleShowBankHistory(update: TelegramCallbackQuery, state: UserState, env: Env) {
+    const chatId = update.message.chat.id;
+    const analytics = calculateBotAnalytics(state);
+    const reportText = formatAnalyticsToText(analytics, state.bankroll);
+    
+    const keyboard = makeKeyboard([
+        [{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]
+    ]);
+
+    await sendMessage(chatId, reportText, env, keyboard);
+}
+
 
 export async function handleAuth(message: TelegramMessage, code: string, env: Env) {
     const chatId = message.chat.id;

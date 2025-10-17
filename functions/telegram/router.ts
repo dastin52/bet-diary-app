@@ -29,6 +29,7 @@ export const CB = {
     SHOW_GOALS: 'show_goals',
     MANAGE_BETS: MANAGE_PREFIX, // The entry point to the manage module is just the prefix
     SHOW_AI_ANALYST: 'show_ai_analyst',
+    SHOW_BANK_HISTORY: 'show_bank_history',
     
     // Auth
     LOGIN: 'login',

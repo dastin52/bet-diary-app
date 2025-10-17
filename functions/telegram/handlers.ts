@@ -2,7 +2,7 @@
 
 import { TelegramMessage, TelegramCallbackQuery, Env, UserState } from './types';
 import { getUserState } from './state';
-import { handleStart, handleHelp, handleReset, showStats, showCompetitions, showGoals, handleAuth } from './commands';
+import { handleStart, handleHelp, handleReset, showStats, showCompetitions, showGoals, handleAuth, handleShowBankHistory } from './commands';
 import { continueDialog, startAddBetDialog, startLoginDialog, startRegisterDialog, startAiChatDialog } from './dialogs';
 import { showMainMenu, showLoginOptions } from './ui';
 import { CB, MANAGE_PREFIX } from './router';
@@ -122,6 +122,9 @@ export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, 
                 break;
             case CB.BACK_TO_MAIN:
                  await showMainMenu(callbackQuery, env);
+                 break;
+            case CB.SHOW_BANK_HISTORY:
+                 await handleShowBankHistory(callbackQuery, state, env);
                  break;
             default:
                 console.warn(`Unhandled callback_query data in main handler: ${data} for chat ${chatId}`);
