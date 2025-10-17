@@ -330,7 +330,9 @@ async function continueLoginDialog(update: TelegramMessage | TelegramCallbackQue
 
 export async function startAiChatDialog(chatId: number, state: UserState, env: Env) {
     const dialog: Dialog = { type: 'ai_chat', step: 'ACTIVE', data: { history: [] } };
-    await sendMessage(chatId, "🤖 AI-Аналитик к вашим услугам. Задайте свой вопрос или напишите /stop для выхода.", env);
+    const keyboard = makeKeyboard([[{ text: '🔚 Завершить сессию', callback_data: 'dialog_stop_ai' }]]);
+    const message = await sendMessage(chatId, "🤖 AI-Аналитик к вашим услугам. Задайте свой вопрос или напишите /stop для выхода.", env, keyboard);
+    dialog.messageId = message.result.message_id;
     state.dialog = dialog;
     await setUserState(chatId, state, env);
 }
@@ -342,11 +344,22 @@ async function continueAiChatDialog(update: TelegramMessage | TelegramCallbackQu
 
     if (!userInput) return;
 
-    if (userInput.toLowerCase() === '/stop') {
-        await sendMessage(chatId, "🤖 Сессия с AI-Аналитиком завершена.", env);
+    const stopCommands = ['/stop', 'dialog_stop_ai'];
+
+    if (stopCommands.includes(userInput.toLowerCase())) {
         state.dialog = null;
         await setUserState(chatId, state, env);
-        await showMainMenu(update, env);
+        // We must construct a "fake" callback query if the user typed /stop,
+        // so that showMainMenu knows which message to edit.
+        const callbackMessage = isCallback(update) 
+            ? update 
+            : { 
+                message: { message_id: dialog.messageId!, chat: { id: chatId } },
+                data: CB.SHOW_MAIN_MENU 
+            } as any;
+        
+        await editMessageText(chatId, dialog.messageId!, "🤖 Сессия с AI-Аналитиком завершена.", env);
+        await showMainMenu(callbackMessage, env);
         return;
     }
 

@@ -18,25 +18,26 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
         if (globalHandler) {
             if (state.dialog) {
                 state.dialog = null;
-                await setUserState(chatId, state, env); // Clear dialog before proceeding
+                // No need to wait, let it run in the background
+                setUserState(chatId, state, env);
             }
             await globalHandler(message, state, env);
             return;
         }
-
-        // 2. If a dialog is active, all non-command messages go to it.
-        if (state.dialog && !text.startsWith('/')) {
+        
+        // 2. If a dialog is active, it handles ALL non-global input (including commands like /stop).
+        if (state.dialog) {
             await continueDialog(message, state, env);
             return;
         }
         
-        // 3. Handle 6-digit auth code if no dialog is active and user is not authenticated.
+        // 3. If no dialog is active, handle auth code for non-authed users.
         if (!state.user && /^\d{6}$/.test(text)) {
             await handleAuth(message, text, env);
             return;
         }
 
-        // 4. Handle other contextual commands.
+        // 4. If no dialog, route other commands based on auth status.
         if (text.startsWith('/')) {
             const handler = (state.user ? authenticatedRoutes : unauthenticatedRoutes)[command];
             if (handler) {
@@ -47,15 +48,14 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
             return;
         }
         
-        // 5. If it's just plain text with no active dialog, guide the user.
-        if (!state.dialog) {
-             await handleUnknownCommand(message, state, env);
-        }
+        // 5. If it's just plain text with no active dialog, treat as unknown.
+        await handleUnknownCommand(message, state, env);
 
     } catch (error) {
         await reportError(chatId, env, 'Message Handler', error);
     }
 }
+
 
 export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, env: Env) {
     const chatId = callbackQuery.message.chat.id;
@@ -64,8 +64,8 @@ export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, 
         const state = await getUserState(chatId, env);
         const data = callbackQuery.data;
 
-        // 1. Dialogs have priority for callbacks starting with 'dialog_'
-        if (state.dialog && data.startsWith('dialog_')) {
+        // 1. If a dialog is active, it gets priority for all callbacks.
+        if (state.dialog) {
             await continueDialog(callbackQuery, state, env);
             return;
         }
@@ -77,7 +77,7 @@ export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, 
              return;
         }
 
-        // 3. Route all other callbacks using the router
+        // 3. Route all other callbacks using the router based on auth status
         const handler = state.user ? authenticatedRoutes[data] : unauthenticatedRoutes[data];
 
         if (handler) {
