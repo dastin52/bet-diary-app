@@ -1,45 +1,103 @@
 // functions/telegram/commands.ts
-import { Env, TelegramCallbackQuery, TelegramMessage, UserState } from './types';
-import { getUserState, setUserState, normalizeState } from './state';
-import { sendMessage, editMessageText, sendDocument } from './telegramApi';
-import { startAddBetDialog, startLoginDialog, startRegisterDialog, startAiChatDialog } from './dialogs';
-import { generateShortStatsReport, generateDetailedReport, generateHtmlReport } from './analytics';
-import { showMainMenu, showLoginOptions } from './ui';
-import { CB } from './router';
+// FIX: File content implemented. This file contains the logic for individual bot commands.
 
-export async function handleStart(message: TelegramMessage | TelegramCallbackQuery, env: Env) {
-    const chatId = 'chat' in message ? message.chat.id : message.message.chat.id;
+import { BetStatus, BetType, Env, TelegramMessage, UserState } from './types';
+import { getUserState, setUserState, normalizeState } from './state';
+import { sendMessage } from './telegramApi';
+import { startAddBetDialog } from './dialogs';
+
+export async function handleStart(message: TelegramMessage, env: Env) {
+    const chatId = message.chat.id;
     const state = await getUserState(chatId, env);
 
     if (state.user) {
-        await showMainMenu(message, env);
+        await sendMessage(chatId, `👋 Привет, ${state.user.nickname}! Рад снова вас видеть. Используйте /help, чтобы увидеть список команд.`, env);
     } else {
-        await showLoginOptions(message, env, `👋 *Добро пожаловать в BetDiary Бот!*
+        await sendMessage(chatId, `👋 *Добро пожаловать в BetDiary Бот!*
 
-Чтобы начать, войдите или зарегистрируйтесь.`);
+Чтобы начать, вам нужно привязать свой аккаунт из веб-приложения.
+
+1.  Откройте веб-приложение BetDiary.
+2.  Перейдите в "Настройки".
+3.  Нажмите "Сгенерировать код" в разделе интеграции с Telegram.
+4.  Отправьте полученный 6-значный код мне в этот чат.`, env);
     }
 }
 
-export async function handleHelp(chatId: number, env: Env) {
+export async function handleHelp(message: TelegramMessage, env: Env) {
+    const chatId = message.chat.id;
     const helpText = `*Список доступных команд:*
 
-/start - Главное меню
+/start - Начало работы
 /addbet - 📝 Добавить новую ставку
 /stats - 📊 Показать мою статистику
-/manage - 📈 Управление ставками
-/ai - 🤖 Чат с AI-Аналитиком
-/reset - ⚠️ Сбросить сессию
-/help - ℹ️ Показать это сообщение`;
+/reset - ⚠️ Сбросить состояние (если что-то пошло не так)
+/help - ℹ️ Показать это сообщение
+
+Вы также можете просто отправить 6-значный код для привязки аккаунта.`;
     await sendMessage(chatId, helpText, env);
 }
 
-export async function handleReset(chatId: number, env: Env) {
+export async function handleReset(message: TelegramMessage, env: Env) {
+    const chatId = message.chat.id;
+    // Reset state by saving a normalized null, which provides a clean default state.
     await setUserState(chatId, normalizeState(null), env);
-    await sendMessage(chatId, "Ваша сессия была сброшена. Отправьте /start, чтобы начать заново.", env);
+    await sendMessage(chatId, "Ваше состояние было сброшено. Отправьте /start, чтобы начать заново.", env);
+}
+
+export async function handleAddBet(message: TelegramMessage, env: Env) {
+    const chatId = message.chat.id;
+    const state = await getUserState(chatId, env);
+
+    if (!state.user) {
+        await sendMessage(chatId, "Пожалуйста, сначала привяжите свой аккаунт, отправив 6-значный код из веб-приложения.", env);
+        return;
+    }
+
+    if (state.dialog) {
+        await sendMessage(chatId, "Вы уже находитесь в процессе добавления ставки. Завершите его или используйте /reset для отмены.", env);
+        return;
+    }
+    
+    await startAddBetDialog(chatId, state, env);
+}
+
+export async function handleStats(message: TelegramMessage, env: Env) {
+    const chatId = message.chat.id;
+    const state = await getUserState(chatId, env);
+
+    if (!state.user) {
+        await sendMessage(chatId, "Пожалуйста, сначала привяжите свой аккаунт.", env);
+        return;
+    }
+
+    const settledBets = state.bets.filter(b => b.status !== BetStatus.Pending);
+    if (settledBets.length === 0) {
+        await sendMessage(chatId, "У вас пока нет рассчитанных ставок для отображения статистики.", env);
+        return;
+    }
+    
+    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
+    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
+    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
+    const wonBets = settledBets.filter(b => b.status === BetStatus.Won).length;
+    const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void);
+    const winRate = nonVoidBets.length > 0 ? (wonBets / nonVoidBets.length) * 100 : 0;
+
+    const statsText = `*📊 Ваша статистика*
+
+- *Текущий банк:* ${state.bankroll.toFixed(2)} ₽
+- *Общая прибыль:* ${totalProfit > 0 ? '+' : ''}${totalProfit.toFixed(2)} ₽
+- *ROI:* ${roi.toFixed(2)}%
+- *Процент выигрышей:* ${winRate.toFixed(2)}%
+- *Всего рассчитанных ставок:* ${settledBets.length}`;
+
+    await sendMessage(chatId, statsText, env);
 }
 
 export async function handleAuth(message: TelegramMessage, code: string, env: Env) {
     const chatId = message.chat.id;
+    
     try {
         const key = `tgauth:${code}`;
         const dataString = await env.BOT_STATE.get(key);
@@ -48,88 +106,24 @@ export async function handleAuth(message: TelegramMessage, code: string, env: En
             await sendMessage(chatId, "❌ Неверный или истекший код. Пожалуйста, сгенерируйте новый код в веб-приложении.", env);
             return;
         }
-        
-        await env.BOT_STATE.delete(key);
+
         const userData = JSON.parse(dataString);
+        
         const newState = normalizeState(userData);
 
-        if (!newState.user) throw new Error("User data from auth code is invalid.");
+        if (!newState.user) {
+            throw new Error("User data retrieved from KV is invalid.");
+        }
         
         await setUserState(chatId, newState, env);
         
-        await sendMessage(chatId, `✅ *Успешно!* Ваш аккаунт "${newState.user.nickname}" привязан.`, env);
-        await showMainMenu(message, env);
+        // Clean up the used auth code
+        await env.BOT_STATE.delete(key);
+
+        await sendMessage(chatId, `✅ *Успешно!* Ваш аккаунт "${newState.user.nickname}" привязан. Теперь вы можете использовать все функции бота.`, env);
+
     } catch (error) {
         console.error("Auth error:", error);
         await sendMessage(chatId, "Произошла ошибка при проверке кода. Убедитесь, что вы скопировали его правильно.", env);
     }
-}
-
-export async function handleAddBet(chatId: number, state: UserState, env: Env) {
-    if (state.dialog) {
-        await sendMessage(chatId, "Вы уже находитесь в процессе диалога. Завершите его или используйте /reset для отмены.", env);
-        return;
-    }
-    await startAddBetDialog(chatId, state, env);
-}
-
-export async function handleStats(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = 'chat' in update ? update.chat.id : update.message.chat.id;
-    const statsText = generateShortStatsReport(state);
-    
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: '📝 Подробный отчет', callback_data: CB.SHOW_DETAILED_ANALYTICS }],
-            [{ text: '📥 Скачать отчет', callback_data: CB.DOWNLOAD_ANALYTICS_REPORT }],
-            [{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]
-        ]
-    };
-    
-    if ('data' in update) { // Came from button press
-        await editMessageText(chatId, update.message.message_id, statsText, env, keyboard);
-    } else { // Came from /stats command
-        await sendMessage(chatId, statsText, env, keyboard);
-    }
-}
-
-export async function handleShowDetailedReport(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = callbackQuery.message.chat.id;
-    const messageId = callbackQuery.message.message_id;
-    const reportText = generateDetailedReport(state);
-    
-    const keyboard = {
-        inline_keyboard: [
-             [{ text: '📥 Скачать отчет', callback_data: CB.DOWNLOAD_ANALYTICS_REPORT }],
-             [{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]
-        ]
-    };
-
-    await editMessageText(chatId, messageId, reportText, env, keyboard);
-}
-
-export async function handleDownloadReport(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = callbackQuery.message.chat.id;
-    await sendMessage(chatId, "⏳ Готовлю ваш отчет...", env);
-    const htmlContent = generateHtmlReport(state);
-
-    // Telegram API expects a file-like object for documents.
-    // We create a Blob from the HTML string.
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const fileName = `BetDiary_Отчет_${new Date().toLocaleDateString('ru-RU')}.html`;
-
-    await sendDocument(chatId, blob, fileName, env);
-}
-
-
-// --- Placeholder command handlers ---
-export async function handleLogin(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    await startLoginDialog(callbackQuery.message.chat.id, state, env, callbackQuery.message.message_id);
-}
-
-export async function handleRegister(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    await startRegisterDialog(callbackQuery.message.chat.id, state, env, callbackQuery.message.message_id);
-}
-
-export async function handleAiAnalyst(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-     await startAiChatDialog(callbackQuery.message.chat.id, state, env);
 }

@@ -1,53 +1,39 @@
 // functions/data/userStore.ts
-import { Env, User } from '../telegram/types';
+// WARNING: This implementation uses localStorage and is intended for client-side or Node.js environments.
+// It will NOT work as-is in a serverless environment like Cloudflare Workers that lacks localStorage.
+// For production, this should be replaced with a KV store or database implementation.
 
-const USERS_LIST_KEY = 'users_list';
+import { User } from '../telegram/types';
 
-// Helper to manage the list of user emails for iteration
-async function getUserEmailList(env: Env): Promise<string[]> {
-    return (await env.BOT_STATE.get<string[]>(USERS_LIST_KEY, 'json')) || [];
-}
+const USERS_STORAGE_KEY = 'betting_app_users';
 
-async function saveUserEmailList(emails: string[], env: Env): Promise<void> {
-    await env.BOT_STATE.put(USERS_LIST_KEY, JSON.stringify(emails));
-}
+// This is a placeholder for a KV/DB-based user retrieval function.
+export const getUsers = (): User[] => {
+  // In a real serverless function, you would list keys from your KV store.
+  // This is a mock implementation and will not work.
+  console.warn("getUsers() is using a mock implementation and will not work in production serverless environment.");
+  return [];
+};
 
-/**
- * Finds a user by a predicate function. Iterates through all users.
- * @param predicate - A function that returns true if the user matches.
- * @param env - The Cloudflare environment.
- * @returns The found user or undefined.
- */
-export async function findUserBy(predicate: (user: User) => boolean, env: Env): Promise<User | undefined> {
-    const emails = await getUserEmailList(env);
-    for (const email of emails) {
-        const user = await env.BOT_STATE.get<User>(`user:${email}`, 'json');
-        if (user && predicate(user)) {
-            return user;
-        }
-    }
-    return undefined;
-}
+// This is a placeholder for a KV/DB-based user retrieval function.
+export const findUserBy = (predicate: (user: User) => boolean): User | undefined => {
+  // This would involve fetching all users and then filtering, which is inefficient.
+  // A real DB would allow querying.
+  console.warn("findUserBy() is using a mock implementation and will not work in production serverless environment.");
+  return undefined;
+};
 
-/**
- * Adds a new user to the store.
- * @param newUser - The user object to add.
- * @param env - The Cloudflare environment.
- */
-export async function addUser(newUser: User, env: Env): Promise<void> {
-    const emails = await getUserEmailList(env);
-    if (!emails.includes(newUser.email)) {
-        emails.push(newUser.email);
-        await saveUserEmailList(emails, env);
-    }
-    await env.BOT_STATE.put(`user:${newUser.email}`, JSON.stringify(newUser));
-}
+// This is a placeholder for a KV/DB-based user update function.
+export const updateUser = (updatedUser: User): void => {
+    console.warn("updateUser() is using a mock implementation and will not work in production serverless environment.");
+};
 
-/**
- * Updates an existing user's data.
- * @param updatedUser - The full user object with updated data.
- * @param env - The Cloudflare environment.
- */
-export async function updateUser(updatedUser: User, env: Env): Promise<void> {
-    await env.BOT_STATE.put(`user:${updatedUser.email}`, JSON.stringify(updatedUser));
-}
+// This is a placeholder for a KV/DB-based user status update function.
+export const updateUserStatus = (email: string, status: 'active' | 'blocked'): void => {
+    console.warn("updateUserStatus() is using a mock implementation and will not work in production serverless environment.");
+};
+
+// This is a placeholder for a KV/DB-based user creation function.
+export const addUser = (newUser: User): void => {
+    console.warn("addUser() is using a mock implementation and will not work in production serverless environment.");
+};

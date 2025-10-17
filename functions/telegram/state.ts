@@ -24,7 +24,8 @@ export function normalizeState(data: any): UserState {
 export async function getUserState(chatId: number, env: Env): Promise<UserState> {
     const key = `tgchat:${chatId}`;
     try {
-        const data = await env.BOT_STATE.get<UserState>(key, 'json');
+        // FIX: Correctly call KV get with options object, not a generic type argument.
+        const data = await env.BOT_STATE.get(key, { type: 'json' });
         return normalizeState(data);
     } catch (e) {
         console.error(`Failed to parse state for chat ${chatId}, returning default. Error:`, e);

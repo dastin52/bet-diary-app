@@ -1,71 +1,59 @@
 // functions/telegram/handlers.ts
-import { TelegramMessage, TelegramCallbackQuery, Env, UserState, Dialog } from './types';
-import { getUserState, setUserState } from './state';
-import { continueDialog } from './dialogs';
-import { routeCallback, CB, MANAGE_PREFIX } from './router';
-import { handleAuth, handleStart, handleHelp, handleReset } from './commands';
-import { reportError, answerCallbackQuery } from './telegramApi';
-import { manageBets } from './manageBets';
+// FIX: File content implemented. This file acts as the main router for incoming Telegram updates.
 
-// Global commands that should interrupt any active dialog
-const GLOBAL_COMMANDS = ['/start', '/help', '/reset', '/menu'];
+import { TelegramMessage, TelegramCallbackQuery, Env } from './types';
+import { getUserState } from './state';
+import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth } from './commands';
+import { continueAddBetDialog } from './dialogs';
+// FIX: sendMessage was not found. It's imported here from telegramApi.
+import { answerCallbackQuery, reportError, sendMessage } from './telegramApi';
 
 export async function handleMessage(message: TelegramMessage, env: Env) {
     const chatId = message.chat.id;
     try {
         const state = await getUserState(chatId, env);
-        const text = message.text || '';
 
-        // 1. Handle global commands first
-        if (text.startsWith('/')) {
-            const command = text.split(' ')[0];
-            if (GLOBAL_COMMANDS.includes(command)) {
-                // If a dialog was active, cancel it before proceeding
-                if (state.dialog) {
-                    state.dialog = null;
-                    await setUserState(chatId, state, env);
-                }
-                switch (command) {
-                    case '/start':
-                    case '/menu':
-                        await handleStart(message, env);
-                        return;
-                    case '/help':
-                        await handleHelp(chatId, env);
-                        return;
-                    case '/reset':
-                        await handleReset(chatId, env);
-                        return;
-                }
-            }
-        }
-        
-        // 2. If a dialog is active, pass the message to it
-        if (state.dialog) {
-            await continueDialog(message, state, env);
+        // If a dialog is active, all text messages go to it, unless it's a command.
+        if (state.dialog && message.text && !message.text.startsWith('/')) {
+            await continueAddBetDialog(message, state, env);
             return;
         }
 
-        // 3. Handle 6-digit auth code
+        const text = message.text || '';
+
+        // Check for commands
+        if (text.startsWith('/')) {
+            const command = text.split(' ')[0];
+            switch (command) {
+                case '/start':
+                    await handleStart(message, env);
+                    return;
+                case '/help':
+                    await handleHelp(message, env);
+                    return;
+                case '/reset':
+                    await handleReset(message, env);
+                    return;
+                case '/addbet':
+                    await handleAddBet(message, env);
+                    return;
+                case '/stats':
+                    await handleStats(message, env);
+                    return;
+            }
+        }
+        
+        // Check for 6-digit auth code
         const authCodeMatch = text.match(/^\d{6}$/);
         if (authCodeMatch) {
             await handleAuth(message, authCodeMatch[0], env);
             return;
         }
 
-        // 4. Handle other non-global commands or route to the router
+        // Default response if no command or dialog is matched
         if (text.startsWith('/')) {
-            await routeCallback({
-                id: 'fake_cq_id_from_text_cmd',
-                from: message.from,
-                message: message,
-                data: text.substring(1) // Convert command to callback data, e.g., /stats -> stats
-            }, state, env);
-            return;
+            await sendMessage(chatId, "🤔 Неизвестная команда. Используйте /help, чтобы увидеть список доступных команд.", env);
         }
-        
-        // 5. If nothing else matches, show the main menu
-        await handleStart(message, env);
 
     } catch (error) {
         await reportError(chatId, env, 'Message Handler', error);
@@ -76,18 +64,17 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
 export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, env: Env) {
     const chatId = callbackQuery.message.chat.id;
     try {
-        await answerCallbackQuery(callbackQuery.id, env);
         const state = await getUserState(chatId, env);
         
-        // If a dialog is active, pass the callback to it
-        if (state.dialog) {
-            await continueDialog(callbackQuery, state, env);
-        } 
-        // Route all other callbacks via the main router
-        else {
-            await routeCallback(callbackQuery, state, env);
+        // Acknowledge the button press immediately to remove the "loading" state on the button.
+        await answerCallbackQuery(callbackQuery.id, env);
+
+        if (state.dialog && callbackQuery.data.startsWith('dialog_')) {
+            await continueAddBetDialog(callbackQuery, state, env);
+        } else {
+            console.warn(`Received unhandled callback_query data: ${callbackQuery.data} for chat ${chatId}`);
         }
     } catch (error) {
-        await reportError(chatId, env, `Callback Query Handler (${callbackQuery.data})`, error);
+        await reportError(chatId, env, 'Callback Query Handler', error);
     }
 }

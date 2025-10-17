@@ -13,22 +13,24 @@ function calculateAnalytics(state: UserState) {
     const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void);
     const winRate = nonVoidBets.length > 0 ? (wonBets.length / nonVoidBets.length) * 100 : 0;
 
-    const statsBySport = settledBets.reduce((acc, bet) => {
+    // FIX: Add explicit type for accumulator to prevent properties from being 'unknown'.
+    const statsBySport = settledBets.reduce((acc: { [key: string]: { profit: number; staked: number; wins: number; losses: number } }, bet) => {
         if (!acc[bet.sport]) acc[bet.sport] = { profit: 0, staked: 0, wins: 0, losses: 0 };
         acc[bet.sport].profit += bet.profit ?? 0;
         acc[bet.sport].staked += bet.stake;
         if (bet.status === BetStatus.Won) acc[bet.sport].wins++;
         if (bet.status === BetStatus.Lost) acc[bet.sport].losses++;
         return acc;
-    }, {} as { [key: string]: { profit: number; staked: number; wins: number; losses: number } });
+    }, {});
 
-    const statsByBetType = settledBets.reduce((acc, bet) => {
+    // FIX: Add explicit type for accumulator to prevent properties from being 'unknown'.
+    const statsByBetType = settledBets.reduce((acc: { [key: string]: { profit: number; staked: number } }, bet) => {
         const typeLabel = BET_TYPE_OPTIONS.find(o => o.value === bet.betType)?.label || bet.betType;
         if (!acc[typeLabel]) acc[typeLabel] = { profit: 0, staked: 0 };
         acc[typeLabel].profit += bet.profit ?? 0;
         acc[typeLabel].staked += bet.stake;
         return acc;
-    }, {} as { [key: string]: { profit: number; staked: number } });
+    }, {});
 
     const oddsRanges = [
         { label: '1.0-1.5', min: 1, max: 1.5, bets: [] as Bet[] },
@@ -119,7 +121,7 @@ export function generateDetailedReport(state: UserState): string {
         if (total === 0) return;
         const wins = range.bets.filter(b => b.status === BetStatus.Won).length;
         const losses = range.bets.filter(b => b.status === BetStatus.Lost).length;
-        const passRate = total > 0 ? (wins / (wins + losses)) * 100 : 0;
+        const passRate = total > 0 && (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
         const staked = range.bets.reduce((acc, b) => acc + b.stake, 0);
         const profit = range.bets.reduce((acc, b) => acc + (b.profit ?? 0), 0);
         const roi = staked > 0 ? (profit / staked) * 100 : 0;
@@ -204,7 +206,7 @@ export function generateHtmlReport(state: UserState): string {
                             if (total === 0) return '';
                             const wins = range.bets.filter(b => b.status === BetStatus.Won).length;
                             const losses = range.bets.filter(b => b.status === BetStatus.Lost).length;
-                            const passRate = total > 0 ? (wins / (wins + losses)) * 100 : 0;
+                            const passRate = (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
                              const staked = range.bets.reduce((acc, b) => acc + b.stake, 0);
                              const profit = range.bets.reduce((acc, b) => acc + (b.profit ?? 0), 0);
                              const roi = staked > 0 ? (profit / staked) * 100 : 0;
