@@ -58,7 +58,7 @@ const BetDetailModal: React.FC<{ bet: Bet; onClose: () => void; onEdit: (bet: Be
                     {bet.tags && bet.tags.length > 0 && <DetailRow label="Теги" value={bet.tags.join(', ')} />}
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4">
+                <div className="grid grid-cols-2 gap-3 pt-4">
                     <Button variant="secondary" onClick={() => { onClose(); onEdit(bet); }}><EditIcon /> Редактировать</Button>
                     <Button onClick={() => { onClose(); onDiscuss(bet); }}><AiIcon /> Обсудить с AI</Button>
                 </div>
