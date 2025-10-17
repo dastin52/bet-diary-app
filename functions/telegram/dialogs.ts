@@ -98,7 +98,7 @@ export async function startAddBetDialog(chatId: number, state: UserState, env: E
 
 export async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
     // FIX: Correctly determine chatId based on the type of 'update'.
-    const chatId = "message" in update ? update.message.chat.id : update.chat.id;
+    const chatId = "message" in update ? ("chat" in update.message ? update.message.chat.id : 0) : update.from.id;
     const dialog = state.dialog!;
     
     // FIX: Correctly get user input based on the type of 'update'.
