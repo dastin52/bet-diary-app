@@ -1,14 +1,10 @@
-// functions/telegram/dialogs.ts
-// FIX: Import missing `deleteMessage` function.
-import { Bet, BetStatus, DialogState, Env, TelegramMessage, UserState, TelegramCallbackQuery, TelegramUpdate, BetType } from './types';
+import { Bet, BetStatus, DialogState, Env, TelegramUpdate, BetType } from './types';
 import { setUserState, addBetToState } from './state';
-// FIX: Import missing `deleteMessage` function.
 import { editMessageText, sendMessage, deleteMessage } from './telegramApi';
-import { BOOKMAKERS, SPORTS, BET_TYPE_OPTIONS } from '../constants';
-import { calculateProfit, generateEventString } from '../utils/betUtils';
-// FIX: `addBetToState` moved to state.ts
+import { BOOKMAKERS, SPORTS, COMMON_ODDS, MARKETS_BY_SPORT } from '../constants';
 import { showMainMenu } from './ui';
 import { findUserBy, addUser, findUserByEmail } from '../data/userStore';
+import { calculateRiskManagedStake } from '../utils/betUtils';
 
 // A mock hashing function. In a real app, use a library like bcrypt on the server.
 const mockHash = (password: string) => `hashed_${password}`;
@@ -47,18 +43,12 @@ export async function continueDialog(update: TelegramUpdate, state: UserState, e
 
 export async function startRegisterDialog(update: TelegramUpdate, state: UserState, env: Env) {
     const chatId = getChatId(update);
-    // FIX: Use string literal for type to satisfy TypeScript.
     const dialog: DialogState = { type: 'register', step: 'EMAIL', data: {} };
     const text = "📝 *Регистрация*\n\nПожалуйста, введите ваш email:";
     
-    if ('callbackQuery' in update) {
-        const messageId = update.callbackQuery.message.message_id;
-        await editMessageText(chatId, messageId, text, env);
-        dialog.messageId = messageId;
-    } else {
-        const sentMessage = await sendMessage(chatId, text, env);
-        dialog.messageId = sentMessage.result.message_id;
-    }
+    const message = 'message' in update ? update.message : update.callbackQuery.message;
+    await editMessageText(chatId, message.message_id, text, env);
+    dialog.messageId = message.message_id;
     
     await setUserState(chatId, { ...state, dialog }, env);
 }
@@ -81,7 +71,6 @@ async function continueRegisterDialog(update: TelegramUpdate, state: UserState, 
             
             case 'NICKNAME':
                 if (userInput.length < 3) throw new Error("Никнейм должен быть не менее 3 символов.");
-                // Note: Nickname uniqueness check is inefficient and removed for stability.
                 dialog.data.nickname = userInput;
                 dialog.step = 'PASSWORD';
                 text = "Хорошо. Теперь придумайте пароль (мин. 6 символов):";
@@ -102,13 +91,11 @@ async function continueRegisterDialog(update: TelegramUpdate, state: UserState, 
                 };
                 await addUser(newUser, env);
                 
-                const newState = { ...state, user: newUser, dialog: null };
+                const newState = { ...state, user: newUser, dialog: null, bets: [], bankroll: 10000, goals: [], bankHistory: [] };
                 await setUserState(chatId, newState, env);
 
-                await editMessageText(chatId, dialog.messageId!, `✅ *Регистрация успешна!*
-                \nДобро пожаловать, ${newUser.nickname}!`, env);
-                // FIX: Pass the unwrapped payload to showMainMenu.
-                await showMainMenu(('message' in update) ? update.message : update.callbackQuery.message, env);
+                await editMessageText(chatId, dialog.messageId!, `✅ *Регистрация успешна!*\nДобро пожаловать, ${newUser.nickname}!`, env);
+                await showMainMenu(getUpdatePayload(update).message, env);
                 return;
         }
         await editMessageText(chatId, dialog.messageId!, text, env);
@@ -124,18 +111,12 @@ async function continueRegisterDialog(update: TelegramUpdate, state: UserState, 
 
 export async function startLoginDialog(update: TelegramUpdate, state: UserState, env: Env) {
     const chatId = getChatId(update);
-    // FIX: Use string literal for type to satisfy TypeScript.
     const dialog: DialogState = { type: 'login', step: 'EMAIL', data: {} };
     const text = "🔑 *Вход*\n\nПожалуйста, введите ваш email:";
-
-    if ('callbackQuery' in update) {
-        const messageId = update.callbackQuery.message.message_id;
-        await editMessageText(chatId, messageId, text, env);
-        dialog.messageId = messageId;
-    } else {
-        const sentMessage = await sendMessage(chatId, text, env);
-        dialog.messageId = sentMessage.result.message_id;
-    }
+    
+    const message = getUpdatePayload(update);
+    await editMessageText(chatId, message.message_id, text, env);
+    dialog.messageId = message.message_id;
 
     await setUserState(chatId, { ...state, dialog }, env);
 }
@@ -166,8 +147,7 @@ async function continueLoginDialog(update: TelegramUpdate, state: UserState, env
                 await setUserState(chatId, newState, env);
                 
                 await editMessageText(chatId, dialog.messageId!, `✅ *Вход выполнен успешно!*`, env);
-                // FIX: Pass the unwrapped payload to showMainMenu.
-                await showMainMenu(('message' in update) ? update.message : update.callbackQuery.message, env);
+                await showMainMenu(getUpdatePayload(update).message, env);
                 return;
         }
         await editMessageText(chatId, dialog.messageId!, text, env);
@@ -182,14 +162,15 @@ async function continueLoginDialog(update: TelegramUpdate, state: UserState, env
 // --- AI CHAT DIALOG ---
 export async function startAiChatDialog(update: TelegramUpdate, state: UserState, env: Env) {
     const chatId = getChatId(update);
-    // FIX: Use string literal for type to satisfy TypeScript.
     const dialog: DialogState = { type: 'ai_chat', step: 'ACTIVE', data: {} };
-    const text = "🤖 AI-Аналитик к вашим услугам. Задайте свой вопрос.\n\nЧтобы выйти, отправьте /stop";
+    const text = "🤖 AI-Аналитик к вашим услугам. Задайте свой вопрос.\n\nНажмите кнопку ниже или отправьте /stop, чтобы выйти.";
+    const keyboard = { inline_keyboard: [[{ text: 'Завершить сессию', callback_data: '/stop' }]] };
 
-    if ('callbackQuery' in update) {
-        await editMessageText(chatId, update.callbackQuery.message.message_id, text, env);
+    const message = getUpdatePayload(update);
+    if ('data' in message) { // from callback
+        await editMessageText(chatId, message.message_id, text, env, keyboard);
     } else {
-        await sendMessage(chatId, text, env);
+        await sendMessage(chatId, text, env, keyboard);
     }
     await setUserState(chatId, { ...state, dialog }, env);
 }
@@ -201,8 +182,11 @@ async function continueAiChatDialog(update: TelegramUpdate, state: UserState, en
     if (userInput.toLowerCase() === '/stop') {
         const newState = { ...state, dialog: null };
         await setUserState(chatId, newState, env);
-        // FIX: Pass unwrapped payload.
-        await showMainMenu(getUpdatePayload(update), env, "Сессия с AI-Аналитиком завершена.");
+        const message = getUpdatePayload(update);
+        if ('data' in message) {
+            await editMessageText(chatId, message.message_id, "Сессия с AI-Аналитиком завершена.", env);
+        }
+        await showMainMenu(message, env);
         return;
     }
     
@@ -215,13 +199,5 @@ async function continueAiChatDialog(update: TelegramUpdate, state: UserState, en
 
 
 // --- ADD BET DIALOG ---
-
-// The implementation for Add Bet dialog remains complex and largely unchanged from the previous stable version.
-// It will be added back here in a future step to ensure stability first.
-export async function startAddBetDialog(update: TelegramUpdate, state: UserState, env: Env) {
-     const chatId = getChatId(update);
-     await sendMessage(chatId, "📝 Раздел добавления ставок в разработке.", env);
-}
-export async function continueAddBetDialog(update: TelegramUpdate, state: UserState, env: Env) {
-    // Placeholder
-}
+// Re-implementing the stable, enhanced version of the Add Bet dialog
+export * from './addBetDialog';

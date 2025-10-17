@@ -19,7 +19,16 @@ export const loadSettings = (userKey: string): UserSettings => {
   }
   try {
     const stored = localStorage.getItem(getSettingsKey(userKey));
-    return stored ? JSON.parse(stored) : { ...defaultSettings };
+    const parsed = stored ? JSON.parse(stored) : {};
+    // Merge with defaults to ensure all keys exist
+    return {
+      ...defaultSettings,
+      ...parsed,
+      notifications: {
+        ...defaultSettings.notifications,
+        ...(parsed.notifications || {}),
+      },
+    };
   } catch (error) {
     console.error(`Error loading settings from localStorage for user: ${userKey}`, error);
     return { ...defaultSettings };

@@ -1,9 +1,9 @@
-// functions/telegram/handlers.ts
 import { TelegramMessage, TelegramCallbackQuery, Env } from './types';
 import { getUserState } from './state';
 import { continueDialog } from './dialogs';
 import { answerCallbackQuery, reportError } from './telegramApi';
-import { mainCallbackRouter, commandRouter, globalCommandRouter } from './router';
+import { mainCallbackRouter, commandRouter, globalCommandRouter, MANAGE_PREFIX, unauthenticatedRoutes } from './router';
+import { manageBets } from './manageBets';
 
 export async function handleMessage(message: TelegramMessage, env: Env) {
     const chatId = message.chat.id;
@@ -27,16 +27,18 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
             return;
         }
 
-        // 3. Handle regular commands
-        if (text.startsWith('/')) {
-            const command = text.split(' ')[0];
-            const handler = commandRouter[command];
-            if (handler) {
-                await handler({ message }, state, env);
-            } else {
-                 await reportError(chatId, env, 'Unknown Command', `Command not found: ${command}`);
+        // 3. Handle regular commands if authenticated
+        if (state.user) {
+            if (text.startsWith('/')) {
+                const command = text.split(' ')[0];
+                const handler = commandRouter[command];
+                if (handler) {
+                    await handler({ message }, state, env);
+                } else {
+                     await reportError(chatId, env, 'Unknown Command', `Команда не найдена: ${command}`);
+                }
+                return;
             }
-            return;
         }
         
         // 4. Handle 6-digit auth code
@@ -47,6 +49,12 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
                  await authHandler({ message }, state, env, authCodeMatch[0]);
             }
             return;
+        }
+
+        // 5. If not authenticated and not a command, prompt to log in
+        if (!state.user) {
+            const { showLoginOptions } = await import('./ui');
+            await showLoginOptions(message, env, 'Пожалуйста, войдите или зарегистрируйтесь, чтобы продолжить.');
         }
 
     } catch (error) {
@@ -60,29 +68,32 @@ export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, 
     try {
         const state = await getUserState(chatId, env);
         
-        // Acknowledge the button press immediately
         await answerCallbackQuery(callbackQuery.id, env);
         
         const callbackData = callbackQuery.data;
 
-        // 1. Handle dialog callbacks
+        // 1. If a dialog is active, let it handle the callback
         if (state.dialog) {
             await continueDialog({ callbackQuery }, state, env);
             return;
         }
 
-        // 2. Handle main router callbacks
-        const handler = mainCallbackRouter[callbackData];
-        if (handler) {
-            await handler({ callbackQuery }, state, env);
+        // 2. Handle prefixed callbacks (like manage bets)
+        if (callbackData.startsWith(MANAGE_PREFIX)) {
+            await manageBets(callbackQuery, state, env);
             return;
         }
+        
+        // 3. Handle main router callbacks
+        let handler = mainCallbackRouter[callbackData];
 
-        // 3. Handle prefixed callbacks (like manage bets)
-        const prefix = callbackData.split('|')[0];
-        const prefixedHandler = mainCallbackRouter[prefix];
-        if (prefixedHandler) {
-            await prefixedHandler({ callbackQuery }, state, env);
+        // 4. If not found and user is not authenticated, check unauthenticated routes
+        if (!handler && !state.user) {
+            handler = unauthenticatedRoutes[callbackData];
+        }
+
+        if (handler) {
+            await handler({ callbackQuery }, state, env);
             return;
         }
 

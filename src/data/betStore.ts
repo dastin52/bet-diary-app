@@ -16,6 +16,7 @@ export interface UserBetData {
 }
 
 
+// FIX: Add a normalization function to ensure data integrity when loading from localStorage.
 // Function to sanitize and provide defaults for user data
 const normalizeUserData = (data: Partial<UserBetData>): UserBetData => {
     const bets = Array.isArray(data.bets) ? data.bets : [];
@@ -75,7 +76,6 @@ export const loadUserData = (userKey: string): UserBetData => {
     return normalizeUserData({});
   }
 };
-
 
 export const saveUserData = (userKey: string, data: UserBetData): void => {
   if (userKey === 'demo_user') return;

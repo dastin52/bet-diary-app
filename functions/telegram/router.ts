@@ -1,8 +1,8 @@
-// functions/telegram/router.ts
 import { 
     handleStart, handleReset, handleAddBet, handleStats, 
     handleCompetitions, handleGoals, handleManageBets, handleAiAnalyst, 
-    handleRegister, handleLogin, handleHelp, handleAuth
+    handleRegister, handleLogin, handleHelp, handleAuth,
+    handleShowDetailedReport, handleDownloadReport
 } from './commands';
 
 // --- Callback Data Constants ---
@@ -15,14 +15,21 @@ export const CB = {
     MANAGE_BETS: 'manage_bets',
     SHOW_AI_ANALYST: 'show_ai',
 
+    // Stats Menu
+    SHOW_DETAILED_ANALYTICS: 'show_detailed_analytics',
+    DOWNLOAD_ANALYTICS_REPORT: 'download_analytics_report',
+
     // Other simple actions
     BACK_TO_MAIN: 'main_menu',
     LOGIN: 'login',
     REGISTER: 'register',
 };
 
-// FIX: Export constants for the manageBets module.
-export const MANAGE_PREFIX = 'manage';
+export const MANAGE_PREFIX = 'm';
+
+// Helper to build manage bet callbacks
+export const buildManageCb = (action: string, ...args: (string | number)[]) => 
+    [MANAGE_PREFIX, action, ...args].join('|');
 
 export const MANAGE_ACTIONS = {
     LIST: 'l',
@@ -32,8 +39,6 @@ export const MANAGE_ACTIONS = {
     PROMPT_DELETE: 'pd',
     CONFIRM_DELETE: 'cd',
 };
-
-export const buildManageCb = (...args: (string | number)[]) => [MANAGE_PREFIX, ...args].join('|');
 
 
 // --- Routers ---
@@ -64,7 +69,12 @@ export const mainCallbackRouter: { [key: string]: Function } = {
     [CB.SHOW_GOALS]: handleGoals,
     [CB.MANAGE_BETS]: handleManageBets,
     [CB.SHOW_AI_ANALYST]: handleAiAnalyst,
+    [CB.SHOW_DETAILED_ANALYTICS]: handleShowDetailedReport,
+    [CB.DOWNLOAD_ANALYTICS_REPORT]: handleDownloadReport,
+};
+
+// Routes available when user is not logged in
+export const unauthenticatedRoutes: { [key: string]: Function } = {
     [CB.LOGIN]: handleLogin,
     [CB.REGISTER]: handleRegister,
-    'manage': handleManageBets, // Prefix for manage bets module
 };

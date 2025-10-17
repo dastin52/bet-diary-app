@@ -1,7 +1,3 @@
-// functions/telegram/types.ts
-import { User, Bet, Goal, BankTransaction, Achievement } from '../../src/types';
-import { UserBetData } from '../../src/data/betStore';
-
 // Re-export core types for convenience within the Telegram module
 export * from '../../src/types';
 export type { UserBetData } from '../../src/data/betStore';
@@ -27,33 +23,14 @@ export interface DialogState {
     data: { [key: string]: any };
 }
 
-export interface UserState extends UserBetData {
+export interface UserState {
     user: User | null;
+    bets: Bet[];
+    bankroll: number;
+    goals: Goal[];
+    bankHistory: BankTransaction[];
     dialog: DialogState | null;
 }
-
-// FIX: Add missing types for competition data.
-export interface ParticipantStats {
-    rank: number;
-    roi: number;
-    totalBets: number;
-    wonBets: number;
-    lostBets: number;
-    biggestWin: number;
-    biggestLoss: number;
-    totalStaked: number;
-    totalProfit: number;
-    achievements: Achievement[];
-}
-
-export interface CompetitionParticipant {
-    user: {
-        nickname: string;
-        email: string;
-    };
-    stats: ParticipantStats;
-}
-
 
 // --- Telegram API Structures ---
 export type TelegramUpdate = { message: TelegramMessage } | { callbackQuery: TelegramCallbackQuery };

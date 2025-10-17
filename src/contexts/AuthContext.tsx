@@ -35,6 +35,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
   
+  // FIX: Add effect to sync auth state across browser tabs.
   // This effect will sync the currentUser state if another tab updates the user data
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
@@ -131,6 +132,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
   };
   
+  // FIX: Add a function to update the current user's state.
   const updateCurrentUser = (updatedData: Partial<User>) => {
       if (currentUser) {
           const updatedUser = { ...currentUser, ...updatedData };

@@ -1,4 +1,4 @@
-// FIX: Removed a self-import of `BetStatus` which was causing a declaration conflict.
+
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',

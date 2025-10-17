@@ -1,4 +1,3 @@
-// functions/data/userStore.ts
 import { Env, User, UserState } from '../telegram/types';
 import { normalizeState } from '../telegram/state';
 
@@ -25,6 +24,9 @@ export async function findUserByEmail(email: string, env: Env): Promise<UserStat
  * @returns A User object or undefined.
  */
 export async function findUserBy(predicate: (user: User) => boolean, env: Env): Promise<User | undefined> {
+    // This is a fallback and should be used sparingly.
+    // In a real large-scale app, you'd want secondary indexes.
+    console.warn("findUserBy is performing an inefficient full scan of users.");
     const userIndex: string[] = await env.BOT_STATE.get(USER_INDEX_KEY, { type: 'json' }) || [];
     for (const email of userIndex) {
         const state = await findUserByEmail(email, env);
@@ -34,26 +36,6 @@ export async function findUserBy(predicate: (user: User) => boolean, env: Env): 
     }
     return undefined;
 }
-
-/**
- * Retrieves all users from the KV store by iterating through the user index.
- * WARNING: Inefficient for a large number of users.
- * @param env The Cloudflare environment object.
- * @returns An array of User objects.
- */
-// FIX: Add the missing getUsers function required by the competition module.
-export async function getUsers(env: Env): Promise<User[]> {
-    const users: User[] = [];
-    const userIndex: string[] = await env.BOT_STATE.get(USER_INDEX_KEY, { type: 'json' }) || [];
-    for (const email of userIndex) {
-        const state = await findUserByEmail(email, env);
-        if (state && state.user) {
-            users.push(state.user);
-        }
-    }
-    return users;
-}
-
 
 /**
  * Adds a new user to the system.
