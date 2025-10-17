@@ -1,10 +1,11 @@
+
 // functions/telegram/dialogs.ts
 import {
     Bet, BetStatus, BetType, Dialog, Env, TelegramMessage, UserState, TelegramCallbackQuery, BankTransactionType,
     User, Message, BetLeg
 } from './types';
 import { setUserState, normalizeState } from './state';
-import { editMessageText, sendMessage, deleteMessage } from './telegramApi';
+import { editMessageText, sendMessage } from './telegramApi';
 import { BOOKMAKERS, SPORTS, BET_TYPE_OPTIONS, COMMON_ODDS, MARKETS_BY_SPORT } from '../constants';
 import { calculateProfit, generateEventString, calculateRiskManagedStake } from '../utils/betUtils';
 import { makeKeyboard, showMainMenu } from './ui';
@@ -107,7 +108,6 @@ const getAddBetDialogText = (dialog: Dialog, state: UserState): string => {
             const leg = data.legs[0];
             eventDetails = `- *Событие:* ${leg.homeTeam} - ${leg.awayTeam}\n- *Исход:* ${leg.market}`;
         } else {
-            // FIX: Removed `leg.sport` as it does not exist on BetLeg and is inconsistent with the data model.
             eventDetails = data.legs.map((leg: BetLeg, i: number) => `  *${i+1}.* ${leg.homeTeam} - ${leg.awayTeam} (*${leg.market}*)`).join('\n');
             eventDetails = `- *События в экспрессе:*\n${eventDetails}`;
         }
@@ -132,7 +132,6 @@ ${sportText}${eventDetails}
 const getAddBetStepPrompt = (step: string, data: Dialog['data'], state: UserState): string => {
     switch(step) {
         case ADD_BET_STEPS.BET_TYPE: return '👇 Выберите тип ставки:';
-        // FIX: Changed prompt to ask for sport once for the whole parlay.
         case ADD_BET_STEPS.SPORT: return data.betType === BetType.Parlay ? '👇 Выберите спорт для всего экспресса:' : '👇 Выберите вид спорта:';
         case ADD_BET_STEPS.EVENT: return 'Введите участников в формате: Команда 1 - Команда 2';
         case ADD_BET_STEPS.MARKET: return '👇 Выберите исход:';
@@ -184,9 +183,8 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
 
             case ADD_BET_STEPS.SPORT:
                 if (!userInput?.startsWith('dialog_sport_')) return;
-                // FIX: Set sport for the entire bet, not just a leg.
                 dialog.data.sport = userInput.replace('dialog_sport_', '');
-                dialog.data.currentLeg = {}; // Initialize empty leg for the first event
+                dialog.data.currentLeg = {}; 
                 dialog.step = ADD_BET_STEPS.EVENT;
                 break;
 
@@ -212,8 +210,7 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
 
             case ADD_BET_STEPS.PARLAY_CONFIRM_LEG:
                 if (userInput === 'dialog_parlay_add') {
-                    // FIX: Go to EVENT for the next leg, reusing the already-set sport.
-                    dialog.data.currentLeg = {}; // Prepare for a new leg
+                    dialog.data.currentLeg = {}; 
                     dialog.step = ADD_BET_STEPS.EVENT; 
                 } else if (userInput === 'dialog_parlay_finish') {
                     dialog.step = ADD_BET_STEPS.STAKE;
@@ -252,7 +249,6 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
 
             case ADD_BET_STEPS.CONFIRM:
                 if (userInput === 'dialog_confirm') {
-                    // FIX: Correctly cast the final data. `sport` is now present.
                     const finalBetData = { ...dialog.data, status: BetStatus.Pending };
                     const newState = addBetToState(state, finalBetData as Omit<Bet, 'id'|'createdAt'|'event'>);
                     newState.dialog = null;
@@ -272,12 +268,10 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
     }
     
     if (errorOccurred) {
-        // Don't update the dialog state on error, let the user retry the current step
         await setUserState(chatId, state, env);
         return;
     }
 
-    // --- Keyboards for next step ---
     let keyboard;
     const cancelBtn = { text: '❌ Отмена', callback_data: 'dialog_cancel' };
     switch(dialog.step) {
@@ -289,9 +283,7 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
             ]);
             break;
         case ADD_BET_STEPS.MARKET:
-            // FIX: Use `dialog.data.sport` which is now reliably set for the whole bet.
             const markets = MARKETS_BY_SPORT[dialog.data.sport] || [];
-            // Chunk markets into rows of 3
             const marketRows = markets.reduce< {text: string, callback_data: string}[][]>((acc, market, i) => {
                 const chunkIndex = Math.floor(i/3);
                 if(!acc[chunkIndex]) acc[chunkIndex] = [];

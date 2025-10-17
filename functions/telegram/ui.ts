@@ -1,3 +1,4 @@
+
 // functions/telegram/ui.ts
 import { Env, TelegramMessage, TelegramCallbackQuery } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
@@ -13,7 +14,7 @@ export async function showMainMenu(update: TelegramMessage | TelegramCallbackQue
     const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
     const text = 'Главное меню';
     const keyboard = makeKeyboard([
-        [{ text: '📊 Статистика', callback_data: CB.SHOW_STATS }, { text: '➕ Добавить ставку', callback_data: CB.ADD_BET }],
+        [{ text: '📊 Статистика', callback_data: CB.SHOW_STATS }, { text: '📝 Добавить ставку', callback_data: CB.ADD_BET }],
         [{ text: '🏆 Соревнования', callback_data: CB.SHOW_COMPETITIONS }, { text: '🎯 Мои цели', callback_data: CB.SHOW_GOALS }],
         [{ text: '📈 Управление ставками', callback_data: CB.MANAGE_BETS }],
         [{ text: '🤖 AI-Аналитик', callback_data: CB.SHOW_AI_ANALYST }]

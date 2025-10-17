@@ -1,3 +1,4 @@
+
 // functions/telegram/handler.ts
 import { handleCallbackQuery, handleMessage } from './handlers';
 import { reportError } from './telegramApi';
