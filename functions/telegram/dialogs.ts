@@ -1,27 +1,29 @@
 // functions/telegram/dialogs.ts
-import { Bet, BetStatus, BetType, Dialog, Env, TelegramMessage, UserState, TelegramCallbackQuery, BankTransactionType, User } from './types';
+import {
+    Bet, BetStatus, BetType, Dialog, Env, TelegramMessage, UserState, TelegramCallbackQuery, BankTransactionType,
+    User, Message
+} from './types';
 import { setUserState, normalizeState } from './state';
-import { editMessageText, sendMessage, reportError } from './telegramApi';
-import { BOOKMAKERS, SPORTS, MARKETS_BY_SPORT } from '../constants';
+import { editMessageText, sendMessage, deleteMessage } from './telegramApi';
+import { BOOKMAKERS, SPORTS, BET_TYPE_OPTIONS } from '../constants';
 import { calculateProfit, generateEventString } from '../utils/betUtils';
-import { makeKeyboard, showMainMenu, showLoginOptions } from './ui';
+import { makeKeyboard, showMainMenu } from './ui';
+import { CB } from './router';
 import { GoogleGenAI } from '@google/genai';
 import * as userStore from '../data/userStore';
 
+// Mock hash for function context
 const mockHash = (password: string) => `hashed_${password}`;
 
-// --- DIALOG ROUTER ---
+// --- UTILITY ---
+const isCallback = (update: TelegramMessage | TelegramCallbackQuery): update is TelegramCallbackQuery => 'data' in update;
 
+// --- DIALOG ROUTER ---
 export async function continueDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = 'message' in update && "chat" in update.message ? update.message.chat.id : (update as TelegramMessage).chat.id;
     if (!state.dialog) return;
-    
     switch (state.dialog.type) {
         case 'add_bet':
             await continueAddBetDialog(update, state, env);
-            break;
-        case 'ai_chat':
-            await continueAiChatDialog(update, state, env);
             break;
         case 'register':
             await continueRegisterDialog(update, state, env);
@@ -29,16 +31,21 @@ export async function continueDialog(update: TelegramMessage | TelegramCallbackQ
         case 'login':
             await continueLoginDialog(update, state, env);
             break;
+        case 'ai_chat':
+            await continueAiChatDialog(update, state, env);
+            break;
         default:
-            console.error(`Unknown dialog type: ${state.dialog.type}`);
+            const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
             state.dialog = null;
             await setUserState(chatId, state, env);
+            await sendMessage(chatId, "Что-то пошло не так. Диалог сброшен.", env);
     }
 }
 
-// --- UTILITY FUNCTIONS ---
 
-function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'createdAt' | 'event'>): UserState {
+// --- ADD BET DIALOG ---
+
+const addBetToState = (state: UserState, betData: Omit<Bet, 'id' | 'createdAt' | 'event'>): UserState => {
     const newBet: Bet = {
         ...betData,
         id: new Date().toISOString() + Math.random(),
@@ -75,112 +82,70 @@ function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'createdAt' |
     return newState;
 }
 
-const paginateOptions = (options: string[], prefix: string, itemsPerRow: number) => {
-    const keyboard = [];
-    for (let i = 0; i < options.length; i += itemsPerRow) {
-        const row = options.slice(i, i + itemsPerRow).map(option => ({
-            text: option,
-            callback_data: `${prefix}${option}`
-        }));
-        keyboard.push(row);
-    }
-    return keyboard;
-};
-
-// --- ADD BET DIALOG ---
-
 const ADD_BET_STEPS = {
-    SPORT: 'SPORT',
-    TEAMS: 'TEAMS',
-    MARKET: 'MARKET',
-    STAKE: 'STAKE',
-    ODDS: 'ODDS',
-    BOOKMAKER: 'BOOKMAKER',
-    CONFIRM: 'CONFIRM',
+    SPORT: 'SPORT', EVENT: 'EVENT', BET_TYPE: 'BET_TYPE',
+    STAKE: 'STAKE', ODDS: 'ODDS', BOOKMAKER: 'BOOKMAKER', CONFIRM: 'CONFIRM',
 };
 
-const getAddBetStepPrompt = (step: string, isIndividualSport: boolean): string => {
-    const teamLabels = isIndividualSport ? 'Участник 1 - Участник 2' : 'Команда 1 - Команда 2';
-    switch (step) {
+const getAddBetDialogText = (data: Dialog['data']): string => `*📝 Новая ставка*\n\n- *Спорт:* ${data.sport || '_не указан_'}\n- *Событие:* ${data.event || '_не указано_'}\n- *Тип:* ${data.betType ? BET_TYPE_OPTIONS.find(o => o.value === data.betType)?.label : '_не указан_'}\n- *Сумма:* ${data.stake ? `${data.stake} ₽` : '_не указана_'}\n- *Коэф.:* ${data.odds || '_не указан_'}\n- *Букмекер:* ${data.bookmaker || '_не указан_'}\n    \n${getAddBetStepPrompt(data.step)}`;
+
+const getAddBetStepPrompt = (step: string): string => {
+    switch(step) {
         case ADD_BET_STEPS.SPORT: return '👇 Выберите вид спорта:';
-        case ADD_BET_STEPS.TEAMS: return `Введите участников (например: \`${teamLabels}\`):`;
-        case ADD_BET_STEPS.MARKET: return '👇 Выберите исход:';
-        case ADD_BET_STEPS.STAKE: return 'Введите сумму ставки (например: `100`):';
-        case ADD_BET_STEPS.ODDS: return 'Введите коэффициент (например: `1.85`):';
+        case ADD_BET_STEPS.EVENT: return 'Введите событие в формате: *Команда 1 - Команда 2, Исход* (например: `Реал Мадрид - Барселона, П1`)';
+        case ADD_BET_STEPS.BET_TYPE: return '👇 Выберите тип ставки:';
+        case ADD_BET_STEPS.STAKE: return 'Введите сумму ставки (например: `100` или `150.50`)';
+        case ADD_BET_STEPS.ODDS: return 'Введите коэффициент (например: `1.85`)';
         case ADD_BET_STEPS.BOOKMAKER: return '👇 Выберите букмекера:';
         case ADD_BET_STEPS.CONFIRM: return 'Всё верно?';
         default: return '';
     }
 };
 
-function getAddBetDialogText(data: Dialog['data']): string {
-    const isIndividualSport = ['Теннис', 'Бокс', 'ММА'].includes(data.sport);
-    const teamsLabel = data.legs?.[0]?.homeTeam && data.legs?.[0]?.awayTeam
-        ? `${data.legs[0].homeTeam} - ${data.legs[0].awayTeam}`
-        : '_не указано_';
-    const marketLabel = data.legs?.[0]?.market || '_не указано_';
-
-    const summary = `*📝 Новая ставка*
-
-- *Спорт:* ${data.sport || '_не указан_'}
-- *Событие:* ${teamsLabel}
-- *Исход:* ${marketLabel}
-- *Сумма:* ${data.stake ? `${data.stake} ₽` : '_не указана_'}
-- *Коэф.:* ${data.odds || '_не указан_'}
-- *Букмекер:* ${data.bookmaker || '_не указан_'}`;
-
-    return `${summary}\n\n${getAddBetStepPrompt(data.step, isIndividualSport)}`;
-}
-
-
 export async function startAddBetDialog(chatId: number, state: UserState, env: Env) {
     const dialog: Dialog = { type: 'add_bet', step: ADD_BET_STEPS.SPORT, data: {} };
-    const keyboard = makeKeyboard(paginateOptions(SPORTS, 'dialog_sport_', 2));
+
+    const keyboard = makeKeyboard([
+        SPORTS.slice(0, 4).map(s => ({ text: s, callback_data: `dialog_sport_${s}` })),
+        SPORTS.slice(4, 8).map(s => ({ text: s, callback_data: `dialog_sport_${s}` })),
+    ]);
     const sentMessage = await sendMessage(chatId, getAddBetDialogText(dialog.data), env, keyboard);
+
     dialog.messageId = sentMessage.result.message_id;
     state.dialog = dialog;
     await setUserState(chatId, state, env);
 }
 
 async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = 'message' in update && 'chat' in update.message ? update.message.chat.id : (update as TelegramMessage).chat.id;
-    if (!state.dialog || state.dialog.type !== 'add_bet') return;
-
-    const dialog = state.dialog;
-    const userInput = 'data' in update ? update.data : 'text' in update ? update.text : '';
+    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+    const dialog = state.dialog!;
+    const userInput = isCallback(update) ? update.data : update.text || '';
 
     try {
-        if (userInput === 'dialog_cancel') {
-            await editMessageText(chatId, dialog.messageId!, "❌ Добавление ставки отменено.", env);
-            state.dialog = null;
-            await setUserState(chatId, state, env);
-            await showMainMenu(update, env);
-            return;
-        }
-
         switch (dialog.step) {
             case ADD_BET_STEPS.SPORT:
                 if (!userInput?.startsWith('dialog_sport_')) return;
                 dialog.data.sport = userInput.replace('dialog_sport_', '');
-                dialog.step = ADD_BET_STEPS.TEAMS;
+                dialog.step = ADD_BET_STEPS.EVENT;
                 break;
-            case ADD_BET_STEPS.TEAMS:
+            case ADD_BET_STEPS.EVENT:
                 if (!userInput) return;
-                const teams = userInput.split('-').map(t => t.trim());
-                if (teams.length !== 2 || !teams[0] || !teams[1]) {
-                    throw new Error("Неверный формат. Введите две команды, разделенные тире ( - ).");
-                }
-                dialog.data.legs = [{ homeTeam: teams[0], awayTeam: teams[1], market: '' }];
-                dialog.step = ADD_BET_STEPS.MARKET;
+                const parts = userInput.split(',').map(p => p.trim());
+                if (parts.length !== 2) throw new Error("Неверный формат. Используйте: `Команда 1 - Команда 2, Исход`");
+                const teams = parts[0].split('-').map(t => t.trim());
+                if (teams.length !== 2) throw new Error("Неверный формат команд. Используйте `-` для разделения.");
+                dialog.data.event = userInput;
+                dialog.data.legs = [{ homeTeam: teams[0], awayTeam: teams[1], market: parts[1] }];
+                dialog.step = ADD_BET_STEPS.BET_TYPE;
                 break;
-            case ADD_BET_STEPS.MARKET:
-                if (!userInput?.startsWith('dialog_market_')) return;
-                dialog.data.legs[0].market = userInput.replace('dialog_market_', '');
+            case ADD_BET_STEPS.BET_TYPE:
+                if (!userInput?.startsWith('dialog_bettype_')) return;
+                dialog.data.betType = userInput.replace('dialog_bettype_', '');
                 dialog.step = ADD_BET_STEPS.STAKE;
                 break;
             case ADD_BET_STEPS.STAKE:
                 const stake = parseFloat(userInput);
-                if (isNaN(stake) || stake <= 0) throw new Error("Сумма ставки должна быть числом больше 0.");
+                if (isNaN(stake) || stake <= 0) throw new Error("Сумма ставки должна быть положительным числом.");
                 dialog.data.stake = stake;
                 dialog.step = ADD_BET_STEPS.ODDS;
                 break;
@@ -197,342 +162,199 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
                 break;
             case ADD_BET_STEPS.CONFIRM:
                 if (userInput === 'dialog_confirm') {
-                    const finalBetData: Omit<Bet, 'id' | 'createdAt' | 'event'> = {
-                        sport: dialog.data.sport,
-                        legs: dialog.data.legs,
-                        bookmaker: dialog.data.bookmaker,
-                        stake: dialog.data.stake,
-                        odds: dialog.data.odds,
-                        betType: BetType.Single,
-                        status: BetStatus.Pending,
-                    };
-                    const newState = addBetToState(state, finalBetData);
-                    await editMessageText(chatId, dialog.messageId!, `✅ Ставка "${generateEventString(finalBetData.legs, finalBetData.betType, finalBetData.sport)}" успешно добавлена!`, env);
+                    const finalBetData = { ...dialog.data, status: BetStatus.Pending };
+                    const newState = addBetToState(state, finalBetData as Omit<Bet, 'id'|'createdAt'|'event'>);
+                    await editMessageText(chatId, dialog.messageId!, `✅ Ставка на "${dialog.data.event}" успешно добавлена!`, env);
                     newState.dialog = null;
                     await setUserState(chatId, newState, env);
-                    await showMainMenu(update, env);
+                    // Persist data for the user
+                    if (newState.user) {
+                        await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
+                    }
+                    return;
+                } else if (userInput === 'dialog_cancel') {
+                    await editMessageText(chatId, dialog.messageId!, "❌ Добавление ставки отменено.", env);
+                    state.dialog = null;
+                    await setUserState(chatId, state, env);
                     return;
                 }
-                break;
+                return;
         }
     } catch (error) {
-        await sendMessage(chatId, `⚠️ ${error instanceof Error ? error.message : 'Ошибка'}. Попробуйте еще раз.`, env);
+        await sendMessage(chatId, `⚠️ ${error instanceof Error ? error.message : 'Произошла ошибка.'}`, env);
     }
-
+    
     let keyboard;
-    switch (dialog.step) {
-        case ADD_BET_STEPS.MARKET:
-            const markets = MARKETS_BY_SPORT[dialog.data.sport] || [];
-            keyboard = makeKeyboard([...paginateOptions(markets, 'dialog_market_', 2), [{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]);
+    switch(dialog.step) {
+        case ADD_BET_STEPS.BET_TYPE:
+            keyboard = makeKeyboard([BET_TYPE_OPTIONS.filter(o => o.value !== BetType.System).map(o => ({ text: o.label, callback_data: `dialog_bettype_${o.value}`}))]);
             break;
         case ADD_BET_STEPS.BOOKMAKER:
-            keyboard = makeKeyboard([...paginateOptions(BOOKMAKERS, 'dialog_bookie_', 2), [{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]);
+             keyboard = makeKeyboard([
+                BOOKMAKERS.slice(0, 3).map(b => ({ text: b, callback_data: `dialog_bookie_${b}`})),
+                BOOKMAKERS.slice(3, 6).map(b => ({ text: b, callback_data: `dialog_bookie_${b}`})),
+                [{ text: 'Другое', callback_data: 'dialog_bookie_Другое' }]
+             ]);
             break;
         case ADD_BET_STEPS.CONFIRM:
             keyboard = makeKeyboard([
-                [{ text: '✅ Сохранить', callback_data: 'dialog_confirm' }],
-                [{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]
+                [{ text: '✅ Сохранить', callback_data: 'dialog_confirm'}, { text: '❌ Отмена', callback_data: 'dialog_cancel'}]
             ]);
             break;
-        default:
-             keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]);
-    }
-    
-    if (dialog.messageId) {
-        await editMessageText(chatId, dialog.messageId, getAddBetDialogText(dialog.data), env, keyboard);
     }
 
+    await editMessageText(chatId, dialog.messageId!, getAddBetDialogText(dialog.data), env, keyboard);
     state.dialog = dialog;
     await setUserState(chatId, state, env);
 }
 
-// --- REGISTER & LOGIN DIALOGS ---
+// --- REGISTER DIALOG ---
 
-const REGISTER_STEPS = {
-    NICKNAME: 'NICKNAME',
-    EMAIL: 'EMAIL',
-    PASSWORD: 'PASSWORD',
-    CONFIRM: 'CONFIRM'
-};
+const REG_STEPS = { EMAIL: 'EMAIL', NICKNAME: 'NICKNAME', PASSWORD: 'PASSWORD' };
 
-const LOGIN_STEPS = {
-    EMAIL: 'EMAIL',
-    PASSWORD: 'PASSWORD'
-};
-
-function getRegisterDialogText(data: Dialog['data']): string {
-    const summary = `*📝 Регистрация нового аккаунта*
-
-- *Никнейм:* ${data.nickname || '_не указан_'}
-- *Email:* ${data.email || '_не указан_'}
-- *Пароль:* ${data.password ? '******' : '_не указан_'}`;
-    
-    let prompt = '';
-    switch (data.step) {
-        case REGISTER_STEPS.NICKNAME:
-            prompt = 'Придумайте и введите ваш никнейм (мин. 3 символа):';
-            break;
-        case REGISTER_STEPS.EMAIL:
-            prompt = 'Введите ваш email:';
-            break;
-        case REGISTER_STEPS.PASSWORD:
-            prompt = 'Придумайте пароль (мин. 6 символов):';
-            break;
-        case REGISTER_STEPS.CONFIRM:
-            prompt = 'Всё верно?';
-            break;
-    }
-
-    return `${summary}\n\n${prompt}`;
-}
-
-export async function startRegisterDialog(chatId: number, state: UserState, env: Env, messageIdToEdit?: number) {
-    const dialog: Dialog = { type: 'register', step: REGISTER_STEPS.NICKNAME, data: {} };
-    const text = getRegisterDialogText(dialog.data);
-    const keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel_auth' }]]);
-
-    if (messageIdToEdit) {
-        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
-        dialog.messageId = messageIdToEdit;
-    } else {
-        const sentMessage = await sendMessage(chatId, text, env, keyboard);
-        dialog.messageId = sentMessage.result.message_id;
-    }
-
+export async function startRegisterDialog(chatId: number, state: UserState, env: Env, messageId: number) {
+    const dialog: Dialog = { type: 'register', step: REG_STEPS.EMAIL, data: {}, messageId };
     state.dialog = dialog;
     await setUserState(chatId, state, env);
+    await editMessageText(chatId, messageId, "Шаг 1/3: Введите ваш Email:", env);
 }
 
 async function continueRegisterDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = 'message' in update && "chat" in update.message ? update.message.chat.id : (update as TelegramMessage).chat.id;
-    if (!state.dialog || state.dialog.type !== 'register') return;
-
-    const dialog = state.dialog;
-    const userInput = 'data' in update ? update.data : 'text' in update ? update.text : '';
-
+    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+    const dialog = state.dialog!;
+    const userInput = isCallback(update) ? update.data : update.text || '';
+    
     try {
-        if (userInput === 'dialog_cancel_auth') {
-            await editMessageText(chatId, dialog.messageId!, "Регистрация отменена.", env);
-            state.dialog = null;
-            await setUserState(chatId, state, env);
-            await showLoginOptions(update, env);
-            return;
-        }
-
         switch (dialog.step) {
-            case REGISTER_STEPS.NICKNAME:
-                if (!userInput || userInput.length < 3) throw new Error("Никнейм должен быть не менее 3 символов.");
-                if (await userStore.findUserBy(u => u.nickname.toLowerCase() === userInput.toLowerCase(), env)) {
-                    throw new Error("Этот никнейм уже занят.");
-                }
-                dialog.data.nickname = userInput;
-                dialog.step = REGISTER_STEPS.EMAIL;
-                break;
-            case REGISTER_STEPS.EMAIL:
-                if (!userInput || !userInput.includes('@') || !userInput.includes('.')) throw new Error("Пожалуйста, введите корректный email.");
-                if (await userStore.findUserBy(u => u.email === userInput, env)) {
-                    throw new Error("Пользователь с таким email уже существует.");
-                }
+            case REG_STEPS.EMAIL:
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userInput)) throw new Error("Неверный формат Email.");
+                if (await userStore.findUserBy(u => u.email === userInput, env)) throw new Error("Этот Email уже зарегистрирован.");
                 dialog.data.email = userInput;
-                dialog.step = REGISTER_STEPS.PASSWORD;
+                dialog.step = REG_STEPS.NICKNAME;
+                await editMessageText(chatId, dialog.messageId!, "Шаг 2/3: Введите ваш никнейм (мин. 3 символа):", env);
                 break;
-            case REGISTER_STEPS.PASSWORD:
-                if (!userInput || userInput.length < 6) throw new Error("Пароль должен быть не менее 6 символов.");
-                dialog.data.password = userInput;
-                dialog.step = REGISTER_STEPS.CONFIRM;
+            case REG_STEPS.NICKNAME:
+                if (userInput.length < 3) throw new Error("Никнейм должен быть не менее 3 символов.");
+                if (await userStore.findUserBy(u => u.nickname.toLowerCase() === userInput.toLowerCase(), env)) throw new Error("Этот никнейм уже занят.");
+                dialog.data.nickname = userInput;
+                dialog.step = REG_STEPS.PASSWORD;
+                await editMessageText(chatId, dialog.messageId!, "Шаг 3/3: Введите пароль (мин. 6 символов):", env);
                 break;
-            case REGISTER_STEPS.CONFIRM:
-                if (userInput === 'dialog_confirm_auth') {
-                    const { nickname, email, password } = dialog.data;
-                    const newUser: User = { 
-                        email, 
-                        nickname,
-                        password_hash: mockHash(password),
-                        registeredAt: new Date().toISOString(),
-                        referralCode: `${nickname.toUpperCase().replace(/\s/g, '')}${Date.now().toString().slice(-4)}`,
-                        buttercups: 0,
-                        status: 'active',
-                    };
-                    await userStore.addUser(newUser, env);
-                    
-                    const newState = { ...normalizeState({ user: newUser }), dialog: null };
-                    
-                    await setUserState(chatId, newState, env);
-                    await env.BOT_STATE.put(`betdata:${newUser.email}`, JSON.stringify(newState));
+            case REG_STEPS.PASSWORD:
+                if (userInput.length < 6) throw new Error("Пароль должен быть не менее 6 символов.");
+                const newUser: User = { 
+                    email: dialog.data.email, 
+                    nickname: dialog.data.nickname,
+                    password_hash: mockHash(userInput),
+                    registeredAt: new Date().toISOString(),
+                    referralCode: `${dialog.data.nickname.toUpperCase().replace(/\s/g, '')}${Date.now().toString().slice(-4)}`,
+                    buttercups: 0, status: 'active',
+                };
+                await userStore.addUser(newUser, env);
+                
+                const newState = normalizeState({ user: newUser });
+                newState.dialog = null;
+                await setUserState(chatId, newState, env);
+                await env.BOT_STATE.put(`betdata:${newUser.email}`, JSON.stringify(newState));
 
-                    await editMessageText(chatId, dialog.messageId!, `✅ *Регистрация успешна!* \n\nДобро пожаловать, ${nickname}!`, env);
-                    await showMainMenu(update, env);
-                    return;
-                }
-                break;
+                await editMessageText(chatId, dialog.messageId!, `✅ Регистрация успешна! Добро пожаловать, ${newUser.nickname}!`, env);
+                await showMainMenu(update as TelegramMessage, env);
+                return;
         }
-
     } catch (error) {
-        await sendMessage(chatId, `⚠️ ${error instanceof Error ? error.message : 'Ошибка'}. Попробуйте еще раз.`, env);
+         await sendMessage(chatId, `⚠️ ${error instanceof Error ? error.message : 'Произошла ошибка.'}\nПопробуйте еще раз.`, env);
     }
-    
-    let keyboard;
-    if (dialog.step === REGISTER_STEPS.CONFIRM) {
-        keyboard = makeKeyboard([
-            [{ text: '✅ Подтвердить', callback_data: 'dialog_confirm_auth' }],
-            [{ text: '❌ Отмена', callback_data: 'dialog_cancel_auth' }]
-        ]);
-    } else {
-        keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel_auth' }]]);
-    }
-    
-    await editMessageText(chatId, dialog.messageId!, getRegisterDialogText(dialog.data), env, keyboard);
-    state.dialog = dialog;
-    await setUserState(chatId, state, env);
+     await setUserState(chatId, state, env);
 }
 
-function getLoginDialogText(data: Dialog['data']): string {
-    const summary = `*🔑 Вход в аккаунт*
+// --- LOGIN DIALOG ---
 
-- *Email:* ${data.email || '_не указан_'}
-- *Пароль:* ${data.password ? '******' : '_не указан_'}`;
-    
-    let prompt = '';
-    switch (data.step) {
-        case LOGIN_STEPS.EMAIL:
-            prompt = 'Введите ваш email:';
-            break;
-        case LOGIN_STEPS.PASSWORD:
-            prompt = 'Введите ваш пароль:';
-            break;
-    }
+const LOGIN_STEPS = { EMAIL: 'EMAIL', PASSWORD: 'PASSWORD' };
 
-    return `${summary}\n\n${prompt}`;
-}
-
-export async function startLoginDialog(chatId: number, state: UserState, env: Env, messageIdToEdit?: number) {
-    const dialog: Dialog = { type: 'login', step: LOGIN_STEPS.EMAIL, data: {} };
-    const text = getLoginDialogText(dialog.data);
-    const keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel_auth' }]]);
-
-    if (messageIdToEdit) {
-        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
-        dialog.messageId = messageIdToEdit;
-    } else {
-        const sentMessage = await sendMessage(chatId, text, env, keyboard);
-        dialog.messageId = sentMessage.result.message_id;
-    }
-
+export async function startLoginDialog(chatId: number, state: UserState, env: Env, messageId: number) {
+    const dialog: Dialog = { type: 'login', step: LOGIN_STEPS.EMAIL, data: {}, messageId };
     state.dialog = dialog;
     await setUserState(chatId, state, env);
+    await editMessageText(chatId, messageId, "Шаг 1/2: Введите ваш Email:", env);
 }
 
 async function continueLoginDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = 'message' in update && "chat" in update.message ? update.message.chat.id : (update as TelegramMessage).chat.id;
-    if (!state.dialog || state.dialog.type !== 'login') return;
-
-    const dialog = state.dialog;
-    const userInput = 'text' in update ? update.text : 'data' in update ? update.data : '';
-
+    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+    const dialog = state.dialog!;
+    const userInput = isCallback(update) ? update.data : update.text || '';
+    
     try {
-        if (userInput === 'dialog_cancel_auth') {
-            await editMessageText(chatId, dialog.messageId!, "Вход отменен.", env);
-            state.dialog = null;
-            await setUserState(chatId, state, env);
-            await showLoginOptions(update, env);
-            return;
-        }
-
         switch (dialog.step) {
             case LOGIN_STEPS.EMAIL:
-                if (!userInput) return;
-                dialog.data.email = userInput;
+                const user = await userStore.findUserBy(u => u.email === userInput, env);
+                if (!user) throw new Error("Пользователь с таким Email не найден.");
+                dialog.data.user = user;
                 dialog.step = LOGIN_STEPS.PASSWORD;
+                await editMessageText(chatId, dialog.messageId!, "Шаг 2/2: Введите ваш пароль:", env);
                 break;
             case LOGIN_STEPS.PASSWORD:
-                if (!userInput) return;
-                const email = dialog.data.email;
-                const password = userInput;
-                const user = await userStore.findUserBy(u => u.email === email, env);
+                const foundUser = dialog.data.user as User;
+                if (foundUser.password_hash !== mockHash(userInput)) throw new Error("Неверный пароль.");
+                if (foundUser.status === 'blocked') throw new Error("Этот аккаунт заблокирован.");
                 
-                if (user && user.password_hash === mockHash(password)) {
-                    if (user.status === 'blocked') {
-                        throw new Error('Этот аккаунт заблокирован.');
-                    }
-                    
-                    const fullUserDataString = await env.BOT_STATE.get(`betdata:${user.email}`);
-                    let freshState: UserState;
-
-                    if (fullUserDataString) {
-                        freshState = normalizeState(JSON.parse(fullUserDataString));
-                    } else {
-                        // If no betdata exists, create a fresh state for this user
-                        freshState = normalizeState({ user });
-                         // Also create the persistent record now
-                        await env.BOT_STATE.put(`betdata:${user.email}`, JSON.stringify(freshState));
-                        await sendMessage(chatId, "⚠️ Ваши данные о ставках не найдены на сервере. Создан новый профиль. Для полной синхронизации используйте код из веб-приложения.", env);
-                    }
-                    
-                    freshState.dialog = null; 
-                    await setUserState(chatId, freshState, env);
-
-                    await editMessageText(chatId, dialog.messageId!, `✅ *Вход выполнен!* \n\nС возвращением, ${user.nickname}!`, env);
-                    await showMainMenu(update, env);
-                    return;
-                } else {
-                    throw new Error("Неверный email или пароль.");
-                }
+                const fullUserData = await env.BOT_STATE.get<UserState>(`betdata:${foundUser.email}`, 'json');
+                const newState = normalizeState(fullUserData || { user: foundUser });
+                
+                newState.dialog = null;
+                await setUserState(chatId, newState, env);
+                await editMessageText(chatId, dialog.messageId!, `✅ Вход выполнен! С возвращением, ${foundUser.nickname}!`, env);
+                await showMainMenu(update as TelegramMessage, env);
+                return;
         }
     } catch (error) {
-        await sendMessage(chatId, `⚠️ ${error instanceof Error ? error.message : 'Ошибка'}. Попробуйте еще раз.`, env);
-        // Reset dialog to start on error
-        dialog.step = LOGIN_STEPS.EMAIL;
-        dialog.data = {};
+        await sendMessage(chatId, `⚠️ ${error instanceof Error ? error.message : 'Произошла ошибка.'}\nПопробуйте еще раз.`, env);
     }
-    
-    const keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel_auth' }]]);
-    await editMessageText(chatId, dialog.messageId!, getLoginDialogText(dialog.data), env, keyboard);
-    state.dialog = dialog;
     await setUserState(chatId, state, env);
 }
+
 
 // --- AI CHAT DIALOG ---
 
 export async function startAiChatDialog(chatId: number, state: UserState, env: Env) {
-    const dialog: Dialog = { type: 'ai_chat', step: 'active', data: { history: [] } };
-    const text = '🤖 AI-Аналитик слушает. О чем поговорим? Чтобы выйти, напишите `/menu` или `/start`.';
-    const sentMessage = await sendMessage(chatId, text, env);
-    dialog.messageId = sentMessage.result.message_id;
+    const dialog: Dialog = { type: 'ai_chat', step: 'ACTIVE', data: { history: [] } };
+    await sendMessage(chatId, "🤖 AI-Аналитик к вашим услугам. Задайте свой вопрос или напишите /stop для выхода.", env);
     state.dialog = dialog;
     await setUserState(chatId, state, env);
 }
 
 async function continueAiChatDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = 'message' in update && "chat" in update.message ? update.message.chat.id : (update as TelegramMessage).chat.id;
-    if (!state.dialog || state.dialog.type !== 'ai_chat') return;
+    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+    const dialog = state.dialog!;
+    const userInput = isCallback(update) ? '' : update.text || '';
 
-    const dialog = state.dialog;
-    const userInput = 'text' in update ? update.text : '';
-
-    // Global commands will be caught by the main handler, so we only need to handle text input here.
     if (!userInput) return;
 
-    dialog.data.history.push({ role: 'user', parts: [{ text: userInput }] });
-
-    const thinkingMessage = await sendMessage(chatId, "⏳ AI-Аналитик думает...", env);
-
-    try {
-        const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: dialog.data.history,
-          config: { systemInstruction: "You are a helpful sports betting analyst. Keep your answers concise and helpful. Respond in Russian."}
-        });
-
-        const aiResponse = response.text;
-        dialog.data.history.push({ role: 'model', parts: [{ text: aiResponse }] });
-
-        await editMessageText(chatId, thinkingMessage.result.message_id, aiResponse, env);
-
-        state.dialog = dialog;
+    if (userInput.toLowerCase() === '/stop') {
+        await sendMessage(chatId, "🤖 Сессия с AI-Аналитиком завершена.", env);
+        state.dialog = null;
         await setUserState(chatId, state, env);
-    } catch (error) {
-        await reportError(chatId, env, 'AI Chat Dialog', error);
-        await editMessageText(chatId, thinkingMessage.result.message_id, "Произошла ошибка при обращении к AI. Попробуйте еще раз.", env);
+        await showMainMenu(update as TelegramMessage, env);
+        return;
     }
+
+    dialog.data.history.push({ role: 'user', text: userInput });
+    
+    await sendMessage(chatId, "🤖 Анализирую ваш запрос...", env);
+    const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+    const contents = dialog.data.history.map((msg: Message) => ({
+        role: msg.role,
+        parts: [{ text: msg.text }],
+    }));
+    
+    try {
+        const result = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents });
+        const aiResponse = result.text;
+        dialog.data.history.push({ role: 'model', text: aiResponse });
+        await sendMessage(chatId, aiResponse, env);
+    } catch (e) {
+        await sendMessage(chatId, "Извините, произошла ошибка при обращении к AI.", env);
+        console.error("AI Chat error:", e);
+    }
+    
+    await setUserState(chatId, state, env);
 }
