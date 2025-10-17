@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-// FIX: Import GoalStatus enum.
 import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus } from '../types';
 import { BET_TYPE_OPTIONS } from '../constants';
 import { generateEventString, calculateProfit } from '../utils/betUtils';
@@ -21,12 +20,12 @@ export interface UseBetsReturn {
   deleteGoal: (id: string) => void;
   analytics: {
     totalStaked: number;
-    // FIX: Add turnover property to analytics interface.
     turnover: number;
     totalProfit: number;
     roi: number;
     yield: number;
     betCount: number;
+    lostBetsCount: number;
     winRate: number;
     balanceHistory: { date: string; balance: number }[];
     profitBySport: { sport: string; profit: number; roi: number; }[];
@@ -266,7 +265,6 @@ export const useBets = (userKey: string): UseBetsReturn => {
             id: new Date().toISOString() + Math.random(),
             createdAt: new Date().toISOString(),
             currentValue: 0,
-            // FIX: Use GoalStatus enum instead of a magic string.
             status: GoalStatus.InProgress,
         };
         setGoals(prev => [newGoal, ...prev]);
@@ -291,8 +289,9 @@ export const useBets = (userKey: string): UseBetsReturn => {
     const yield_ = roi; // In sports betting context, ROI and Yield are often used interchangeably
     const betCount = settledBets.length;
     const wonBets = settledBets.filter(b => b.status === BetStatus.Won).length;
-    const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void).length;
-    const winRate = nonVoidBets > 0 ? (wonBets / nonVoidBets) * 100 : 0;
+    const lostBetsCount = settledBets.filter(b => b.status === BetStatus.Lost).length;
+    const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void);
+    const winRate = nonVoidBets.length > 0 ? (wonBets / nonVoidBets.length) * 100 : 0;
 
     const balanceHistory = (() => {
         if (bankHistory.length > 1) {
@@ -405,12 +404,12 @@ export const useBets = (userKey: string): UseBetsReturn => {
 
     return {
       totalStaked,
-      // FIX: Add turnover property to returned object.
       turnover: totalStaked,
       totalProfit,
       roi,
       yield: yield_,
       betCount,
+      lostBetsCount,
       winRate,
       balanceHistory,
       profitBySport: profitBySportArray,
