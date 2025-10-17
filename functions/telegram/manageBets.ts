@@ -1,9 +1,11 @@
 // functions/telegram/manageBets.ts
 
-import { TelegramCallbackQuery, UserState, Env, Bet, BetStatus, BankTransactionType } from './types';
+// FIX: Added TelegramUpdate to imports
+import { TelegramCallbackQuery, UserState, Env, Bet, BetStatus, BankTransactionType, TelegramUpdate } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard, showMainMenu } from './ui';
-import { buildManageCb, MANAGE_ACTIONS, MANAGE_PREFIX } from './router';
+// FIX: Import the newly exported constants from the router.
+import { buildManageCb, MANAGE_ACTIONS } from './router';
 import { setUserState } from './state';
 import { calculateProfit } from '../utils/betUtils';
 import { CB } from './router';
@@ -100,6 +102,19 @@ const getStatusEmoji = (status: BetStatus): string => {
         default: return '';
     }
 };
+
+// FIX: Add an entry point function to be called from the command router.
+export async function startManageBets(update: TelegramUpdate, state: UserState, env: Env) {
+    const message = 'message' in update ? update.message : update.callbackQuery.message;
+    // We create a "fake" callback query to trigger the list view
+    const fakeCallbackQuery: TelegramCallbackQuery = {
+        id: 'callbackQuery' in update ? update.callbackQuery.id : 'fake_id_from_startManageBets',
+        from: message.from,
+        message: message,
+        data: buildManageCb(MANAGE_ACTIONS.LIST, 0)
+    };
+    await manageBets(fakeCallbackQuery, state, env);
+}
 
 /**
  * Main router for all bet management actions triggered by callback queries.

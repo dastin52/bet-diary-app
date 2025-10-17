@@ -39,6 +39,14 @@ export async function editMessageText(chatId: number, messageId: number, text: s
     });
 }
 
+// FIX: Add missing deleteMessage function.
+export async function deleteMessage(chatId: number, messageId: number, env: Env) {
+    return apiRequest('deleteMessage', env.TELEGRAM_BOT_TOKEN, {
+        chat_id: chatId,
+        message_id: messageId,
+    });
+}
+
 export async function sendDocument(chatId: number, file: Blob, fileName: string, env: Env) {
     const formData = new FormData();
     formData.append('chat_id', String(chatId));

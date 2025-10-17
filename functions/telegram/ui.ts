@@ -1,4 +1,3 @@
-
 // functions/telegram/ui.ts
 import { Env, TelegramMessage, TelegramCallbackQuery } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
@@ -10,9 +9,10 @@ export const makeKeyboard = (options: { text: string, callback_data: string }[][
 
 const isCallback = (update: TelegramMessage | TelegramCallbackQuery): update is TelegramCallbackQuery => 'data' in update;
 
-export async function showMainMenu(update: TelegramMessage | TelegramCallbackQuery, env: Env) {
+export async function showMainMenu(update: TelegramMessage | TelegramCallbackQuery, env: Env, text?: string) {
     const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
-    const text = 'Главное меню';
+    // FIX: Use the provided text or a default value.
+    const menuText = text || 'Главное меню';
     const keyboard = makeKeyboard([
         [{ text: '📊 Статистика', callback_data: CB.SHOW_STATS }, { text: '📝 Добавить ставку', callback_data: CB.ADD_BET }],
         [{ text: '🏆 Соревнования', callback_data: CB.SHOW_COMPETITIONS }, { text: '🎯 Мои цели', callback_data: CB.SHOW_GOALS }],
@@ -21,9 +21,9 @@ export async function showMainMenu(update: TelegramMessage | TelegramCallbackQue
     ]);
 
     if (isCallback(update) && update.message) {
-        await editMessageText(chatId, update.message.message_id, text, env, keyboard);
+        await editMessageText(chatId, update.message.message_id, menuText, env, keyboard);
     } else {
-        await sendMessage(chatId, text, env, keyboard);
+        await sendMessage(chatId, menuText, env, keyboard);
     }
 }
 

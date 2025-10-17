@@ -1,4 +1,5 @@
 // functions/telegram/competitionData.ts
+// FIX: Import the missing CompetitionParticipant type.
 import { Bet, User, BetStatus, Achievement, CompetitionParticipant } from './types';
 import { getPeriodStart } from '../utils/dateHelpers';
 import { calculateAchievements } from '../utils/achievements';

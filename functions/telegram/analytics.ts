@@ -3,7 +3,8 @@ import { UserState, BetStatus, Bet } from './types';
 import { BET_TYPE_OPTIONS } from '../constants';
 
 // Helper to calculate analytics data from user state
-function calculateAnalytics(state: UserState) {
+// FIX: Export the function so it can be imported by other modules.
+export function calculateAnalytics(state: UserState) {
     const settledBets = state.bets.filter(b => b.status !== BetStatus.Pending);
     const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
     const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);

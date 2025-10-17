@@ -4,21 +4,21 @@ import { editMessageText } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
 import { generateLeaderboards } from './competitionData';
-// NOTE: These functions use localStorage and will NOT work in a serverless environment.
-// This is a placeholder implementation that would need to be replaced with a proper database/KV store solution for production.
-import { getUsers } from '../data/userStore';
-import { loadUserData } from '../data/betStore';
+// FIX: Import KV-compatible data access functions instead of localStorage-based ones.
+import { getUsers, findUserByEmail } from '../data/userStore';
 
 
-// This function has a major architectural issue for serverless: it tries to load all users' data,
-// which is inefficient and relies on a `localStorage`-based store. For the purpose of fixing
-// compilation errors, we'll implement it, but it would need a redesign for production.
+// FIX: This function now correctly uses KV to fetch all user data, although it remains inefficient for large user bases.
 async function getAllUsersWithBetsFromKV(env: Env): Promise<{ user: User, bets: Bet[] }[]> {
-    // A proper implementation would list keys from the `betdata:` prefix in KV
-    // and fetch them. The current `getUsers` and `loadUserData` are not designed for this.
-    // We will return an empty array to prevent runtime errors and allow compilation.
-    console.warn("`getAllUsersWithBetsFromKV` is not implemented for production and will return no users.");
-    return [];
+    const users = await getUsers(env);
+    const usersWithBets: { user: User, bets: Bet[] }[] = [];
+    for (const user of users) {
+        const state = await findUserByEmail(user.email, env);
+        if (state && state.user) {
+            usersWithBets.push({ user: state.user, bets: state.bets });
+        }
+    }
+    return usersWithBets;
 }
 
 

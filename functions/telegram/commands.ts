@@ -1,127 +1,140 @@
 // functions/telegram/commands.ts
-import { BetStatus, BetType, Env, TelegramMessage, UserState } from './types';
+import { BetStatus, Env, TelegramUpdate, UserState } from './types';
 import { getUserState, setUserState, normalizeState } from './state';
-import { sendMessage } from './telegramApi';
-import { startAddBetDialog } from './dialogs';
+import { reportError } from './telegramApi';
+import { startAddBetDialog, startLoginDialog, startRegisterDialog } from './dialogs';
+import { showLoginOptions, showMainMenu } from './ui';
+import { findUserBy, addUser, findUserByEmail } from '../data/userStore';
+import { calculateAnalytics, generateShortStatsReport } from './analytics';
 
-export async function handleStart(message: TelegramMessage, env: Env) {
-    const chatId = message.chat.id;
-    const state = await getUserState(chatId, env);
+// A mock hashing function. In a real app, use a library like bcrypt on the server.
+const mockHash = (password: string) => `hashed_${password}`;
 
+// FIX: Helper to get the actual payload (Message or CallbackQuery) from the update wrapper.
+const getUpdatePayload = (update: TelegramUpdate) => 'message' in update ? update.message : update.callbackQuery;
+const getChatId = (update: TelegramUpdate): number => 'message' in update ? update.message.chat.id : update.callbackQuery.message.chat.id;
+
+// --- Global Commands (can interrupt dialogs) ---
+export async function handleStart(update: TelegramUpdate, state: UserState, env: Env) {
+    if (state.dialog) {
+        // If in a dialog, reset it before showing the main menu
+        state.dialog = null;
+        // FIX: Use chatId for setUserState, not email.
+        await setUserState(getChatId(update), state, env);
+    }
+    
     if (state.user) {
-        await sendMessage(chatId, `👋 Привет, ${state.user.nickname}! Рад снова вас видеть. Используйте /help, чтобы увидеть список команд.`, env);
+        // FIX: Pass the unwrapped payload and the text argument.
+        await showMainMenu(getUpdatePayload(update), env, `👋 Привет, ${state.user.nickname}! Чем могу помочь?`);
     } else {
-        await sendMessage(chatId, `👋 *Добро пожаловать в BetDiary Бот!*
+        // FIX: Pass the unwrapped payload.
+        await showLoginOptions(getUpdatePayload(update), env, `👋 *Добро пожаловать в BetDiary Бот!*
 
-Чтобы начать, вам нужно привязать свой аккаунт из веб-приложения.
-
-1.  Откройте веб-приложение BetDiary.
-2.  Перейдите в "Настройки".
-3.  Нажмите "Сгенерировать код" в разделе интеграции с Telegram.
-4.  Отправьте полученный 6-значный код мне в этот чат.`, env);
+Чтобы начать, вам нужно войти или зарегистрироваться.`);
     }
 }
 
-export async function handleHelp(message: TelegramMessage, env: Env) {
-    const chatId = message.chat.id;
+export async function handleReset(update: TelegramUpdate, state: UserState, env: Env) {
+    const chatId = 'message' in update ? update.message.chat.id : update.callbackQuery.message.chat.id;
+    const freshState = normalizeState({ user: state.user }); // Keep user, reset everything else
+    await setUserState(chatId, freshState, env);
+    // FIX: Pass unwrapped payload.
+    await showMainMenu(getUpdatePayload(update), env, "Ваше состояние было сброшено. Вы вернулись в главное меню.");
+}
+
+
+// --- Regular Commands ---
+export async function handleAddBet(update: TelegramUpdate, state: UserState, env: Env) {
+    // FIX: Pass unwrapped payload.
+    if (!state.user) return await showLoginOptions(getUpdatePayload(update), env, "Сначала нужно войти в аккаунт.");
+    await startAddBetDialog(update, state, env);
+}
+
+export async function handleManageBets(update: TelegramUpdate, state: UserState, env: Env) {
+     // FIX: Pass unwrapped payload.
+     if (!state.user) return await showLoginOptions(getUpdatePayload(update), env, "Сначала нужно войти в аккаунт.");
+    // FIX: Dynamically import the module and call the correct exported function.
+    const manageBets = await import('./manageBets');
+    await manageBets.startManageBets(update, state, env);
+}
+
+export async function handleStats(update: TelegramUpdate, state: UserState, env: Env) {
+    // FIX: Pass unwrapped payload.
+    if (!state.user) return await showLoginOptions(getUpdatePayload(update), env, "Сначала нужно войти в аккаунт.");
+    const report = generateShortStatsReport(state);
+    // FIX: Pass the unwrapped payload and the text argument.
+    await showMainMenu(getUpdatePayload(update), env, report); // Show stats and then the main menu below it
+}
+
+export async function handleCompetitions(update: TelegramUpdate, state: UserState, env: Env) {
+    // FIX: Pass unwrapped payload.
+    if (!state.user) return await showLoginOptions(getUpdatePayload(update), env, "Сначала нужно войти в аккаунт.");
+    // FIX: Pass the unwrapped payload and the text argument.
+    await showMainMenu(getUpdatePayload(update), env, "🏆 Раздел соревнований в разработке.");
+}
+
+export async function handleGoals(update: TelegramUpdate, state: UserState, env: Env) {
+    // FIX: Pass unwrapped payload.
+    if (!state.user) return await showLoginOptions(getUpdatePayload(update), env, "Сначала нужно войти в аккаунт.");
+    // FIX: Pass the unwrapped payload and the text argument.
+    await showMainMenu(getUpdatePayload(update), env, "🎯 Раздел целей в разработке.");
+}
+
+export async function handleAiAnalyst(update: TelegramUpdate, state: UserState, env: Env) {
+     // FIX: Pass unwrapped payload.
+     if (!state.user) return await showLoginOptions(getUpdatePayload(update), env, "Сначала нужно войти в аккаунт.");
+    const { startAiChatDialog } = await import('./dialogs');
+    await startAiChatDialog(update, state, env);
+}
+
+export async function handleRegister(update: TelegramUpdate, state: UserState, env: Env) {
+    await startRegisterDialog(update, state, env);
+}
+
+export async function handleLogin(update: TelegramUpdate, state: UserState, env: Env) {
+    await startLoginDialog(update, state, env);
+}
+
+export async function handleHelp(update: TelegramUpdate, state: UserState, env: Env) {
     const helpText = `*Список доступных команд:*
 
-/start - Начало работы
+/start или /menu - Главное меню
 /addbet - 📝 Добавить новую ставку
 /stats - 📊 Показать мою статистику
+/manage - 📈 Управление ставками
 /reset - ⚠️ Сбросить состояние (если что-то пошло не так)
-/help - ℹ️ Показать это сообщение
+/help - ℹ️ Показать это сообщение`;
 
-Вы также можете просто отправить 6-значный код для привязки аккаунта.`;
-    await sendMessage(chatId, helpText, env);
+    // FIX: Pass unwrapped payload.
+    await showMainMenu(getUpdatePayload(update), env, helpText);
 }
 
-export async function handleReset(message: TelegramMessage, env: Env) {
-    const chatId = message.chat.id;
-    // Reset state by saving a normalized null, which provides a clean default state.
-    await setUserState(chatId, normalizeState(null), env);
-    await sendMessage(chatId, "Ваше состояние было сброшено. Отправьте /start, чтобы начать заново.", env);
-}
-
-export async function handleAddBet(message: TelegramMessage, env: Env) {
-    const chatId = message.chat.id;
-    const state = await getUserState(chatId, env);
-
-    if (!state.user) {
-        await sendMessage(chatId, "Пожалуйста, сначала привяжите свой аккаунт, отправив 6-значный код из веб-приложения.", env);
-        return;
-    }
-
-    if (state.dialog) {
-        await sendMessage(chatId, "Вы уже находитесь в процессе добавления ставки. Завершите его или используйте /reset для отмены.", env);
-        return;
-    }
-    
-    await startAddBetDialog(chatId, state, env);
-}
-
-export async function handleStats(message: TelegramMessage, env: Env) {
-    const chatId = message.chat.id;
-    const state = await getUserState(chatId, env);
-
-    if (!state.user) {
-        await sendMessage(chatId, "Пожалуйста, сначала привяжите свой аккаунт.", env);
-        return;
-    }
-
-    const settledBets = state.bets.filter(b => b.status !== BetStatus.Pending);
-    if (settledBets.length === 0) {
-        await sendMessage(chatId, "У вас пока нет рассчитанных ставок для отображения статистики.", env);
-        return;
-    }
-    
-    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
-    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
-    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
-    const wonBets = settledBets.filter(b => b.status === BetStatus.Won).length;
-    const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void);
-    const winRate = nonVoidBets.length > 0 ? (wonBets / nonVoidBets.length) * 100 : 0;
-
-    const statsText = `*📊 Ваша статистика*
-
-- *Текущий банк:* ${state.bankroll.toFixed(2)} ₽
-- *Общая прибыль:* ${totalProfit > 0 ? '+' : ''}${totalProfit.toFixed(2)} ₽
-- *ROI:* ${roi.toFixed(2)}%
-- *Процент выигрышей:* ${winRate.toFixed(2)}%
-- *Всего рассчитанных ставок:* ${settledBets.length}`;
-
-    await sendMessage(chatId, statsText, env);
-}
-
-export async function handleAuth(message: TelegramMessage, code: string, env: Env) {
-    const chatId = message.chat.id;
-    
+export async function handleAuth(update: TelegramUpdate, state: UserState, env: Env, code: string) {
+    const chatId = 'message' in update ? update.message.chat.id : update.callbackQuery.message.chat.id;
     try {
         const key = `tgauth:${code}`;
         const dataString = await env.BOT_STATE.get(key);
 
         if (!dataString) {
-            await sendMessage(chatId, "❌ Неверный или истекший код. Пожалуйста, сгенерируйте новый код в веб-приложении.", env);
+            // FIX: Pass unwrapped payload.
+            await showLoginOptions(getUpdatePayload(update), env, "❌ Неверный или истекший код. Пожалуйста, сгенерируйте новый код в веб-приложении.");
             return;
         }
 
         const userData = JSON.parse(dataString);
-        
         const newState = normalizeState(userData);
 
-        if (!newState.user) {
-            throw new Error("User data retrieved from KV is invalid.");
-        }
+        if (!newState.user) throw new Error("User data from KV is invalid.");
         
         await setUserState(chatId, newState, env);
-        
-        // Clean up the used auth code
         await env.BOT_STATE.delete(key);
+        
+        // Also save the full user data under the permanent key
+        await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
 
-        await sendMessage(chatId, `✅ *Успешно!* Ваш аккаунт "${newState.user.nickname}" привязан. Теперь вы можете использовать все функции бота.`, env);
+        await handleStart(update, newState, env);
 
     } catch (error) {
-        console.error("Auth error:", error);
-        await sendMessage(chatId, "Произошла ошибка при проверке кода. Убедитесь, что вы скопировали его правильно.", env);
+        await reportError(chatId, env, 'Auth Handler', error);
     }
 }
