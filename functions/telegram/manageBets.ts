@@ -1,3 +1,4 @@
+// functions/telegram/manageBets.ts
 import { TelegramCallbackQuery, UserState, Env, BetStatus, BankTransactionType, Bet } from './types';
 import { editMessageText } from './telegramApi';
 import { makeKeyboard } from './ui';
@@ -8,7 +9,6 @@ import { calculateProfit } from '../utils/betUtils';
 const BETS_PER_PAGE = 5;
 
 // --- UTILITY ---
-// This function cleanly handles all financial state updates related to a bet change.
 function applyBetUpdateToState(
     state: UserState,
     betId: string,
@@ -20,7 +20,6 @@ function applyBetUpdateToState(
     const newState = { ...state };
     let betUpdated = false;
 
-    // 1. Update the bet in the bets array
     newState.bets = newState.bets.map(b => {
         if (b.id === betId) {
             betUpdated = true;
@@ -29,10 +28,8 @@ function applyBetUpdateToState(
         return b;
     });
     
-    // If for some reason the bet wasn't found, abort.
     if (!betUpdated) return state;
 
-    // 2. Update bankroll and create transaction if needed
     if (profitChange !== 0) {
         const newBalance = newState.bankroll + profitChange;
         const newTransaction = {
@@ -59,29 +56,36 @@ export async function manageBets(update: TelegramCallbackQuery, state: UserState
     const data = update.data;
     const chatId = update.message.chat.id;
     const messageId = update.message.message_id;
+    const [command, ...args] = data.split('|');
 
-    if (data.startsWith(CB.VIEW_BET)) {
-        const [, betId, page] = data.split('|');
-        await viewBetDetail(chatId, messageId, state, betId, parseInt(page, 10), env);
-    } else if (data.startsWith(CB.SET_STATUS_PROMPT)) {
-        const [, betId, page] = data.split('|');
-        await showStatusSelector(chatId, messageId, state, betId, parseInt(page, 10), env);
-    } else if (data.startsWith(CB.SET_STATUS)) {
-        const [, betId, page, newStatus] = data.split('|');
-        await setBetStatus(chatId, messageId, state, betId, parseInt(page, 10), newStatus as BetStatus, env);
-    } else if (data.startsWith(CB.DELETE_PROMPT)) {
-        const [, betId, page] = data.split('|');
-        await showDeleteConfirmation(chatId, messageId, betId, parseInt(page, 10), env);
-    } else if (data.startsWith(CB.DELETE_CONFIRM)) {
-        const [, betId] = data.split('|');
-        await deleteBet(chatId, messageId, state, betId, env);
-    }
-    else {
-        let page = 0;
-        if (data.includes('|')) {
-            page = parseInt(data.split('|')[1], 10) || 0;
-        }
-        await listBets(chatId, messageId, state, page, env);
+    switch(command) {
+        case CB.MANAGE_BETS:
+        // FIX: Replaced CB.MANAGE_LIST with CB.LIST_BETS
+        case CB.LIST_BETS:
+            await listBets(chatId, messageId, state, parseInt(args[0] || '0', 10), env);
+            break;
+        // FIX: Replaced CB.MANAGE_VIEW with CB.VIEW_BET
+        case CB.VIEW_BET:
+            await viewBetDetail(chatId, messageId, state, args[0], parseInt(args[1] || '0', 10), env);
+            break;
+        // FIX: Replaced CB.MANAGE_SET_STATUS_PROMPT with CB.SET_STATUS_PROMPT
+        case CB.SET_STATUS_PROMPT:
+            await showStatusSelector(chatId, messageId, state, args[0], parseInt(args[1] || '0', 10), env);
+            break;
+        // FIX: Replaced CB.MANAGE_SET_STATUS with CB.SET_STATUS
+        case CB.SET_STATUS:
+            await setBetStatus(chatId, messageId, state, args[0], parseInt(args[1] || '0', 10), args[2] as BetStatus, env);
+            break;
+        // FIX: Replaced CB.MANAGE_DELETE_PROMPT with CB.DELETE_PROMPT
+        case CB.DELETE_PROMPT:
+            await showDeleteConfirmation(chatId, messageId, args[0], parseInt(args[1] || '0', 10), env);
+            break;
+        // FIX: Replaced CB.MANAGE_DELETE_CONFIRM with CB.DELETE_CONFIRM
+        case CB.DELETE_CONFIRM:
+            await deleteBet(chatId, messageId, state, args[0], env);
+            break;
+        default:
+             await listBets(chatId, messageId, state, 0, env);
     }
 }
 
@@ -97,7 +101,7 @@ async function listBets(chatId: number, messageId: number, state: UserState, pag
     }
 
     const totalPages = Math.ceil(sortedBets.length / BETS_PER_PAGE);
-    page = Math.max(0, Math.min(page, totalPages - 1)); // Clamp page number
+    page = Math.max(0, Math.min(page, totalPages - 1));
     const startIndex = page * BETS_PER_PAGE;
     const betsToShow = sortedBets.slice(startIndex, startIndex + BETS_PER_PAGE);
 
@@ -106,11 +110,14 @@ async function listBets(chatId: number, messageId: number, state: UserState, pag
     const betButtons = betsToShow.map(bet => {
         const statusIcon = { [BetStatus.Won]: '✅', [BetStatus.Lost]: '❌', [BetStatus.Pending]: '⏳', [BetStatus.Void]: '⚪️', [BetStatus.CashedOut]: '💰' }[bet.status];
         const eventText = bet.event.length > 40 ? `${bet.event.substring(0, 37)}...` : bet.event;
+        // FIX: Replaced CB.MANAGE_VIEW with CB.VIEW_BET
         return [{ text: `${statusIcon} ${eventText}`, callback_data: `${CB.VIEW_BET}|${bet.id}|${page}` }];
     });
     
     const navButtons = [];
+    // FIX: Replaced CB.MANAGE_LIST with CB.LIST_BETS
     if (page > 0) navButtons.push({ text: '⬅️ Назад', callback_data: `${CB.LIST_BETS}|${page - 1}` });
+    // FIX: Replaced CB.MANAGE_LIST with CB.LIST_BETS
     if (page < totalPages - 1) navButtons.push({ text: 'Вперед ➡️', callback_data: `${CB.LIST_BETS}|${page + 1}` });
 
     const keyboard = makeKeyboard([
@@ -126,6 +133,7 @@ async function listBets(chatId: number, messageId: number, state: UserState, pag
 async function viewBetDetail(chatId: number, messageId: number, state: UserState, betId: string, page: number, env: Env) {
     const bet = state.bets.find(b => b.id === betId);
     if (!bet) {
+        // FIX: Replaced CB.MANAGE_LIST with CB.LIST_BETS
         await editMessageText(chatId, messageId, "Ставка не найдена.", env, makeKeyboard([[{ text: '⬅️ К списку', callback_data: `${CB.LIST_BETS}|${page}` }]]));
         return;
     }
@@ -144,12 +152,16 @@ async function viewBetDetail(chatId: number, messageId: number, state: UserState
 ${profitText}`;
 
     const actionButton = bet.status === BetStatus.Pending
-        ? { text: '🔄 Изменить статус', callback_data: `${CB.SET_STATUS_PROMPT}|${bet.id}|${page}` }
-        : { text: '🔄 Отменить результат', callback_data: `${CB.SET_STATUS}|${bet.id}|${page}|${BetStatus.Pending}` };
+        // FIX: Replaced CB.MANAGE_SET_STATUS_PROMPT with CB.SET_STATUS_PROMPT
+        ? { text: '🔄 Статус', callback_data: `${CB.SET_STATUS_PROMPT}|${bet.id}|${page}` }
+        // FIX: Replaced CB.MANAGE_SET_STATUS with CB.SET_STATUS
+        : { text: '🔄 Отменить', callback_data: `${CB.SET_STATUS}|${bet.id}|${page}|${BetStatus.Pending}` };
         
     const keyboard = makeKeyboard([
+        // FIX: Replaced CB.MANAGE_DELETE_PROMPT with CB.DELETE_PROMPT
         [actionButton, { text: '🗑️ Удалить', callback_data: `${CB.DELETE_PROMPT}|${bet.id}|${page}` }],
-        [{ text: '⬅️ Назад к списку', callback_data: `${CB.LIST_BETS}|${page}` }]
+        // FIX: Replaced CB.MANAGE_LIST with CB.LIST_BETS
+        [{ text: '⬅️ К списку', callback_data: `${CB.LIST_BETS}|${page}` }]
     ]);
 
     await editMessageText(chatId, messageId, text, env, keyboard);
@@ -159,14 +171,19 @@ async function showStatusSelector(chatId: number, messageId: number, state: User
     const text = "Выберите новый статус для ставки:";
     const keyboard = makeKeyboard([
         [
+            // FIX: Replaced CB.MANAGE_SET_STATUS with CB.SET_STATUS
             { text: '✅ Выигрыш', callback_data: `${CB.SET_STATUS}|${betId}|${page}|${BetStatus.Won}` },
+            // FIX: Replaced CB.MANAGE_SET_STATUS with CB.SET_STATUS
             { text: '❌ Проигрыш', callback_data: `${CB.SET_STATUS}|${betId}|${page}|${BetStatus.Lost}` },
         ],
         [
+            // FIX: Replaced CB.MANAGE_SET_STATUS with CB.SET_STATUS
             { text: '⚪️ Возврат', callback_data: `${CB.SET_STATUS}|${betId}|${page}|${BetStatus.Void}` },
-            { text: '💰 Кэшаут', callback_data: `${CB.SET_STATUS}|${betId}|${page}|${BetStatus.CashedOut}` }, // Note: Cashout profit needs manual input, not supported here yet.
+            // FIX: Replaced CB.MANAGE_SET_STATUS with CB.SET_STATUS
+            { text: '💰 Кэшаут', callback_data: `${CB.SET_STATUS}|${betId}|${page}|${BetStatus.CashedOut}` },
         ],
-        [{ text: '⬅️ Назад к детализации', callback_data: `${CB.VIEW_BET}|${betId}|${page}` }]
+        // FIX: Replaced CB.MANAGE_VIEW with CB.VIEW_BET
+        [{ text: '⬅️ Назад', callback_data: `${CB.VIEW_BET}|${betId}|${page}` }]
     ]);
     await editMessageText(chatId, messageId, text, env, keyboard);
 }
@@ -174,7 +191,9 @@ async function showStatusSelector(chatId: number, messageId: number, state: User
 async function showDeleteConfirmation(chatId: number, messageId: number, betId: string, page: number, env: Env) {
     const text = "Вы уверены, что хотите удалить эту ставку? Это действие необратимо.";
     const keyboard = makeKeyboard([
+        // FIX: Replaced CB.MANAGE_DELETE_CONFIRM with CB.DELETE_CONFIRM
         [{ text: '🗑️ Да, удалить', callback_data: `${CB.DELETE_CONFIRM}|${betId}` }],
+        // FIX: Replaced CB.MANAGE_VIEW with CB.VIEW_BET
         [{ text: '⬅️ Нет, назад', callback_data: `${CB.VIEW_BET}|${betId}|${page}` }]
     ]);
     await editMessageText(chatId, messageId, text, env, keyboard);
@@ -185,6 +204,7 @@ async function showDeleteConfirmation(chatId: number, messageId: number, betId: 
 async function setBetStatus(chatId: number, messageId: number, state: UserState, betId: string, page: number, newStatus: BetStatus, env: Env) {
     const originalBet = state.bets.find(b => b.id === betId);
     if (!originalBet) {
+        // FIX: Replaced CB.MANAGE_LIST with CB.LIST_BETS
         await editMessageText(chatId, messageId, "Ставка не найдена.", env, makeKeyboard([[{ text: '⬅️ К списку', callback_data: `${CB.LIST_BETS}|${page}` }]]));
         return;
     }
@@ -215,7 +235,6 @@ async function setBetStatus(chatId: number, messageId: number, state: UserState,
         await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
     }
     
-    // Refresh the view with the new state
     await viewBetDetail(chatId, messageId, newState, betId, page, env);
 }
 
@@ -226,7 +245,6 @@ async function deleteBet(chatId: number, messageId: number, state: UserState, be
         return;
     }
 
-    // 1. Reverse financial impact if the bet was settled
     const profitToReverse = betToDelete.profit ?? 0;
     let newState = state;
 
@@ -234,14 +252,13 @@ async function deleteBet(chatId: number, messageId: number, state: UserState, be
         newState = applyBetUpdateToState(
             state,
             betId,
-            {}, // No bet updates, we're about to delete it
+            {},
             -profitToReverse,
             BankTransactionType.Correction,
             `Удаление ставки: ${betToDelete.event}`
         );
     }
     
-    // 2. Filter out the bet
     newState.bets = newState.bets.filter(b => b.id !== betId);
 
     await setUserState(chatId, newState, env);
@@ -249,6 +266,5 @@ async function deleteBet(chatId: number, messageId: number, state: UserState, be
         await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
     }
 
-    // Go back to the list view after deletion
     await listBets(chatId, messageId, newState, 0, env);
 }
