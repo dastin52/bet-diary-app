@@ -1,6 +1,4 @@
 // functions/telegram/dialogs.ts
-// FIX: File content implemented. This file manages multi-step conversations (dialogs).
-
 import { Bet, BetStatus, BetType, DialogState, Env, TelegramMessage, UserState, TelegramCallbackQuery, BankTransactionType } from './types';
 import { setUserState } from './state';
 import { editMessageText, sendMessage } from './telegramApi';
@@ -97,11 +95,9 @@ export async function startAddBetDialog(chatId: number, state: UserState, env: E
 }
 
 export async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    // FIX: Correctly determine chatId based on the type of 'update'.
-    const chatId = "message" in update ? ("chat" in update.message ? update.message.chat.id : 0) : update.from.id;
+    const chatId = "message" in update ? update.message.chat.id : ("chat" in update ? update.chat.id : 0);
     const dialog = state.dialog!;
     
-    // FIX: Correctly get user input based on the type of 'update'.
     const userInput = 'data' in update ? update.data : 'text' in update ? update.text : '';
 
     try {

@@ -1,6 +1,4 @@
 // functions/telegram/commands.ts
-// FIX: File content implemented. This file contains the logic for individual bot commands.
-
 import { BetStatus, BetType, Env, TelegramMessage, UserState } from './types';
 import { getUserState, setUserState, normalizeState } from './state';
 import { sendMessage } from './telegramApi';

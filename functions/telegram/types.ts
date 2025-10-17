@@ -1,7 +1,6 @@
 // functions/telegram/types.ts
-// Merged from /types.ts and /src/telegram/types.ts for serverless environment
 
-// --- CORE TYPES ---
+// --- Core Application Types (from root types.ts) ---
 
 export enum BetStatus {
   Pending = 'pending',
@@ -162,10 +161,24 @@ export interface Challenge {
   period: 'weekly';
 }
 
-// --- TELEGRAM-SPECIFIC TYPES ---
+export interface CompetitionParticipant {
+    user: {
+        nickname: string;
+        email: string;
+    };
+    stats: any;
+}
 
-import { UserBetData } from '../data/betStore';
-export type { UserBetData } from '../data/betStore';
+// --- Types from data/betStore ---
+
+export interface UserBetData {
+  bets: Bet[];
+  bankroll: number;
+  goals: Goal[];
+  bankHistory: BankTransaction[];
+}
+
+// --- Telegram Specific Types (from src/telegram/types.ts) ---
 
 export interface Env {
     TELEGRAM_BOT_TOKEN: string;
@@ -222,25 +235,4 @@ export interface TelegramUser {
     is_bot: boolean;
     first_name: string;
     username?: string;
-}
-
-export interface CompetitionParticipant {
-    user: {
-        nickname: string;
-        email: string;
-    };
-    stats: ParticipantStats;
-}
-
-export interface ParticipantStats {
-    rank: number;
-    roi: number;
-    totalBets: number;
-    wonBets: number;
-    lostBets: number;
-    biggestWin: number;
-    biggestLoss: number;
-    totalStaked: number;
-    totalProfit: number;
-    achievements: Achievement[];
 }

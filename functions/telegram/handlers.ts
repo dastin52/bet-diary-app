@@ -1,12 +1,12 @@
 // functions/telegram/handlers.ts
-// FIX: File content implemented. This file acts as the main router for incoming Telegram updates.
-
 import { TelegramMessage, TelegramCallbackQuery, Env } from './types';
 import { getUserState } from './state';
 import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth } from './commands';
 import { continueAddBetDialog } from './dialogs';
-// FIX: sendMessage was not found. It's imported here from telegramApi.
 import { answerCallbackQuery, reportError, sendMessage } from './telegramApi';
+import { manageBets } from './manageBets';
+import { showMainMenu } from './ui';
+import { CB } from './router';
 
 export async function handleMessage(message: TelegramMessage, env: Env) {
     const chatId = message.chat.id;
@@ -71,8 +71,17 @@ export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, 
 
         if (state.dialog && callbackQuery.data.startsWith('dialog_')) {
             await continueAddBetDialog(callbackQuery, state, env);
+        } else if (callbackQuery.data.startsWith('manage|')) {
+            await manageBets(callbackQuery, state, env);
         } else {
-            console.warn(`Received unhandled callback_query data: ${callbackQuery.data} for chat ${chatId}`);
+             switch (callbackQuery.data) {
+                case CB.BACK_TO_MAIN:
+                    await showMainMenu(callbackQuery, env);
+                    break;
+                default:
+                    console.warn(`Received unhandled callback_query data: ${callbackQuery.data} for chat ${chatId}`);
+                    break;
+            }
         }
     } catch (error) {
         await reportError(chatId, env, 'Callback Query Handler', error);
