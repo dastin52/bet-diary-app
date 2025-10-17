@@ -1,15 +1,17 @@
 // functions/telegram/telegramApi.ts
 import { Env } from './types';
 
-async function callTelegramApi(method: string, token: string, body: object) {
+async function apiRequest(method: string, token: string, body: FormData | object) {
     const url = `https://api.telegram.org/bot${token}/${method}`;
+    
+    const isFormData = body instanceof FormData;
+
     const response = await fetch(url, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
+        headers: isFormData ? {} : { 'Content-Type': 'application/json' },
+        body: isFormData ? body : JSON.stringify(body),
     });
+
     if (!response.ok) {
         const errorBody = await response.text();
         console.error(`Telegram API error for method ${method}: ${response.status} ${response.statusText}`, errorBody);
@@ -19,7 +21,7 @@ async function callTelegramApi(method: string, token: string, body: object) {
 }
 
 export async function sendMessage(chatId: number, text: string, env: Env, reply_markup?: object) {
-    return callTelegramApi('sendMessage', env.TELEGRAM_BOT_TOKEN, {
+    return apiRequest('sendMessage', env.TELEGRAM_BOT_TOKEN, {
         chat_id: chatId,
         text,
         parse_mode: 'Markdown',
@@ -28,7 +30,7 @@ export async function sendMessage(chatId: number, text: string, env: Env, reply_
 }
 
 export async function editMessageText(chatId: number, messageId: number, text: string, env: Env, reply_markup?: object) {
-    return callTelegramApi('editMessageText', env.TELEGRAM_BOT_TOKEN, {
+    return apiRequest('editMessageText', env.TELEGRAM_BOT_TOKEN, {
         chat_id: chatId,
         message_id: messageId,
         text,
@@ -37,8 +39,16 @@ export async function editMessageText(chatId: number, messageId: number, text: s
     });
 }
 
+export async function sendDocument(chatId: number, file: Blob, fileName: string, env: Env) {
+    const formData = new FormData();
+    formData.append('chat_id', String(chatId));
+    formData.append('document', file, fileName);
+
+    return apiRequest('sendDocument', env.TELEGRAM_BOT_TOKEN, formData);
+}
+
 export async function answerCallbackQuery(callbackQueryId: string, env: Env, text?: string) {
-    return callTelegramApi('answerCallbackQuery', env.TELEGRAM_BOT_TOKEN, {
+    return apiRequest('answerCallbackQuery', env.TELEGRAM_BOT_TOKEN, {
         callback_query_id: callbackQueryId,
         text,
     });
@@ -49,7 +59,7 @@ export async function reportError(chatId: number, env: Env, context: string, err
     
 Контекст: \`${context}\`
     
-К сожалению, бот столкнулся с непредвиденной проблемой. Пожалуйста, попробуйте снова позже. Если ошибка повторяется, вы можете использовать команду /reset.`;
+К сожалению, бот столкнулся с непредвиденной проблемой. Пожалуйста, попробуйте снова. Если ошибка повторяется, используйте /reset.`;
     
     console.error(`Error in ${context} for chat ${chatId}:`, error instanceof Error ? error.stack : JSON.stringify(error));
 
