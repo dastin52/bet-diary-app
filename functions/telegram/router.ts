@@ -9,17 +9,16 @@ import {
     handleManageBets,
     handleHelp,
     handleReset,
-    handleAuth,
-    handleUnknownCommand,
-    handleGetCode,
     handleManage,
+    handleGetCode,
+    handleRegister,
+    handleLogin,
 } from './commands';
 import { TelegramMessage, TelegramCallbackQuery, Env, UserState } from './types';
 
-// Унифицированный тип для всех обработчиков
 export type ActionHandler = (update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) => Promise<void>;
 
-// --- Идентификаторы для всех кнопок (Callback Data) ---
+// Standardized callback data keys
 export const CB = {
     SHOW_MAIN_MENU: 'main_menu',
     SHOW_STATS: 'stats',
@@ -28,22 +27,28 @@ export const CB = {
     SHOW_GOALS: 'goals',
     MANAGE_BETS: 'manage_bets',
     SHOW_AI_ANALYST: 'ai_analyst',
+    REGISTER: 'register',
+    LOGIN: 'login',
 };
 
-// Карта маршрутов для аутентифицированных пользователей
-export const authenticatedRoutes: Record<string, ActionHandler> = {
-    // Текстовые команды
+// These commands should always work and will interrupt any active dialog.
+export const globalRoutes: Record<string, ActionHandler> = {
     '/start': handleStart,
-    '/menu': handleStart, // Алиас
-    '/add': handleAddBet, // Алиас
+    '/menu': handleStart,
+    '/help': handleHelp,
+    '/reset': handleReset,
+};
+
+// Routes available only when the user is authenticated.
+export const authenticatedRoutes: Record<string, ActionHandler> = {
+    // Commands
+    '/add': handleAddBet,
     '/addbet': handleAddBet,
     '/stats': handleStats,
     '/manage': handleManage,
     '/getcode': handleGetCode,
-    '/reset': handleReset,
-    '/help': handleHelp,
 
-    // Нажатия на кнопки (callback_data)
+    // Callbacks from buttons
     [CB.SHOW_MAIN_MENU]: handleStart,
     [CB.SHOW_STATS]: handleStats,
     [CB.ADD_BET]: handleAddBet,
@@ -53,9 +58,14 @@ export const authenticatedRoutes: Record<string, ActionHandler> = {
     [CB.SHOW_AI_ANALYST]: handleAiAnalyst,
 };
 
-// Карта маршрутов для неаутентифицированных пользователей
+// Routes available only when the user is NOT authenticated.
+// Global routes also apply.
 export const unauthenticatedRoutes: Record<string, ActionHandler> = {
-    '/start': handleStart,
-    '/help': handleHelp,
-    '/reset': handleReset,
+    // No specific commands here, they are handled by globalRoutes
+};
+
+// Callback routes for buttons that start dialogs, only for non-authenticated users.
+export const unauthenticatedDialogRoutes: Record<string, ActionHandler> = {
+    [CB.REGISTER]: handleRegister,
+    [CB.LOGIN]: handleLogin,
 };

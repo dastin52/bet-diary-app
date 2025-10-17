@@ -19,23 +19,22 @@ export async function showMainMenu(update: TelegramMessage | TelegramCallbackQue
         [{ text: '🤖 AI-Аналитик', callback_data: CB.SHOW_AI_ANALYST }]
     ]);
 
-    if (isCallback(update)) {
-        // Если это нажатие кнопки, редактируем существующее сообщение
+    if (isCallback(update) && update.message) {
         await editMessageText(chatId, update.message.message_id, text, env, keyboard);
     } else {
-        // Если это команда, отправляем новое сообщение
         await sendMessage(chatId, text, env, keyboard);
     }
 }
 
 export async function showLoginOptions(update: TelegramMessage | TelegramCallbackQuery, env: Env, customText?: string) {
     const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
-    const text = customText || 'Чтобы начать, привяжите свой аккаунт, отправив 6-значный код из веб-приложения.';
+    const text = customText || 'Чтобы начать, войдите или зарегистрируйтесь.';
     
-    // В будущем здесь можно добавить кнопку со ссылкой на сайт
-    const keyboard = undefined;
+    const keyboard = makeKeyboard([
+        [{ text: '🔑 Войти', callback_data: CB.LOGIN }, { text: '📝 Регистрация', callback_data: CB.REGISTER }]
+    ]);
 
-    if (isCallback(update)) {
+    if (isCallback(update) && update.message) {
         await editMessageText(chatId, update.message.message_id, text, env, keyboard);
     } else {
         await sendMessage(chatId, text, env, keyboard);

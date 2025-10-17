@@ -1,14 +1,11 @@
 // functions/telegram/commands.ts
 import { BetStatus, Env, TelegramMessage, UserState, TelegramCallbackQuery } from './types';
 import { setUserState, normalizeState } from './state';
-// FIX: Import 'reportError' to make it available for use in the catch block.
 import { sendMessage, editMessageText, deleteMessage, reportError } from './telegramApi';
-import { startAddBetDialog, startAiChatDialog } from './dialogs';
+import { startAddBetDialog, startAiChatDialog, startLoginDialog, startRegisterDialog } from './dialogs';
 import { showMainMenu, showLoginOptions, makeKeyboard } from './ui';
 import { CB } from './router';
 import * as userStore from '../data/userStore';
-
-// --- Вспомогательные функции ---
 
 const isCallback = (update: TelegramMessage | TelegramCallbackQuery): update is TelegramCallbackQuery => 'data' in update;
 
@@ -33,20 +30,18 @@ function getStatsText(state: UserState): string {
 - *Всего рассчитанных ставок:* ${settledBets.length}`;
 }
 
-// --- Основные обработчики действий ---
-
 export async function handleStart(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
     if (state.user) {
         await showMainMenu(update, env);
     } else {
-        await showLoginOptions(update, env, `👋 *Добро пожаловать в BetDiary Бот!*\n\nЧтобы начать, привяжите свой аккаунт, отправив 6-значный код из веб-приложения.`);
+        await showLoginOptions(update, env, `👋 *Добро пожаловать в BetDiary Бот!*\n\nВойдите или зарегистрируйтесь, чтобы начать.`);
     }
 }
 
 export async function handleAddBet(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
     const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
     if (isCallback(update)) {
-        await deleteMessage(chatId, update.message.message_id, env);
+        await deleteMessage(chatId, update.message.message_id, env).catch(e => console.error("Failed to delete message:", e));
     }
     await startAddBetDialog(chatId, state, env);
 }
@@ -73,7 +68,13 @@ export async function handleReset(update: TelegramMessage | TelegramCallbackQuer
     await sendMessage(chatId, "Ваше состояние было сброшено. Отправьте /start, чтобы начать заново.", env);
 }
 
-// --- Обработчики-заглушки и специфичные команды ---
+export async function handleRegister(update: TelegramCallbackQuery, state: UserState, env: Env) {
+    await startRegisterDialog(update.message.chat.id, state, env, update.message.message_id);
+}
+
+export async function handleLogin(update: TelegramCallbackQuery, state: UserState, env: Env) {
+    await startLoginDialog(update.message.chat.id, state, env, update.message.message_id);
+}
 
 export async function handleCompetitions(update: TelegramCallbackQuery, state: UserState, env: Env) {
     await editMessageText(update.message.chat.id, update.message.message_id, "Раздел 'Соревнования' находится в разработке.", env, makeKeyboard([[{ text: '⬅️ В меню', callback_data: CB.SHOW_MAIN_MENU }]]));
@@ -88,7 +89,7 @@ export async function handleManageBets(update: TelegramCallbackQuery, state: Use
 }
 
 export async function handleAiAnalyst(update: TelegramCallbackQuery, state: UserState, env: Env) {
-    await deleteMessage(update.message.chat.id, update.message.message_id, env);
+    await deleteMessage(update.message.chat.id, update.message.message_id, env).catch(e => console.error("Failed to delete message:", e));
     await startAiChatDialog(update.message.chat.id, state, env);
 }
 
@@ -104,8 +105,6 @@ export async function handleUnknownCommand(update: TelegramMessage, state: UserS
     await sendMessage(update.chat.id, "🤔 Неизвестная команда. Используйте /help для списка команд.", env);
 }
 
-// --- Логика авторизации ---
-
 export async function handleAuth(message: TelegramMessage, code: string, env: Env) {
     const chatId = message.chat.id;
     try {
@@ -115,12 +114,23 @@ export async function handleAuth(message: TelegramMessage, code: string, env: En
             await sendMessage(chatId, "❌ Неверный или истекший код.", env);
             return;
         }
-        await env.BOT_STATE.delete(key); // Удаляем код сразу после использования
+        await env.BOT_STATE.delete(key);
 
         const userData = JSON.parse(dataString);
         const newState = normalizeState(userData);
 
         if (!newState.user) throw new Error("User data from KV is invalid.");
+        
+        // Save the full state to a persistent user-specific key for future logins
+        await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
+        
+        // Save/update the user object in our userStore for global lookups
+        const existingUser = await userStore.findUserBy(u => u.email === newState.user!.email, env);
+        if (!existingUser) {
+            await userStore.addUser(newState.user, env);
+        } else {
+            await userStore.updateUser(newState.user, env);
+        }
         
         await setUserState(chatId, newState, env);
         await sendMessage(chatId, `✅ *Успешно!* Ваш аккаунт "${newState.user.nickname}" привязан.`, env);

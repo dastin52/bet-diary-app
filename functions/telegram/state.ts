@@ -24,7 +24,6 @@ export function normalizeState(data: any): UserState {
 export async function getUserState(chatId: number, env: Env): Promise<UserState> {
     const key = `tgchat:${chatId}`;
     try {
-        // FIX: The `get` method expects 'json' as a string literal, not an object.
         const data = await env.BOT_STATE.get<UserState>(key, 'json');
         return normalizeState(data);
     } catch (e) {
