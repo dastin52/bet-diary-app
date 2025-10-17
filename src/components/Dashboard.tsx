@@ -70,18 +70,32 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat }) => {
   const { analytics, bankroll, goals } = useBetContext();
-  const { totalProfit, roi, betCount, balanceHistory, profitBySport, profitByBetType, winLossBySport, performanceByOdds } = analytics;
+  const { totalProfit, roi, betCount, lostBetsCount, turnover, balanceHistory, profitBySport, profitByBetType, winLossBySport, performanceByOdds } = analytics;
   const [selectedMatch, setSelectedMatch] = useState<UpcomingMatch | null>(null);
 
   const profitColor = totalProfit >= 0 ? 'text-green-500' : 'text-red-500';
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KpiCard title="Текущий банк" value={`${bankroll.toFixed(2)} ₽`} subtext="Ваши доступные средства" colorClass="text-indigo-500 dark:text-indigo-400" />
-        <KpiCard title="Общая прибыль" value={`${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}`} colorClass={profitColor} subtext="Прибыль/убыток по всем ставкам"/>
-        <KpiCard title="ROI / Доходность" value={`${roi.toFixed(2)}%`} subtext="Возврат инвестиций" colorClass={roi >= 0 ? 'text-green-500' : 'text-red-500'} />
-        <KpiCard title="Рассчитано ставок" value={String(betCount)} subtext="Общее количество ставок" />
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
+        <div className="md:col-span-1 lg:col-span-2">
+            <KpiCard title="Текущий банк" value={`${bankroll.toFixed(2)} ₽`} subtext="Ваши доступные средства" colorClass="text-indigo-500 dark:text-indigo-400" />
+        </div>
+        <div className="md:col-span-1 lg:col-span-2">
+            <KpiCard title="Общая прибыль" value={`${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}`} colorClass={profitColor} subtext="Прибыль/убыток по всем ставкам"/>
+        </div>
+        <div className="md:col-span-1 lg:col-span-2">
+            <KpiCard title="ROI / Доходность" value={`${roi.toFixed(2)}%`} subtext="Возврат инвестиций" colorClass={roi >= 0 ? 'text-green-500' : 'text-red-500'} />
+        </div>
+        <div className="md:col-span-1 lg:col-span-2">
+            <KpiCard title="Оборот" value={`${turnover.toFixed(2)} ₽`} subtext="Общая сумма ставок" />
+        </div>
+         <div className="md:col-span-1 lg:col-span-2">
+             <KpiCard title="Рассчитано ставок" value={String(betCount)} subtext="Общее количество ставок" />
+        </div>
+        <div className="md:col-span-1 lg:col-span-2">
+            <KpiCard title="Проигрышей" value={String(lostBetsCount)} subtext="Количество проигранных ставок" colorClass="text-red-500" />
+        </div>
       </div>
 
       <GoalProgressCard goals={goals} />

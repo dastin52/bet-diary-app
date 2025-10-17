@@ -4,6 +4,7 @@ import Card from './ui/Card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { BankTransaction, BankTransactionType } from '../types';
 import { LineChartTooltip } from './charts/ChartTooltip';
+import Button from './ui/Button';
 
 const getTransactionTypeInfo = (type: BankTransactionType): { label: string, colorClass: string } => {
     switch (type) {
@@ -26,7 +27,7 @@ const getTransactionTypeInfo = (type: BankTransactionType): { label: string, col
 };
 
 const BankHistoryPanel: React.FC = () => {
-    const { bankHistory } = useBetContext();
+    const { bankHistory, analytics, bankroll } = useBetContext();
 
     const chartData = [...bankHistory]
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -34,6 +35,118 @@ const BankHistoryPanel: React.FC = () => {
             date: new Date(t.timestamp).toLocaleString('ru-RU'),
             balance: t.newBalance,
         }));
+
+    const handleDownloadReport = () => {
+        const { totalProfit, roi, turnover, betCount, lostBetsCount, winRate, profitBySport, profitByBetType, winLossBySport, performanceByOdds } = analytics;
+
+        const generateKpiHtml = (title: string, value: string, colorClass: string = '') => `
+            <div class="kpi">
+                <h3>${title}</h3>
+                <p class="value ${colorClass}">${value}</p>
+            </div>
+        `;
+
+        const generateTableHtml = (title: string, headers: string[], rows: (string | number)[][]) => {
+            let table = `<h2>${title}</h2><table><thead><tr>`;
+            headers.forEach(h => table += `<th>${h}</th>`);
+            table += `</tr></thead><tbody>`;
+            rows.forEach(row => {
+                table += `<tr>`;
+                row.forEach((cell, index) => {
+                     let cellClass = '';
+                    if (headers[index].includes('Прибыль') || headers[index].includes('ROI')) {
+                        const numericValue = typeof cell === 'string' ? parseFloat(cell) : cell;
+                        if (numericValue > 0) cellClass = 'positive';
+                        if (numericValue < 0) cellClass = 'negative';
+                    }
+                    table += `<td class="${cellClass}">${cell}</td>`;
+                });
+                table += `</tr>`;
+            });
+            table += `</tbody></table>`;
+            return table;
+        };
+        
+        const reportDate = new Date().toLocaleString('ru-RU');
+
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+                <meta charset="UTF-8">
+                <title>Аналитический отчет - Дневник Ставок</title>
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; color: #1f2937; margin: 0; padding: 2rem; }
+                    .container { max-width: 800px; margin: auto; background: #fff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                    h1 { color: #4f46e5; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+                    h2 { color: #374151; margin-top: 2rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;}
+                    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+                    .kpi { background-color: #f9fafb; padding: 1rem; border-radius: 0.5rem; text-align: center; border: 1px solid #e5e7eb; }
+                    .kpi h3 { margin: 0; font-size: 0.875rem; color: #6b7280; }
+                    .kpi .value { margin: 0.5rem 0 0 0; font-size: 1.5rem; font-weight: bold; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+                    th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
+                    th { background-color: #f9fafb; font-size: 0.8rem; text-transform: uppercase; color: #6b7280; }
+                    td { font-size: 0.9rem; }
+                    .positive { color: #10b981; font-weight: bold; }
+                    .negative { color: #ef4444; font-weight: bold; }
+                    .footer { margin-top: 2rem; text-align: center; font-size: 0.75rem; color: #9ca3af; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Аналитический отчет</h1>
+                    <p class="footer">Сформирован: ${reportDate}</p>
+                    
+                    <h2>Ключевые показатели</h2>
+                    <div class="kpi-grid">
+                        ${generateKpiHtml('Текущий банк', `${bankroll.toFixed(2)} ₽`)}
+                        ${generateKpiHtml('Общая прибыль', `${totalProfit.toFixed(2)} ₽`, totalProfit > 0 ? 'positive' : 'negative')}
+                        ${generateKpiHtml('ROI', `${roi.toFixed(2)}%`, roi > 0 ? 'positive' : 'negative')}
+                        ${generateKpiHtml('Оборот', `${turnover.toFixed(2)} ₽`)}
+                        ${generateKpiHtml('Всего ставок', `${betCount}`)}
+                        ${generateKpiHtml('Процент побед', `${winRate.toFixed(2)}%`)}
+                    </div>
+
+                    ${generateTableHtml(
+                        'Прибыль по видам спорта',
+                        ['Спорт', 'Прибыль (₽)', 'ROI (%)'],
+                        profitBySport.map(p => [p.sport, p.profit.toFixed(2), p.roi.toFixed(2)])
+                    )}
+                    
+                    ${generateTableHtml(
+                        'Прибыль по типам ставок',
+                        ['Тип ставки', 'Прибыль (₽)', 'ROI (%)'],
+                        profitByBetType.map(p => [p.type, p.profit.toFixed(2), p.roi.toFixed(2)])
+                    )}
+
+                    ${generateTableHtml(
+                        'Соотношение выигрышей/проигрышей',
+                        ['Спорт', 'Выигрыши', 'Проигрыши'],
+                        winLossBySport.map(s => [s.sport, s.wins, s.losses])
+                    )}
+
+                    ${generateTableHtml(
+                        'Проходимость по коэффициентам',
+                        ['Диапазон коэф.', 'Выигрыши', 'Проигрыши', 'Проходимость (%)', 'ROI (%)'],
+                        performanceByOdds.map(p => [p.range, p.wins, p.losses, p.winRate.toFixed(1), p.roi.toFixed(2)])
+                    )}
+
+                    <div class="footer">© Дневник Ставок</div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `bet_diary_report_${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+    };
 
     return (
         <div className="space-y-6">
@@ -58,7 +171,10 @@ const BankHistoryPanel: React.FC = () => {
             </Card>
 
             <Card>
-                 <h3 className="text-lg font-semibold mb-4">Журнал Транзакций</h3>
+                 <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">Журнал Транзакций</h3>
+                    <Button onClick={handleDownloadReport} variant="secondary">Скачать отчет</Button>
+                </div>
                  <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-100 dark:bg-gray-800">

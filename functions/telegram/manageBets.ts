@@ -57,6 +57,7 @@ export async function manageBets(update: TelegramCallbackQuery, state: UserState
     const chatId = update.message.chat.id;
     const messageId = update.message.message_id;
     
+    // Entry point from main menu
     if (data === CB.MANAGE_BETS) {
         await listBets(chatId, messageId, state, 0, env);
         return;
@@ -83,7 +84,7 @@ export async function manageBets(update: TelegramCallbackQuery, state: UserState
             await showDeleteConfirmation(chatId, messageId, args[0], parseInt(args[1] || '0', 10), env);
             break;
         case MANAGE_ACTIONS.CONFIRM_DELETE:
-            await deleteBet(chatId, messageId, state, args[0], env);
+            await deleteBet(chatId, messageId, state, args[0], parseInt(args[1] || '0', 10), env);
             break;
         default:
              await listBets(chatId, messageId, state, 0, env);
@@ -106,7 +107,7 @@ async function listBets(chatId: number, messageId: number, state: UserState, pag
     const startIndex = page * BETS_PER_PAGE;
     const betsToShow = sortedBets.slice(startIndex, startIndex + BETS_PER_PAGE);
 
-    let text = `*📈 Ваши ставки (Страница ${page + 1}/${totalPages})*`;
+    let text = `*📈 Управление ставками (Стр. ${page + 1}/${totalPages})*`;
 
     const betButtons = betsToShow.map(bet => {
         const statusIcon = { [BetStatus.Won]: '✅', [BetStatus.Lost]: '❌', [BetStatus.Pending]: '⏳', [BetStatus.Void]: '⚪️', [BetStatus.CashedOut]: '💰' }[bet.status];
@@ -179,7 +180,7 @@ async function showStatusSelector(chatId: number, messageId: number, betId: stri
 async function showDeleteConfirmation(chatId: number, messageId: number, betId: string, page: number, env: Env) {
     const text = "Вы уверены, что хотите удалить эту ставку? Это действие необратимо.";
     const keyboard = makeKeyboard([
-        [{ text: '🗑️ Да, удалить', callback_data: buildManageCb(MANAGE_ACTIONS.CONFIRM_DELETE, betId) }],
+        [{ text: '🗑️ Да, удалить', callback_data: buildManageCb(MANAGE_ACTIONS.CONFIRM_DELETE, betId, page) }],
         [{ text: '⬅️ Нет, назад', callback_data: buildManageCb(MANAGE_ACTIONS.VIEW, betId, page) }]
     ]);
     await editMessageText(chatId, messageId, text, env, keyboard);
@@ -192,6 +193,14 @@ async function setBetStatus(chatId: number, messageId: number, state: UserState,
     if (!originalBet) {
         await editMessageText(chatId, messageId, "Ставка не найдена.", env, makeKeyboard([[{ text: '⬅️ К списку', callback_data: buildManageCb(MANAGE_ACTIONS.LIST, page) }]]));
         return;
+    }
+
+    // Handle cashed out separately as it needs manual profit input
+    if (newStatus === BetStatus.CashedOut) {
+        // In a real scenario, you'd start another dialog step here to ask for the cashout amount.
+        // For simplicity, we'll just mark it as void for now.
+        await editMessageText(chatId, messageId, "Функция Кэшаут требует ручного ввода суммы в веб-версии. Здесь она будет обработана как Возврат.", env);
+        newStatus = BetStatus.Void; // Fallback
     }
 
     const wasSettled = originalBet.status !== BetStatus.Pending;
@@ -220,10 +229,11 @@ async function setBetStatus(chatId: number, messageId: number, state: UserState,
         await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
     }
     
-    await viewBetDetail(chatId, messageId, newState, betId, page, env);
+    // Return to the list view after status update
+    await listBets(chatId, messageId, newState, page, env);
 }
 
-async function deleteBet(chatId: number, messageId: number, state: UserState, betId: string, env: Env) {
+async function deleteBet(chatId: number, messageId: number, state: UserState, betId: string, page: number, env: Env) {
     const betToDelete = state.bets.find(b => b.id === betId);
     if (!betToDelete) {
         await editMessageText(chatId, messageId, "Ставка уже удалена.", env);
@@ -251,5 +261,5 @@ async function deleteBet(chatId: number, messageId: number, state: UserState, be
         await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
     }
 
-    await listBets(chatId, messageId, newState, 0, env);
+    await listBets(chatId, messageId, newState, page, env);
 }
