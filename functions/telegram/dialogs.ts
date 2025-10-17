@@ -17,6 +17,9 @@ const mockHash = (password: string) => `hashed_${password}`;
 
 // --- UTILITY ---
 const isCallback = (update: TelegramMessage | TelegramCallbackQuery): update is TelegramCallbackQuery => 'data' in update;
+const getChatId = (update: TelegramMessage | TelegramCallbackQuery): number => isCallback(update) ? update.message.chat.id : update.chat.id;
+const getUserInput = (update: TelegramMessage | TelegramCallbackQuery): string => isCallback(update) ? update.data : update.text || '';
+
 
 // --- DIALOG ROUTER ---
 export async function continueDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
@@ -35,7 +38,7 @@ export async function continueDialog(update: TelegramMessage | TelegramCallbackQ
             await continueAiChatDialog(update, state, env);
             break;
         default:
-            const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+            const chatId = getChatId(update);
             state.dialog = null;
             await setUserState(chatId, state, env);
             await sendMessage(chatId, "Что-то пошло не так. Диалог сброшен.", env);
@@ -87,7 +90,12 @@ const ADD_BET_STEPS = {
     STAKE: 'STAKE', ODDS: 'ODDS', BOOKMAKER: 'BOOKMAKER', CONFIRM: 'CONFIRM',
 };
 
-const getAddBetDialogText = (data: Dialog['data']): string => `*📝 Новая ставка*\n\n- *Спорт:* ${data.sport || '_не указан_'}\n- *Событие:* ${data.event || '_не указано_'}\n- *Тип:* ${data.betType ? BET_TYPE_OPTIONS.find(o => o.value === data.betType)?.label : '_не указан_'}\n- *Сумма:* ${data.stake ? `${data.stake} ₽` : '_не указана_'}\n- *Коэф.:* ${data.odds || '_не указан_'}\n- *Букмекер:* ${data.bookmaker || '_не указан_'}\n    \n${getAddBetStepPrompt(data.step)}`;
+const getAddBetDialogText = (dialog: Dialog): string => {
+    const data = dialog.data;
+    const prompt = getAddBetStepPrompt(dialog.step);
+    return `*📝 Новая ставка*\n\n- *Спорт:* ${data.sport || '_не указан_'}\n- *Событие:* ${data.event || '_не указано_'}\n- *Тип:* ${data.betType ? BET_TYPE_OPTIONS.find(o => o.value === data.betType)?.label : '_не указан_'}\n- *Сумма:* ${data.stake ? `${data.stake} ₽` : '_не указана_'}\n- *Коэф.:* ${data.odds || '_не указан_'}\n- *Букмекер:* ${data.bookmaker || '_не указан_'}\n\n${prompt}`;
+}
+
 
 const getAddBetStepPrompt = (step: string): string => {
     switch(step) {
@@ -108,8 +116,9 @@ export async function startAddBetDialog(chatId: number, state: UserState, env: E
     const keyboard = makeKeyboard([
         SPORTS.slice(0, 4).map(s => ({ text: s, callback_data: `dialog_sport_${s}` })),
         SPORTS.slice(4, 8).map(s => ({ text: s, callback_data: `dialog_sport_${s}` })),
+        [{ text: '❌ Отмена', callback_data: 'dialog_cancel'}]
     ]);
-    const sentMessage = await sendMessage(chatId, getAddBetDialogText(dialog.data), env, keyboard);
+    const sentMessage = await sendMessage(chatId, getAddBetDialogText(dialog), env, keyboard);
 
     dialog.messageId = sentMessage.result.message_id;
     state.dialog = dialog;
@@ -117,9 +126,17 @@ export async function startAddBetDialog(chatId: number, state: UserState, env: E
 }
 
 async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+    const chatId = getChatId(update);
     const dialog = state.dialog!;
-    const userInput = isCallback(update) ? update.data : update.text || '';
+    const userInput = getUserInput(update);
+
+    if (userInput === 'dialog_cancel') {
+        await editMessageText(chatId, dialog.messageId!, "❌ Добавление ставки отменено.", env);
+        state.dialog = null;
+        await setUserState(chatId, state, env);
+        await showMainMenu(update, env);
+        return;
+    }
 
     try {
         switch (dialog.step) {
@@ -129,7 +146,6 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
                 dialog.step = ADD_BET_STEPS.EVENT;
                 break;
             case ADD_BET_STEPS.EVENT:
-                if (!userInput) return;
                 const parts = userInput.split(',').map(p => p.trim());
                 if (parts.length !== 2) throw new Error("Неверный формат. Используйте: `Команда 1 - Команда 2, Исход`");
                 const teams = parts[0].split('-').map(t => t.trim());
@@ -164,18 +180,14 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
                 if (userInput === 'dialog_confirm') {
                     const finalBetData = { ...dialog.data, status: BetStatus.Pending };
                     const newState = addBetToState(state, finalBetData as Omit<Bet, 'id'|'createdAt'|'event'>);
-                    await editMessageText(chatId, dialog.messageId!, `✅ Ставка на "${dialog.data.event}" успешно добавлена!`, env);
                     newState.dialog = null;
                     await setUserState(chatId, newState, env);
                     // Persist data for the user
                     if (newState.user) {
                         await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
                     }
-                    return;
-                } else if (userInput === 'dialog_cancel') {
-                    await editMessageText(chatId, dialog.messageId!, "❌ Добавление ставки отменено.", env);
-                    state.dialog = null;
-                    await setUserState(chatId, state, env);
+                    await editMessageText(chatId, dialog.messageId!, `✅ Ставка на "${dialog.data.event}" успешно добавлена!`, env);
+                    await showMainMenu(update, env);
                     return;
                 }
                 return;
@@ -185,15 +197,16 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
     }
     
     let keyboard;
+    const cancelBtn = { text: '❌ Отмена', callback_data: 'dialog_cancel' };
     switch(dialog.step) {
         case ADD_BET_STEPS.BET_TYPE:
-            keyboard = makeKeyboard([BET_TYPE_OPTIONS.filter(o => o.value !== BetType.System).map(o => ({ text: o.label, callback_data: `dialog_bettype_${o.value}`}))]);
+            keyboard = makeKeyboard([BET_TYPE_OPTIONS.filter(o => o.value !== BetType.System).map(o => ({ text: o.label, callback_data: `dialog_bettype_${o.value}`})), [cancelBtn]]);
             break;
         case ADD_BET_STEPS.BOOKMAKER:
              keyboard = makeKeyboard([
                 BOOKMAKERS.slice(0, 3).map(b => ({ text: b, callback_data: `dialog_bookie_${b}`})),
                 BOOKMAKERS.slice(3, 6).map(b => ({ text: b, callback_data: `dialog_bookie_${b}`})),
-                [{ text: 'Другое', callback_data: 'dialog_bookie_Другое' }]
+                [{ text: 'Другое', callback_data: 'dialog_bookie_Другое' }, cancelBtn]
              ]);
             break;
         case ADD_BET_STEPS.CONFIRM:
@@ -201,9 +214,11 @@ async function continueAddBetDialog(update: TelegramMessage | TelegramCallbackQu
                 [{ text: '✅ Сохранить', callback_data: 'dialog_confirm'}, { text: '❌ Отмена', callback_data: 'dialog_cancel'}]
             ]);
             break;
+        default:
+             keyboard = makeKeyboard([ [cancelBtn] ]);
     }
 
-    await editMessageText(chatId, dialog.messageId!, getAddBetDialogText(dialog.data), env, keyboard);
+    await editMessageText(chatId, dialog.messageId!, getAddBetDialogText(dialog), env, keyboard);
     state.dialog = dialog;
     await setUserState(chatId, state, env);
 }
@@ -220,9 +235,9 @@ export async function startRegisterDialog(chatId: number, state: UserState, env:
 }
 
 async function continueRegisterDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+    const chatId = getChatId(update);
     const dialog = state.dialog!;
-    const userInput = isCallback(update) ? update.data : update.text || '';
+    const userInput = getUserInput(update);
     
     try {
         switch (dialog.step) {
@@ -257,8 +272,7 @@ async function continueRegisterDialog(update: TelegramMessage | TelegramCallback
                 await setUserState(chatId, newState, env);
                 await env.BOT_STATE.put(`betdata:${newUser.email}`, JSON.stringify(newState));
 
-                await editMessageText(chatId, dialog.messageId!, `✅ Регистрация успешна! Добро пожаловать, ${newUser.nickname}!`, env);
-                await showMainMenu(update as TelegramMessage, env);
+                await showMainMenu(update, env);
                 return;
         }
     } catch (error) {
@@ -279,9 +293,9 @@ export async function startLoginDialog(chatId: number, state: UserState, env: En
 }
 
 async function continueLoginDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+    const chatId = getChatId(update);
     const dialog = state.dialog!;
-    const userInput = isCallback(update) ? update.data : update.text || '';
+    const userInput = getUserInput(update);
     
     try {
         switch (dialog.step) {
@@ -302,8 +316,7 @@ async function continueLoginDialog(update: TelegramMessage | TelegramCallbackQue
                 
                 newState.dialog = null;
                 await setUserState(chatId, newState, env);
-                await editMessageText(chatId, dialog.messageId!, `✅ Вход выполнен! С возвращением, ${foundUser.nickname}!`, env);
-                await showMainMenu(update as TelegramMessage, env);
+                await showMainMenu(update, env);
                 return;
         }
     } catch (error) {
@@ -323,9 +336,9 @@ export async function startAiChatDialog(chatId: number, state: UserState, env: E
 }
 
 async function continueAiChatDialog(update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
+    const chatId = getChatId(update);
     const dialog = state.dialog!;
-    const userInput = isCallback(update) ? '' : update.text || '';
+    const userInput = getUserInput(update);
 
     if (!userInput) return;
 
@@ -333,7 +346,7 @@ async function continueAiChatDialog(update: TelegramMessage | TelegramCallbackQu
         await sendMessage(chatId, "🤖 Сессия с AI-Аналитиком завершена.", env);
         state.dialog = null;
         await setUserState(chatId, state, env);
-        await showMainMenu(update as TelegramMessage, env);
+        await showMainMenu(update, env);
         return;
     }
 

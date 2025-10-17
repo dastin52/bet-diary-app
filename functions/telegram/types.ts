@@ -48,6 +48,10 @@ export enum GoalMetric {
 export enum GoalStatus {
     InProgress = 'in_progress', Achieved = 'achieved', Failed = 'failed'
 }
+export type Message = {
+  role: 'user' | 'model';
+  text: string;
+};
 
 
 // --- Bot-specific Types ---

@@ -18,7 +18,7 @@ import { TelegramMessage, TelegramCallbackQuery, Env, UserState } from './types'
 
 export type ActionHandler = (update: TelegramMessage | TelegramCallbackQuery, state: UserState, env: Env) => Promise<void>;
 
-// Standardized callback data keys
+// Standardized callback data keys for type safety and consistency
 export const CB = {
     SHOW_MAIN_MENU: 'main_menu',
     SHOW_STATS: 'stats',
