@@ -1,13 +1,25 @@
 // functions/telegram/router.ts
 
 /**
- * Prefix for all callback data related to the bet management module.
+ * Shortened prefix for all bet management callbacks to save space.
  */
-export const MANAGE_PREFIX = 'manage';
+export const MANAGE_PREFIX = 'm';
+
+/**
+ * Shortened keys for all actions within the manage module.
+ */
+export const MANAGE_ACTIONS = {
+    LIST: 'l',
+    VIEW: 'v',
+    PROMPT_STATUS: 'ps',
+    SET_STATUS: 'ss',
+    PROMPT_DELETE: 'pd',
+    CONFIRM_DELETE: 'cd',
+};
+
 
 /**
  * Defines static callback data strings for main menu buttons and simple actions.
- * Using an object over an enum for easier string manipulation.
  */
 export const CB = {
     // Main Menu
@@ -27,12 +39,12 @@ export const CB = {
 };
 
 /**
- * Builds a callback data string for the bet management module.
- * Joins arguments with a '|' separator.
- * Example: buildManageCb('view', 'bet-123', 0) -> "manage|view|bet-123|0"
+ * Builds a compact callback data string for the bet management module.
+ * Example: buildManageCb('v', 'bet-123', 0) -> "m|v|bet-123|0"
+ * @param action - The short action key from MANAGE_ACTIONS.
  * @param args - The parts of the callback data.
- * @returns A formatted string.
+ * @returns A formatted, compact string.
  */
-export function buildManageCb(...args: (string | number)[]): string {
-    return [MANAGE_PREFIX, ...args].join('|');
+export function buildManageCb(action: string, ...args: (string | number)[]): string {
+    return [MANAGE_PREFIX, action, ...args].join('|');
 }

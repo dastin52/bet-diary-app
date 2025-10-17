@@ -88,7 +88,7 @@ export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, 
             return;
         }
 
-        // 2. NEW: Route all bet management actions to its dedicated module
+        // 2. Route all bet management actions to its dedicated module
         if (data.startsWith(MANAGE_PREFIX + '|')) {
             await manageBets(callbackQuery, state, env);
             return;
