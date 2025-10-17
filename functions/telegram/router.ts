@@ -1,28 +1,30 @@
-
 // functions/telegram/router.ts
 
-// CB stands for CallBack data
+/**
+ * Centralized callback data constants to avoid magic strings in code.
+ * CB stands for CallBack.
+ */
 export const CB = {
-    // Main Menu
-    SHOW_STATS: 'main_stats',
-    ADD_BET: 'main_add_bet',
-    SHOW_COMPETITIONS: 'main_competitions',
-    SHOW_GOALS: 'main_goals',
-    MANAGE_BETS: 'main_manage_bets',
-    SHOW_AI_ANALYST: 'main_ai_analyst',
-    BACK_TO_MENU: 'main_back',
+    // Main Menu & Navigation
+    ADD_BET: 'add_bet',
+    SHOW_STATS: 'show_stats',
+    SHOW_COMPETITIONS: 'show_competitions',
+    SHOW_GOALS: 'show_goals',
+    MANAGE_BETS: 'manage_bets',
+    SHOW_AI_ANALYST: 'show_ai_analyst',
+    BACK_TO_MAIN: 'back_to_main',
 
-    // Auth
-    LOGIN: 'auth_login',
-    REGISTER: 'auth_register',
+    // Login/Register
+    LOGIN: 'login',
+    REGISTER: 'register',
     
-    // Manage Bets
-    BETS_PAGE: (page: number) => `bets_page_${page}`,
-    VIEW_BET: (betId: string) => `bet_view_${betId}`,
-    SET_STATUS_PROMPT: (betId: string) => `bet_status_prompt_${betId}`,
-    SET_STATUS: (betId: string, status: string) => `bet_status_set_${betId}_${status}`,
-    BACK_TO_BETS: (page: number) => `bets_back_${page}`,
+    // Bet Management (used in manageBets.ts)
+    LIST_BETS: 'list_bets', // Base for pagination as well
+    VIEW_BET: 'view_bet', // Prefix for view_bet:bet_id
+    EDIT_BET: 'edit_bet', // Prefix for edit_bet:bet_id
+    DELETE_BET: 'delete_bet', // Prefix for delete_bet:bet_id
 
-    // No-op for empty buttons or placeholders
-    NOOP: 'noop',
+    // Pagination (used in manageBets.ts)
+    NEXT_PAGE: 'next_page', // Prefix for next_page:page_number
+    PREV_PAGE: 'prev_page', // Prefix for prev_page:page_number
 };

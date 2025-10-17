@@ -1,56 +1,63 @@
-
 // functions/telegram/handlers.ts
+
 import { TelegramMessage, TelegramCallbackQuery, Env, UserState } from './types';
 import { getUserState } from './state';
-import { handleStart, handleHelp, handleReset, showCompetitions, showGoals, showStats, handleAuth } from './commands';
-import { continueDialog, startLoginDialog, startRegisterDialog, startAiChatDialog, startAddBetDialog } from './dialogs';
-import { answerCallbackQuery, reportError, sendMessage } from './telegramApi';
-import { CB } from './router';
+import { handleStart, handleHelp, handleReset, showStats, showCompetitions, showGoals, handleAuth } from './commands';
+import { continueDialog, startAddBetDialog, startLoginDialog, startRegisterDialog, startAiChatDialog } from './dialogs';
 import { showMainMenu, showLoginOptions } from './ui';
-import { showBetsList } from './manageBets';
+import { CB } from './router';
+import { manageBets } from './manageBets';
+import { answerCallbackQuery, reportError, sendMessage } from './telegramApi';
 
+/**
+ * Main router for incoming text messages and commands.
+ * @param message The incoming Telegram message.
+ * @param env The Cloudflare environment.
+ */
 export async function handleMessage(message: TelegramMessage, env: Env) {
     const chatId = message.chat.id;
     try {
         const state = await getUserState(chatId, env);
         const text = message.text || '';
-        const command = text.split(' ')[0];
 
-        // Dialogs take precedence over text input unless it's a command
-        if (state.dialog && !command.startsWith('/')) {
+        // 1. If a dialog is active, all text messages go to it, unless it's a command.
+        if (state.dialog && !text.startsWith('/')) {
             await continueDialog(message, state, env);
             return;
         }
-
-        switch (command) {
-            case '/start':
-                await handleStart(message, state, env);
-                return;
-            case '/help':
-                await handleHelp(chatId, env);
-                return;
-            case '/reset':
-                await handleReset(chatId, env);
-                return;
-            case '/stop': // For stopping AI chat
-                if (state.dialog?.type === 'ai_chat') {
-                    await continueDialog(message, state, env);
-                }
-                return;
-        }
         
-        // Check for 6-digit auth code
+        // 2. Handle commands
+        if (text.startsWith('/')) {
+            const command = text.split(' ')[0];
+            switch (command) {
+                case '/start':
+                    await handleStart(message, state, env);
+                    return;
+                case '/help':
+                    await handleHelp(chatId, env);
+                    return;
+                case '/reset':
+                    await handleReset(chatId, env);
+                    return;
+            }
+        }
+
+        // 3. Handle 6-digit auth code
         const authCodeMatch = text.match(/^\d{6}$/);
         if (authCodeMatch) {
             await handleAuth(message, authCodeMatch[0], env);
             return;
         }
 
-        // If no dialog or command matched, show appropriate menu
-        if (state.user) {
-            await showMainMenu(message, env);
+        // 4. Default response if no command or dialog is matched
+        if (text.startsWith('/')) {
+            await sendMessage(chatId, "🤔 Неизвестная команда. Используйте /help, чтобы увидеть список доступных команд.", env);
+        } else if (state.user) {
+            // If user is logged in and not in a dialog, just show main menu
+             await showMainMenu(message, env);
         } else {
-            await showLoginOptions(message, env, "Неизвестная команда. Пожалуйста, войдите или зарегистрируйтесь.");
+            // If user is not logged in, prompt to log in
+            await showLoginOptions(message, env);
         }
 
     } catch (error) {
@@ -58,73 +65,66 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
     }
 }
 
-
+/**
+ * Main router for incoming callback queries (button presses).
+ * @param callbackQuery The incoming Telegram callback query.
+ * @param env The Cloudflare environment.
+ */
 export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, env: Env) {
     const chatId = callbackQuery.message.chat.id;
     const messageId = callbackQuery.message.message_id;
-
     try {
         const state = await getUserState(chatId, env);
         
+        // Acknowledge the button press immediately to remove the "loading" state on the button.
         await answerCallbackQuery(callbackQuery.id, env);
-        
-        const data = callbackQuery.data;
 
-        // If a dialog is active, it takes priority
+        // 1. If a dialog is active, all callbacks go to it.
         if (state.dialog) {
             await continueDialog(callbackQuery, state, env);
             return;
         }
 
-        // --- AUTH ---
-        if (data === CB.LOGIN) {
-            await startLoginDialog(chatId, state, env, messageId);
-            return;
-        }
-        if (data === CB.REGISTER) {
-            await startRegisterDialog(chatId, state, env, messageId);
-            return;
-        }
+        const data = callbackQuery.data;
 
-        // --- AUTH GUARD ---
-        if (!state.user) {
-            await showLoginOptions(callbackQuery, env, "Для этого действия нужно войти в аккаунт.");
-            return;
-        }
-        
-        // --- MAIN MENU & OTHER ROUTING ---
-        switch (true) {
-            case data === CB.ADD_BET:
+        // 2. Handle router actions for a clean state
+        switch (data) {
+            case CB.ADD_BET:
                 await startAddBetDialog(chatId, state, env);
                 break;
-            case data === CB.SHOW_STATS:
+            case CB.SHOW_STATS:
                 await showStats(callbackQuery, state, env);
                 break;
-            case data === CB.SHOW_COMPETITIONS:
+            case CB.SHOW_COMPETITIONS:
                 await showCompetitions(callbackQuery, env);
                 break;
-            case data === CB.SHOW_GOALS:
+            case CB.SHOW_GOALS:
                 await showGoals(callbackQuery, state, env);
                 break;
-            case data.startsWith('bets_'):
-            case data.startsWith('bet_'):
-                await showBetsList(callbackQuery, state, env);
+            case CB.MANAGE_BETS:
+                await manageBets(callbackQuery, state, env);
                 break;
-            case data === CB.MANAGE_BETS:
-                 await showBetsList(callbackQuery, state, env);
-                break;
-            case data === CB.SHOW_AI_ANALYST:
+            case CB.SHOW_AI_ANALYST:
                 await startAiChatDialog(chatId, state, env);
                 break;
-            case data === CB.BACK_TO_MENU:
-                await showMainMenu(callbackQuery, env);
+            case CB.LOGIN:
+                 await startLoginDialog(chatId, state, env, messageId);
                 break;
+            case CB.REGISTER:
+                await startRegisterDialog(chatId, state, env, messageId);
+                break;
+            case CB.BACK_TO_MAIN:
+                 await showMainMenu(callbackQuery, env);
+                 break;
             default:
-                console.warn(`Unhandled callback query data: ${data}`);
-                await sendMessage(chatId, "Это действие пока не поддерживается.", env);
+                // Handle complex callbacks that include prefixes (e.g., pagination, item IDs)
+                if (data.startsWith(CB.LIST_BETS) || data.startsWith(CB.VIEW_BET) || data.startsWith(CB.NEXT_PAGE) || data.startsWith(CB.PREV_PAGE)) {
+                    await manageBets(callbackQuery, state, env);
+                } else {
+                    console.warn(`Unhandled callback_query data: ${data} for chat ${chatId}`);
+                }
                 break;
         }
-        
     } catch (error) {
         await reportError(chatId, env, 'Callback Query Handler', error);
     }

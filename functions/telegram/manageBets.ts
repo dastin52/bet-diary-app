@@ -1,143 +1,117 @@
-
 // functions/telegram/manageBets.ts
+
 import { TelegramCallbackQuery, UserState, Env, BetStatus } from './types';
 import { editMessageText } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
-import { calculateProfit } from '../utils/betUtils';
 
 const BETS_PER_PAGE = 5;
 
-// Main router for this module
-export async function showBetsList(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    const data = callbackQuery.data;
+/**
+ * Main router for the bet management section.
+ * It delegates to list view or detail view based on callback data.
+ * @param update The incoming callback query.
+ * @param state The current user state.
+ * @param env The Cloudflare environment.
+ */
+export async function manageBets(update: TelegramCallbackQuery, state: UserState, env: Env) {
+    const data = update.data;
+    const chatId = update.message.chat.id;
+    const messageId = update.message.message_id;
 
-    // Sub-routing based on callback data prefix
-    if (data.startsWith('bet_view_')) {
-        await showBetDetail(callbackQuery, state, env);
-    } else if (data.startsWith('bet_status_prompt_')) {
-        await showStatusSelector(callbackQuery, state, env);
-    } else if (data.startsWith('bet_status_set_')) {
-        await updateBetStatus(callbackQuery, state, env);
-    } else { // Default to showing the list (handles initial call and pagination)
-        await renderBetsList(callbackQuery, state, env);
+    if (data.startsWith(CB.VIEW_BET)) {
+        const betId = data.split(':')[1];
+        await viewBetDetail(chatId, messageId, state, betId, env);
+    } else {
+        // Default to list view (handles CB.MANAGE_BETS, CB.LIST_BETS, pagination)
+        let page = 0;
+        if (data.startsWith(CB.NEXT_PAGE) || data.startsWith(CB.PREV_PAGE)) {
+            page = parseInt(data.split(':')[1], 10);
+        }
+        await listBets(chatId, messageId, state, page, env);
     }
 }
 
-async function renderBetsList(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = callbackQuery.message.chat.id;
-    const messageId = callbackQuery.message.message_id;
-    const data = callbackQuery.data;
-
-    let page = 0;
-    const pageMatch = data.match(/bets_page_(\d+)/) || data.match(/bets_back_(\d+)/);
-    if (pageMatch) {
-        page = parseInt(pageMatch[1], 10);
+/**
+ * Renders a paginated list of the user's bets.
+ * @param chatId The chat ID.
+ * @param messageId The message ID to edit.
+ * @param state The current user state.
+ * @param page The page number to display (0-indexed).
+ * @param env The Cloudflare environment.
+ */
+async function listBets(chatId: number, messageId: number, state: UserState, page: number, env: Env) {
+    if (!state.bets || state.bets.length === 0) {
+        await editMessageText(chatId, messageId, "У вас пока нет ставок. Добавьте первую с помощью главного меню.", env, makeKeyboard([[{ text: '⬅️ Назад в меню', callback_data: CB.BACK_TO_MAIN }]]));
+        return;
     }
 
+    const sortedBets = [...state.bets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const totalPages = Math.ceil(sortedBets.length / BETS_PER_PAGE);
     const startIndex = page * BETS_PER_PAGE;
-    const endIndex = startIndex + BETS_PER_PAGE;
-    const userBets = state.bets;
-    const pagedBets = userBets.slice(startIndex, endIndex);
-    const totalPages = Math.ceil(userBets.length / BETS_PER_PAGE) || 1;
+    const betsToShow = sortedBets.slice(startIndex, startIndex + BETS_PER_PAGE);
 
-    const text = `*📈 Управление ставками (Стр. ${page + 1} / ${totalPages})*`;
-    
-    const keyboardRows = pagedBets.map(bet => {
-        const statusIcon = { [BetStatus.Pending]: '⏳', [BetStatus.Won]: '✅', [BetStatus.Lost]: '❌', [BetStatus.Void]: '↩️', [BetStatus.CashedOut]: '💰' }[bet.status] || '❔';
-        return [{ text: `${statusIcon} ${bet.event}`, callback_data: CB.VIEW_BET(bet.id) }];
+    let text = `*📈 Ваши ставки (Страница ${page + 1}/${totalPages})*\n\nНажмите на ставку для просмотра деталей.`;
+
+    const betButtons = betsToShow.map(bet => {
+        const date = new Date(bet.createdAt).toLocaleDateString('ru-RU');
+        const profit = bet.profit !== undefined ? (bet.profit > 0 ? `+${bet.profit.toFixed(2)}` : `${bet.profit.toFixed(2)}`) : '...';
+        const statusIcon = { [BetStatus.Won]: '✅', [BetStatus.Lost]: '❌', [BetStatus.Pending]: '⏳', [BetStatus.Void]: '⚪️', [BetStatus.CashedOut]: '💰' }[bet.status];
+        
+        // Truncate long event names for button text
+        const eventText = bet.event.length > 35 ? `${bet.event.substring(0, 32)}...` : bet.event;
+        return [{ text: `${statusIcon} ${date} | ${eventText}`, callback_data: `${CB.VIEW_BET}:${bet.id}` }];
     });
-
-    const navRow = [];
+    
+    const navButtons = [];
     if (page > 0) {
-        navRow.push({ text: '⬅️ Назад', callback_data: CB.BETS_PAGE(page - 1) });
+        navButtons.push({ text: '⬅️ Пред.', callback_data: `${CB.PREV_PAGE}:${page - 1}` });
     }
-    if (endIndex < userBets.length) {
-        navRow.push({ text: 'Вперед ➡️', callback_data: CB.BETS_PAGE(page + 1) });
+    if (page < totalPages - 1) {
+        navButtons.push({ text: 'След. ➡️', callback_data: `${CB.NEXT_PAGE}:${page + 1}` });
     }
 
-    if (navRow.length > 0) keyboardRows.push(navRow);
-    keyboardRows.push([{ text: 'Главное меню', callback_data: CB.BACK_TO_MENU }]);
-
-    await editMessageText(chatId, messageId, text, env, makeKeyboard(keyboardRows));
-}
-
-
-async function showBetDetail(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = callbackQuery.message.chat.id;
-    const messageId = callbackQuery.message.message_id;
-    const betId = callbackQuery.data.replace('bet_view_', '');
-    
-    const pageMatch = state.dialog?.data?.page;
-    const page = pageMatch ? parseInt(pageMatch, 10) : 0;
-
-    const bet = state.bets.find(b => b.id === betId);
-    if (!bet) return await editMessageText(chatId, messageId, "Ставка не найдена.", env);
-
-    const profitText = bet.status !== BetStatus.Pending ? `*Прибыль/Убыток:* ${bet.profit?.toFixed(2) || '0.00'} ₽` : '';
-    
-    const text = `*Детали ставки:*
-    
-*Событие:* ${bet.event}
-*Спорт:* ${bet.sport}
-*Сумма:* ${bet.stake.toFixed(2)} ₽
-*Коэф.:* ${bet.odds.toFixed(2)}
-*Статус:* ${bet.status}
-${profitText}
-*Дата:* ${new Date(bet.createdAt).toLocaleString('ru-RU')}`;
-    
     const keyboard = makeKeyboard([
-        [{ text: '🔄 Изменить статус', callback_data: CB.SET_STATUS_PROMPT(bet.id) }],
-        [{ text: '⬅️ Назад к списку', callback_data: CB.BETS_PAGE(page) }]
+        ...betButtons,
+        navButtons,
+        [{ text: '⬅️ Назад в меню', callback_data: CB.BACK_TO_MAIN }]
     ]);
 
     await editMessageText(chatId, messageId, text, env, keyboard);
 }
 
-
-async function showStatusSelector(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = callbackQuery.message.chat.id;
-    const messageId = callbackQuery.message.message_id;
-    const betId = callbackQuery.data.replace('bet_status_prompt_', '');
-
+/**
+ * Renders the details of a single bet.
+ * @param chatId The chat ID.
+ * @param messageId The message ID to edit.
+ * @param state The current user state.
+ * @param betId The ID of the bet to view.
+ * @param env The Cloudflare environment.
+ */
+async function viewBetDetail(chatId: number, messageId: number, state: UserState, betId: string, env: Env) {
     const bet = state.bets.find(b => b.id === betId);
-    if (!bet) return await editMessageText(chatId, messageId, "Ставка не найдена.", env);
-
-    const text = `Выберите новый статус для ставки: *${bet.event}*`;
-    const keyboard = makeKeyboard([
-        [
-            { text: '✅ Выигрыш', callback_data: CB.SET_STATUS(bet.id, BetStatus.Won) },
-            { text: '❌ Проигрыш', callback_data: CB.SET_STATUS(bet.id, BetStatus.Lost) }
-        ],
-        [
-            { text: '↩️ Возврат', callback_data: CB.SET_STATUS(bet.id, BetStatus.Void) },
-             { text: '⏳ В ожидании', callback_data: CB.SET_STATUS(bet.id, BetStatus.Pending) }
-        ],
-         [{ text: '⬅️ Назад к детали', callback_data: CB.VIEW_BET(bet.id) }]
-    ]);
-     await editMessageText(chatId, messageId, text, env, keyboard);
-}
-
-
-async function updateBetStatus(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    const chatId = callbackQuery.message.chat.id;
-    const parts = callbackQuery.data.replace('bet_status_set_', '').split('_');
-    const betId = parts[0];
-    const newStatus = parts[1] as BetStatus;
-    
-    const betIndex = state.bets.findIndex(b => b.id === betId);
-    if (betIndex === -1) return;
-
-    const bet = state.bets[betIndex];
-    bet.status = newStatus;
-    bet.profit = calculateProfit(bet);
-    
-    await setUserState(chatId, state, env);
-    if (state.user) {
-        await env.BOT_STATE.put(`betdata:${state.user.email}`, JSON.stringify(state));
+    if (!bet) {
+        await editMessageText(chatId, messageId, "Ставка не найдена.", env, makeKeyboard([[{ text: '⬅️ К списку', callback_data: CB.LIST_BETS }]]));
+        return;
     }
-    
-    // Pass a modified callbackQuery to go back to the detail view
-    const modifiedCallbackQuery = { ...callbackQuery, data: CB.VIEW_BET(betId) };
-    await showBetDetail(modifiedCallbackQuery, state, env);
+
+    const statusLabel = { [BetStatus.Won]: 'Выигрыш', [BetStatus.Lost]: 'Проигрыш', [BetStatus.Pending]: 'В ожидании', [BetStatus.Void]: 'Возврат', [BetStatus.CashedOut]: 'Кэшаут' }[bet.status];
+    const profitText = bet.profit !== undefined && bet.status !== BetStatus.Pending ? `*Прибыль/Убыток:* ${bet.profit > 0 ? '+' : ''}${bet.profit.toFixed(2)} ₽` : '';
+
+    const text = `*📋 Детали ставки*
+
+*Событие:* \`${bet.event}\`
+*Спорт:* ${bet.sport}
+*Дата:* ${new Date(bet.createdAt).toLocaleString('ru-RU')}
+*Сумма:* ${bet.stake.toFixed(2)} ₽
+*Коэф.:* ${bet.odds.toFixed(2)}
+*Статус:* ${statusLabel}
+${profitText}`;
+
+    const keyboard = makeKeyboard([
+        // Edit/Delete buttons can be added here in the future.
+        [{ text: '⬅️ К списку ставок', callback_data: CB.LIST_BETS }]
+    ]);
+
+    await editMessageText(chatId, messageId, text, env, keyboard);
 }
