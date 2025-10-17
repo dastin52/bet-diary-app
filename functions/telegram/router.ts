@@ -23,6 +23,11 @@ export const CB = {
     VIEW_BET: 'view_bet', // Prefix for view_bet:bet_id
     EDIT_BET: 'edit_bet', // Prefix for edit_bet:bet_id
     DELETE_BET: 'delete_bet', // Prefix for delete_bet:bet_id
+    // FIX: Add missing properties for managing bet status and deletion.
+    SET_STATUS_PROMPT: 'set_status_prompt',
+    SET_STATUS: 'set_status',
+    DELETE_PROMPT: 'delete_prompt',
+    DELETE_CONFIRM: 'delete_confirm',
 
     // Pagination (used in manageBets.ts)
     NEXT_PAGE: 'next_page', // Prefix for next_page:page_number
