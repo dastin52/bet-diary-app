@@ -49,13 +49,13 @@ export async function reportError(chatId: number, env: Env, context: string, err
     
 Контекст: \`${context}\`
     
-К сожалению, бот столкнулся с непредвиденной проблемой. Пожалуйста, попробуйте снова позже. Если ошибка повторяется, вы можете использовать команду /reset, чтобы сбросить свое состояние.`;
+К сожалению, бот столкнулся с непредвиденной проблемой. Пожалуйста, попробуйте снова позже. Если ошибка повторяется, вы можете использовать команду /reset.`;
     
-    console.error(`Error in ${context} for chat ${chatId}:`, error instanceof Error ? error.stack : error);
+    console.error(`Error in ${context} for chat ${chatId}:`, error instanceof Error ? error.stack : JSON.stringify(error));
 
     try {
         await sendMessage(chatId, errorMessage, env);
     } catch (sendError) {
-        console.error(`Failed to even send error report to chat ${chatId}:`, sendError);
+        console.error(`Failed to send error report to chat ${chatId}:`, sendError);
     }
 }

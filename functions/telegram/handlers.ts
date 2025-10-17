@@ -1,10 +1,49 @@
 // functions/telegram/handlers.ts
-import { TelegramMessage, TelegramCallbackQuery, Env } from './types';
+import { TelegramMessage, TelegramCallbackQuery, Env, UserState } from './types';
 import { getUserState } from './state';
-import { handleStart, handleHelp, handleReset } from './commands';
-import { continueDialog } from './dialogs';
-import { answerCallbackQuery, reportError } from './telegramApi';
-import { handleRoute } from './router';
+import { continueDialog, startAiChatDialog } from './dialogs';
+import { routeCallback, CB } from './router';
+import { handleAuth, handleStart, handleHelp, handleReset, handleAddBet, handleStats } from './commands';
+import { reportError, answerCallbackQuery } from './telegramApi';
+import { showLoginOptions } from './ui';
+import { manageBets } from './manageBets';
+
+async function executeCommand(command: string, message: TelegramMessage, state: UserState, env: Env) {
+    const chatId = message.chat.id;
+    switch(command) {
+        case '/start':
+            await handleStart(message, env);
+            break;
+        case '/help':
+            await handleHelp(chatId, env);
+            break;
+        case '/reset':
+            await handleReset(chatId, env);
+            break;
+        case '/addbet':
+            if (!state.user) return showLoginOptions(message, env, 'Действие требует авторизации.');
+            await handleAddBet(chatId, state, env);
+            break;
+        case '/stats':
+            if (!state.user) return showLoginOptions(message, env, 'Действие требует авторизации.');
+            await handleStats(chatId, state, env);
+            break;
+        case '/manage':
+             if (!state.user) return showLoginOptions(message, env, 'Действие требует авторизации.');
+             const fakeCallbackQuery: TelegramCallbackQuery = {
+                 id: 'fake_cq_id_from_manage', from: message.from, message,
+                 data: 'm|list|0'
+             };
+             await manageBets(fakeCallbackQuery, state, env);
+            break;
+        case '/ai':
+            if (!state.user) return showLoginOptions(message, env, 'Действие требует авторизации.');
+            await startAiChatDialog(chatId, state, env);
+            break;
+        default:
+            await handleHelp(chatId, env);
+    }
+}
 
 export async function handleMessage(message: TelegramMessage, env: Env) {
     const chatId = message.chat.id;
@@ -12,30 +51,25 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
         const state = await getUserState(chatId, env);
         const text = message.text || '';
 
-        // If a dialog is active, all text messages go to it, unless it's a command.
         if (state.dialog && !text.startsWith('/')) {
             await continueDialog(message, state, env);
             return;
         }
 
-        // Handle commands
         if (text.startsWith('/')) {
             const command = text.split(' ')[0];
-            switch (command) {
-                case '/start':
-                case '/help':
-                    await handleStart(message, state, env);
-                    return;
-                case '/reset':
-                    await handleReset(message, env);
-                    return;
-                default:
-                     await handleStart(message, state, env);
-                     break;
-            }
-        } else {
-             await handleStart(message, state, env);
+            await executeCommand(command, message, state, env);
+            return;
         }
+
+        const authCodeMatch = text.match(/^\d{6}$/);
+        if (authCodeMatch) {
+            await handleAuth(message, authCodeMatch[0], env);
+            return;
+        }
+        
+        await handleStart(message, env);
+
     } catch (error) {
         await reportError(chatId, env, 'Message Handler', error);
     }
@@ -44,17 +78,13 @@ export async function handleMessage(message: TelegramMessage, env: Env) {
 export async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery, env: Env) {
     const chatId = callbackQuery.message.chat.id;
     try {
+        await answerCallbackQuery(callbackQuery.id, env);
         const state = await getUserState(chatId, env);
         
-        // Acknowledge the button press immediately
-        await answerCallbackQuery(callbackQuery.id, env);
-
-        // If data starts with 'dialog_', it's part of an active conversation
-        if (callbackQuery.data.startsWith('dialog_')) {
+        if (state.dialog) {
             await continueDialog(callbackQuery, state, env);
         } else {
-            // Otherwise, it's a menu button or other action, handled by the router
-            await handleRoute(callbackQuery, state, env);
+            await routeCallback(callbackQuery, state, env);
         }
     } catch (error) {
         await reportError(chatId, env, 'Callback Query Handler', error);

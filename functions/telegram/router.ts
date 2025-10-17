@@ -1,29 +1,24 @@
 // functions/telegram/router.ts
-
 import { TelegramCallbackQuery, UserState, Env } from './types';
-import { showLoginOptions, showMainMenu } from './ui';
-import { startAddBetDialog, startLoginDialog, startRegisterDialog, startAiChatDialog } from './dialogs';
-import { handleStats } from './commands';
+import { reportError, answerCallbackQuery } from './telegramApi';
+import { handleAddBet, handleStats } from './commands';
+import { showMainMenu, showLoginOptions } from './ui';
 import { manageBets } from './manageBets';
-import { editMessageText } from './telegramApi';
-import { showAnalytics } from './analytics';
+import { startLoginDialog, startRegisterDialog, startAiChatDialog } from './dialogs';
 
-// Callback Data constants
+export const MANAGE_PREFIX = 'm';
+
 export const CB = {
+    BACK_TO_MAIN: 'main_menu',
     LOGIN: 'login',
     REGISTER: 'register',
-    BACK_TO_MAIN: 'back_to_main',
     ADD_BET: 'add_bet',
     SHOW_STATS: 'show_stats',
-    SHOW_ANALYTICS: 'show_analytics',
+    MANAGE_BETS: `${MANAGE_PREFIX}|list|0`,
     SHOW_COMPETITIONS: 'show_competitions',
     SHOW_GOALS: 'show_goals',
-    MANAGE_BETS: 'manage_bets',
     SHOW_AI_ANALYST: 'show_ai_analyst',
 };
-
-// Prefix for manage bets callbacks to distinguish them
-export const MANAGE_PREFIX = 'mng';
 
 export const MANAGE_ACTIONS = {
     LIST: 'list',
@@ -34,60 +29,54 @@ export const MANAGE_ACTIONS = {
     CONFIRM_DELETE: 'c_del',
 };
 
-export function buildManageCb(action: string, ...args: (string | number)[]): string {
-    return [MANAGE_PREFIX, action, ...args].join('|');
+export function buildManageCb(...parts: (string | number)[]): string {
+    return [MANAGE_PREFIX, ...parts].join('|');
 }
 
+export async function routeCallback(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
+    const chatId = callbackQuery.message.chat.id;
+    const messageId = callbackQuery.message.message_id;
+    const data = callbackQuery.data;
 
-export async function handleRoute(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
-    const { data, message } = callbackQuery;
-    const chatId = message.chat.id;
-    
-    if (!state.user && ![CB.LOGIN, CB.REGISTER].includes(data)) {
-        await showLoginOptions(callbackQuery, env, "Пожалуйста, войдите в систему, чтобы продолжить.");
-        return;
-    }
-
-    if (data.startsWith(MANAGE_PREFIX)) {
-        await manageBets(callbackQuery, state, env);
-        return;
-    }
-
-    switch (data) {
-        case CB.LOGIN:
-            await startLoginDialog(chatId, state, env, message.message_id);
-            break;
-        case CB.REGISTER:
-            await startRegisterDialog(chatId, state, env, message.message_id);
-            break;
-        case CB.BACK_TO_MAIN:
-            await showMainMenu(callbackQuery, env);
-            break;
-        case CB.ADD_BET:
-            await startAddBetDialog(chatId, state, env);
-            break;
-        case CB.SHOW_STATS:
-            await handleStats(message, env);
-            break;
-        case CB.SHOW_ANALYTICS:
-            await showAnalytics(message, state, env);
-            break;
-        case CB.MANAGE_BETS:
-             // The action starts the list view with page 0
-            callbackQuery.data = buildManageCb(MANAGE_ACTIONS.LIST, 0);
+    try {
+        if (data.startsWith(MANAGE_PREFIX)) {
+            if (!state.user) return showLoginOptions(callbackQuery, env, 'Действие требует авторизации.');
             await manageBets(callbackQuery, state, env);
-            break;
-        case CB.SHOW_AI_ANALYST:
-            await startAiChatDialog(chatId, state, env);
-            break;
-        case CB.SHOW_COMPETITIONS:
-        case CB.SHOW_GOALS:
-            await editMessageText(chatId, message.message_id, "🚧 Этот раздел находится в разработке.", env, {
-                inline_keyboard: [[{ text: '◀️ Главное меню', callback_data: CB.BACK_TO_MAIN }]]
-            });
-            break;
-        default:
-            console.warn(`Unhandled route callback: ${data}`);
-            break;
+            return;
+        }
+
+        switch (data) {
+            case CB.LOGIN:
+                await startLoginDialog(chatId, state, env, messageId);
+                break;
+            case CB.REGISTER:
+                await startRegisterDialog(chatId, state, env, messageId);
+                break;
+            case CB.BACK_TO_MAIN:
+                await showMainMenu(callbackQuery, env);
+                break;
+            case CB.ADD_BET:
+                if (!state.user) return showLoginOptions(callbackQuery, env, 'Действие требует авторизации.');
+                await handleAddBet(chatId, state, env);
+                break;
+            case CB.SHOW_STATS:
+                if (!state.user) return showLoginOptions(callbackQuery, env, 'Действие требует авторизации.');
+                await handleStats(chatId, state, env);
+                break;
+            case CB.SHOW_AI_ANALYST:
+                if (!state.user) return showLoginOptions(callbackQuery, env, 'Действие требует авторизации.');
+                await startAiChatDialog(chatId, state, env);
+                break;
+            
+            case CB.SHOW_COMPETITIONS:
+            case CB.SHOW_GOALS:
+                await answerCallbackQuery(callbackQuery.id, env, 'Этот раздел в разработке.');
+                break;
+            default:
+                console.warn(`Unhandled callback in router: ${data}`);
+                await answerCallbackQuery(callbackQuery.id, env, 'Неизвестное действие.');
+        }
+    } catch (error) {
+        await reportError(chatId, env, `Callback Router (${data})`, error);
     }
 }
