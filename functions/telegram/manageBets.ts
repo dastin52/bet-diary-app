@@ -193,7 +193,7 @@ ${profitText}
             await sendMessage(chatId, `Статус ставки обновлен на *${newStatus}*!`, env);
             
             const newCallbackQuery = { ...callbackQuery, data: buildManageCb(MANAGE_ACTIONS.LIST, page) };
-            // FIX: Construct a new update object for recursive call.
+            // FIX: Construct a new update object for recursive call, as the function now expects a TelegramUpdate.
             const newUpdate: TelegramUpdate = { ...update, callback_query: newCallbackQuery };
             await manageBets(newUpdate, newState, env);
             break;
@@ -221,7 +221,7 @@ ${profitText}
             
             const newPage = page > 0 && newState.bets.length <= page * BETS_PER_PAGE ? page - 1 : page;
             const newCallbackQuery = { ...callbackQuery, data: buildManageCb(MANAGE_ACTIONS.LIST, newPage) };
-            // FIX: Construct a new update object for recursive call.
+            // FIX: Construct a new update object for recursive call, as the function now expects a TelegramUpdate.
             const newUpdate: TelegramUpdate = { ...update, callback_query: newCallbackQuery };
             await manageBets(newUpdate, newState, env);
             break;

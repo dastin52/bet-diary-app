@@ -41,11 +41,9 @@ const isMatchPrediction = (text: string) => /прогноз проходимос
 
 const parsePrediction = (userMessage: Message, modelMessage: Message): Omit<AIPrediction, 'id' | 'createdAt' | 'status'> | null => {
     try {
-        // Match analysis from quick action
         let matchNameMatch = userMessage.text.match(/Анализ матча:\s*(.+)/i);
-        let sport = 'Футбол'; // Default sport from quick action
+        let sport = 'Футбол'; 
 
-        // Match analysis from direct prompt
         if (!matchNameMatch) {
             const directMatch = userMessage.text.match(/(?:проанализируй|анализ)\s+матч[а:]?\s*(.+)/i);
             if (directMatch && directMatch[1]) {
@@ -57,12 +55,11 @@ const parsePrediction = (userMessage: Message, modelMessage: Message): Omit<AIPr
 
         if (matchNameMatch && matchNameMatch[1] && predictionMatch && predictionMatch[1]) {
             let matchName = matchNameMatch[1].trim();
-            // A simple way to guess sport from text if not provided
+            
             if (matchName.toLowerCase().includes('футбол')) sport = 'Футбол';
             if (matchName.toLowerCase().includes('баскетбол')) sport = 'Баскетбол';
             if (matchName.toLowerCase().includes('теннис')) sport = 'Теннис';
             if (matchName.toLowerCase().includes('хоккей')) sport = 'Хоккей';
-
 
             return {
                 sport: sport,
@@ -99,18 +96,10 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
       chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
     }
   }, [messages]);
-  
-  const sendMessage = async (messageText: string, isSystemMessage: boolean = false) => {
-      if (!messageText.trim()) return;
 
-      const userMessage: Message = { role: 'user', text: messageText };
-      const historyForApi = [...messages, userMessage];
-
-      if (!isSystemMessage) {
-        setMessages(historyForApi);
-      }
+  const callAI = async (historyForApi: Message[]) => {
+      if (!historyForApi.length) return;
       setIsLoading(true);
-
       try {
           const { text, sources } = await getAIChatResponse(bet, historyForApi, analytics);
           const modelMessage: Message = { role: 'model', text, sources };
@@ -129,10 +118,12 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
           }
       }
   };
-
+  
   useEffect(() => {
       if (bet && messages.length === 0) {
-          sendMessage('Привет! Проанализируй, пожалуйста, эту ставку.');
+          const userMessage: Message = { role: 'user', text: 'Привет! Проанализируй, пожалуйста, эту ставку.' };
+          setMessages([userMessage]);
+          callAI([userMessage]);
       } else if (!bet && messages.length === 0) {
           setMessages([{
               role: 'model',
@@ -141,32 +132,38 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
       }
   }, [bet]);
 
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!input.trim()) return;
+
+    let userMessageForUi: Message;
+    let historyForApi: Message[];
+
     if (chatState === 'awaiting_match_name' && tempMatchData.sport) {
         const fullPrompt = `Анализ матча: ${input} ${tempMatchData.sport}`;
-        const userMessageForUi: Message = { role: 'user', text: `Анализ матча: ${input}` };
-        
-        // This is a bit of a race condition, but it works for the UI update.
-        // The user message appears, then the API call starts.
-        setMessages(prev => [...prev, userMessageForUi]);
-        sendMessage(fullPrompt, true);
-        
+        userMessageForUi = { role: 'user', text: `Анализ матча: ${input}` };
+        historyForApi = [...messages, { role: 'user', text: fullPrompt }];
         setChatState('idle');
         setTempMatchData({});
     } else {
-        sendMessage(input);
+        userMessageForUi = { role: 'user', text: input };
+        historyForApi = [...messages, userMessageForUi];
     }
+    
+    setMessages(prev => [...prev, userMessageForUi]);
+    callAI(historyForApi);
     setInput('');
   };
 
   const handleQuickAction = (type: 'performance' | 'match_analysis') => {
       if (type === 'performance') {
-          sendMessage("Проанализируй мою эффективность");
+          const userMessage: Message = { role: 'user', text: "Проанализируй мою эффективность" };
+          const newHistory = [...messages, userMessage];
+          setMessages(newHistory);
+          callAI(newHistory);
       } else if (type === 'match_analysis') {
           setChatState('awaiting_match_name');
-          setTempMatchData({ sport: 'футбол' }); // Default to football, can be changed
+          setTempMatchData({ sport: 'футбол' });
           setMessages(prev => [...prev, { role: 'model', text: 'Пожалуйста, введите название матча (например, "Реал Мадрид - Барселона").' }]);
       }
   };
