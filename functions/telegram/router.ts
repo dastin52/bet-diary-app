@@ -1,6 +1,6 @@
 // functions/telegram/router.ts
 import { TelegramUpdate, UserState, Env } from './types';
-import { answerCallbackQuery } from './telegramApi';
+import { answerCallbackQuery, sendMessage } from './telegramApi';
 import { showMainMenu } from './ui';
 import { handleStats, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showLinkAccountInfo } from './commands';
 import { manageBets, MANAGE_PREFIX } from './manageBets';
@@ -16,12 +16,16 @@ export const CB = {
     COMPETITIONS: 'competitions',
     GOALS: 'goals',
     AI_CHAT: 'ai_chat',
+    AI_GET_TEMPLATE: 'ai_get_template',
     SHOW_DETAILED_ANALYTICS: 'stats_detailed',
     DOWNLOAD_ANALYTICS_REPORT: 'stats_download',
     START_REGISTER: 'start_register',
     START_LOGIN: 'start_login',
     SHOW_LINK_INFO: 'show_link_info',
 };
+
+const MATCH_ANALYSIS_TEMPLATE = "Проанализируй матч: [Матч] - [Турнир].\nВид спорта: [Вид спорта].\nДАТА МАТЧА: [ДД.ММ.ГГГГ].\nДАТА АНАЛИЗА: Используй текущую системную дату.\nКоманда 1: [Название 1]. Последние 5:\n[Результаты]. Травмы/Новости: [Данные].\nКоманда 2: [Название 2]. Последние 5:\n[Результаты]. Травмы/Новости: [Данные].\nОчные встречи (5 последних) :\n[Результаты]. Стиль игры: [Команда 1] vs [Команда 2].\nФакторы: [Погода, Судья, Усталость].\nНа основе текущей даты и всех предоставленных данных, создай комплексный анализ, включающий тактический прогноз, три вероятных сценария и итоговую рекомендацию на матч. Учти любые изменения в составах или новостной фон, произошедшие после последних матчей команд.";
+
 
 export async function routeCallbackQuery(update: TelegramUpdate, state: UserState, env: Env) {
     const callbackQuery = update.callback_query;
@@ -73,6 +77,9 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             break;
         case CB.AI_CHAT:
             await handleAiChat(update, state, env);
+            break;
+        case CB.AI_GET_TEMPLATE:
+            await sendMessage(chatId, `\`\`\`\n${MATCH_ANALYSIS_TEMPLATE}\n\`\`\``, env);
             break;
         case CB.SHOW_LINK_INFO:
             await showLinkAccountInfo(chatId, messageId, env);

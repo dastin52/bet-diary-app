@@ -10,11 +10,29 @@ const LoadingSpinner = () => (
     </div>
 );
 
-const AIStrategyBuilder: React.FC = () => {
+const matchAnalysisTemplate = `Проанализируй матч: [Матч] - [Турнир].
+Вид спорта: [Вид спорта].
+ДАТА МАТЧА: [ДД.ММ.ГГГГ].
+ДАТА АНАЛИЗА: Используй текущую системную дату.
+Команда 1: [Название 1]. Последние 5:
+[Результаты]. Травмы/Новости: [Данные].
+Команда 2: [Название 2]. Последние 5:
+[Результаты]. Травмы/Новости: [Данные].
+Очные встречи (5 последних) :
+[Результаты]. Стиль игры: [Команда 1] vs [Команда 2].
+Факторы: [Погода, Судья, Усталость].
+На основе текущей даты и всех предоставленных данных, создай комплексный анализ, включающий тактический прогноз, три вероятных сценария и итоговую рекомендацию на матч. Учти любые изменения в составах или новостной фон, произошедшие после последних матчей команд.`;
+
+interface AIStrategyBuilderProps {
+    onOpenAIChat: () => void;
+}
+
+const AIStrategyBuilder: React.FC<AIStrategyBuilderProps> = ({ onOpenAIChat }) => {
     const { analytics } = useBetContext();
     const [strategy, setStrategy] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [copyText, setCopyText] = useState('Скопировать шаблон');
 
     const handleFetchStrategy = useCallback(async () => {
         setIsLoading(true);
@@ -29,6 +47,12 @@ const AIStrategyBuilder: React.FC = () => {
             setIsLoading(false);
         }
     }, [analytics]);
+
+    const handleCopyTemplate = () => {
+        navigator.clipboard.writeText(matchAnalysisTemplate);
+        setCopyText('Скопировано!');
+        setTimeout(() => setCopyText('Скопировать шаблон'), 2000);
+    };
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
@@ -55,6 +79,27 @@ const AIStrategyBuilder: React.FC = () => {
                     </div>
                 </Card>
             )}
+
+            <Card>
+                <h3 className="text-xl font-semibold mb-4">Шаблон для анализа матча</h3>
+                <p className="text-sm text-gray-400 mb-4">
+                    Скопируйте этот шаблон, замените плейсхолдеры `[...]` вашими данными и вставьте в чат с AI-Аналитиком для получения детального разбора.
+                </p>
+                <textarea
+                    readOnly
+                    rows={10}
+                    className="block w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-md shadow-sm sm:text-sm text-gray-300 font-mono"
+                    value={matchAnalysisTemplate}
+                />
+                <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                    <Button onClick={handleCopyTemplate} variant="secondary">
+                        {copyText}
+                    </Button>
+                    <Button onClick={onOpenAIChat}>
+                        Открыть чат с AI
+                    </Button>
+                </div>
+            </Card>
         </div>
     );
 };

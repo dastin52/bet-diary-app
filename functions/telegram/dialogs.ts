@@ -7,6 +7,7 @@ import { showMainMenu } from './ui';
 import { SPORTS } from '../constants';
 import { GoogleGenAI } from "@google/genai";
 import { analyticsToText, calculateAnalytics } from './analytics';
+import { CB } from './router';
 
 // --- DIALOG STARTERS ---
 
@@ -72,12 +73,16 @@ export async function startAiChatDialog(chatId: number, state: UserState, env: E
     };
     const newState = { ...state, dialog };
 
-    const text = "🤖 Спросите AI-аналитика что-нибудь о вашей статистике или предстоящем матче. \n\n_Чтобы выйти из чата, отправьте /exit._";
+    const text = "🤖 Добро пожаловать в чат с AI-аналитиком! \n\nСпросите что-нибудь о вашей статистике, попросите проанализировать матч или воспользуйтесь шаблоном. \n\n_Чтобы выйти из чата, отправьте /exit._";
+    const keyboard = makeKeyboard([
+        [{ text: '📋 Шаблон для анализа матча', callback_data: CB.AI_GET_TEMPLATE }]
+    ]);
+
     let finalMessageId = messageIdToEdit;
      if(messageIdToEdit) {
-        await editMessageText(chatId, messageIdToEdit, text, env);
+        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
     } else {
-        const sentMessage = await sendMessage(chatId, text, env);
+        const sentMessage = await sendMessage(chatId, text, env, keyboard);
         finalMessageId = sentMessage.result.message_id;
     }
     newState.dialog!.messageId = finalMessageId!;
@@ -90,12 +95,25 @@ export async function startAiChatDialog(chatId: number, state: UserState, env: E
 export async function continueDialog(update: TelegramUpdate, state: UserState, env: Env) {
     if (!state.dialog) return;
     const chatId = update.message?.chat.id || update.callback_query?.message.chat.id!;
+    const message = update.message;
 
     // A simple cancel mechanism
-    if ((update.message?.text === '/exit') || (update.callback_query?.data === 'dialog|cancel')) {
+    if ((message?.text === '/exit') || (update.callback_query?.data === 'dialog|cancel')) {
         await endDialog(state.dialog.messageId, chatId, env, state, "Действие отменено.");
         return;
     }
+
+    if (message?.text) {
+        // Auto-delete user message in registration/login dialog
+        if (state.dialog.type === 'register' || state.dialog.type === 'login') {
+            try {
+                await deleteMessage(chatId, message.message_id, env);
+            } catch(e) {
+                console.warn(`Could not delete user message: ${e}`);
+            }
+        }
+    }
+
 
     switch (state.dialog.type) {
         case 'add_bet':

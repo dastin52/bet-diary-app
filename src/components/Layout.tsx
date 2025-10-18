@@ -108,7 +108,7 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
       case 'goals':
         return <GoalsPanel />;
       case 'ai_strategy':
-        return <AIStrategyBuilder />;
+        return <AIStrategyBuilder onOpenAIChat={handleOpenGeneralChatModal} />;
       case 'bank_simulator':
         return <BankrollSimulator />;
       default:
