@@ -30,63 +30,82 @@ export const useAdminData = (): UseAdminDataReturn => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      // 1. Get all registered web users
-      const allWebUsers = getUsers();
+    const loadAllData = async () => {
+      setIsLoading(true);
+      try {
+        // 1. Get all registered web users from localStorage
+        const webUsers = getUsers().map(user => ({...user, source: 'web' as const}));
 
-      const webUsersWithData = allWebUsers.map((user, index) => {
-          const webUser: User = { ...user, source: 'web' };
-          // Link every second web user to a mock Telegram account for demonstration
-          if (index % 2 === 0 && user.email !== 'admin@example.com') {
-              webUser.telegramId = 100000000 + (user.email.length * 12345) + index;
-              webUser.telegramUsername = user.nickname.toLowerCase().replace(/\s/g, '_');
+        // 2. Fetch users registered via Telegram bot from the server
+        let botUsers: User[] = [];
+        try {
+          const response = await fetch('/api/admin/users');
+          if (response.ok) {
+            const data = await response.json();
+            botUsers = data.users || [];
+          } else {
+            console.warn("Could not fetch bot users for admin panel.");
           }
-          return webUser;
-      });
-
-      // 2. Create mock bot-only users to simulate users registered via Telegram
-      const mockBotOnlyUsers: User[] = [
-        {
-            email: 'botuser1@telegram.bot',
-            nickname: 'TelegramFan',
-            password_hash: '', 
-            registeredAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            referralCode: 'BOTREF123',
-            buttercups: 0,
-            status: 'active',
-            telegramId: 987654321,
-            telegramUsername: 'telegramfan',
-            source: 'telegram',
-        },
-        {
-            email: 'botuser2@telegram.bot',
-            nickname: 'SuperCapper',
-            password_hash: '',
-            registeredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            referralCode: 'CAPPERXYZ',
-            buttercups: 0,
-            status: 'active',
-            telegramId: 123456789,
-            telegramUsername: 'supercapper',
-            source: 'telegram',
+        } catch (fetchError) {
+          console.error("Failed to fetch bot users:", fetchError);
         }
-      ];
-      
-      const combinedUsers = [...webUsersWithData, ...mockBotOnlyUsers];
-      setUsers(combinedUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
-      // 3. Aggregate bets from all web users (bot-only users have no bets in this simulation)
-      let collectedBets: Bet[] = [];
-      for (const user of allWebUsers) {
-        const { bets } = loadUserData(user.email);
-        collectedBets = [...collectedBets, ...bets];
+        // 3. Combine and de-duplicate users
+        const allUsersMap = new Map<string, User>();
+        
+        // Add web users first
+        for (const user of webUsers) {
+          allUsersMap.set(user.email, user);
+        }
+
+        // Add/overwrite with bot users. A user could be in both if they linked their account.
+        // We assume the server-side data (from bot) is more authoritative for Telegram details.
+        for (const botUser of botUsers) {
+           const existingUser = allUsersMap.get(botUser.email);
+           if (existingUser) {
+               // Merge: keep web data but add/overwrite telegram data
+               allUsersMap.set(botUser.email, { ...existingUser, ...botUser });
+           } else {
+               // New user from bot
+               allUsersMap.set(botUser.email, botUser);
+           }
+        }
+        
+        const combinedUsers = Array.from(allUsersMap.values());
+        
+        // Link web users to mock telegram for demo purposes if they don't have real data
+        const finalUsersWithTg = combinedUsers.map((user, index) => {
+            if (user.source === 'web' && !user.telegramId && user.email !== 'admin@example.com') {
+                 if (index % 3 === 0) { // Keep some mock logic for unlinked accounts for demo
+                    return {
+                        ...user,
+                        telegramId: 100000000 + (user.email.length * 12345) + index,
+                        telegramUsername: user.nickname.toLowerCase().replace(/\s/g, '_'),
+                    };
+                }
+            }
+            return user;
+        });
+        
+        setUsers(finalUsersWithTg.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
+
+        // 4. Aggregate bets from all users that have data in localStorage
+        // Note: We can't get bets for bot-only users on the client. This is a limitation.
+        let collectedBets: Bet[] = [];
+        for (const user of webUsers) { // Only iterate webUsers as they are the only ones with local bet data
+          const { bets } = loadUserData(user.email);
+          collectedBets = [...collectedBets, ...bets];
+        }
+        setAllBets(collectedBets);
+
+      } catch (error) {
+        console.error("Failed to load admin data", error);
+      } finally {
+        setIsLoading(false);
       }
-      setAllBets(collectedBets);
-    } catch (error) {
-      console.error("Failed to load admin data", error);
-    } finally {
-      setIsLoading(false);
-    }
+    };
+    
+    loadAllData();
   }, []);
   
   const updateUserStatusInState = useCallback((email: string, status: 'active' | 'blocked') => {
@@ -124,20 +143,22 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // FIX: Refactor reduce to use generic argument for better type inference.
-    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    // FIX: Explicitly cast the initial value of reduce to Record<string, number> to ensure correct type inference for the accumulator.
+    const popularSportsCounts = settledBets.reduce((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {});
+    }, {} as Record<string, number>);
     const popularSports = Object.entries(popularSportsCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
     // FIX: Refactor reduce to use generic argument for better type inference.
-    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    // FIX: Explicitly cast the initial value of reduce to Record<string, number> to ensure correct type inference for the accumulator.
+    const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {});
+    }, {} as Record<string, number>);
     const popularBookmakers = Object.entries(popularBookmakersCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)

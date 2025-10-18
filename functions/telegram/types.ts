@@ -82,6 +82,7 @@ export interface User {
   status: 'active' | 'blocked';
   telegramId?: number;
   telegramUsername?: string;
+  source?: 'web' | 'telegram';
 }
 
 export interface ChatMessage {

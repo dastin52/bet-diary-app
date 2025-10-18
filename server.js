@@ -57,6 +57,41 @@ app.post('/api/gemini', async (req, res) => {
   }
 });
 
+// Mock endpoint for fetching bot users during local development
+app.get('/api/admin/users', (req, res) => {
+    console.log('[LOCAL DEV] Serving mock bot users for admin panel.');
+    
+    // This mocks the data that would be fetched from Cloudflare KV in production.
+    const mockBotOnlyUsers = [
+        {
+            email: 'botuser1@telegram.bot',
+            nickname: 'TelegramFan',
+            password_hash: '', 
+            registeredAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            referralCode: 'BOTREF123',
+            buttercups: 0,
+            status: 'active',
+            telegramId: 987654321,
+            telegramUsername: 'telegramfan',
+            source: 'telegram',
+        },
+        {
+            email: 'botuser2@telegram.bot',
+            nickname: 'SuperCapper',
+            password_hash: '',
+            registeredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+            referralCode: 'CAPPERXYZ',
+            buttercups: 0,
+            status: 'active',
+            telegramId: 123456789,
+            telegramUsername: 'supercapper',
+            source: 'telegram',
+        }
+    ];
+
+    res.json({ users: mockBotOnlyUsers });
+});
+
 
 // --- TELEGRAM BOT LOCAL DEV ROUTES ---
 // This temporary store is for local development only. In production, Cloudflare KV is used.
