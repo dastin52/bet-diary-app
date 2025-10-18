@@ -41,14 +41,32 @@ const isMatchPrediction = (text: string) => /прогноз проходимос
 
 const parsePrediction = (userMessage: Message, modelMessage: Message): Omit<AIPrediction, 'id' | 'createdAt' | 'status'> | null => {
     try {
-        const sportMatch = userMessage.text.match(/Вид спорта:\s*(.+)/i);
-        const matchNameMatch = userMessage.text.match(/Проанализируй матч:\s*(.+)/i);
+        // Match analysis from quick action
+        let matchNameMatch = userMessage.text.match(/Анализ матча:\s*(.+)/i);
+        let sport = 'Футбол'; // Default sport from quick action
+
+        // Match analysis from direct prompt
+        if (!matchNameMatch) {
+            const directMatch = userMessage.text.match(/(?:проанализируй|анализ)\s+матч[а:]?\s*(.+)/i);
+            if (directMatch && directMatch[1]) {
+                 matchNameMatch = directMatch;
+            }
+        }
+
         const predictionMatch = modelMessage.text.match(/Прогноз проходимости:\s*(.+)/i);
 
-        if (sportMatch && sportMatch[1] && matchNameMatch && matchNameMatch[1] && predictionMatch && predictionMatch[1]) {
+        if (matchNameMatch && matchNameMatch[1] && predictionMatch && predictionMatch[1]) {
+            let matchName = matchNameMatch[1].trim();
+            // A simple way to guess sport from text if not provided
+            if (matchName.toLowerCase().includes('футбол')) sport = 'Футбол';
+            if (matchName.toLowerCase().includes('баскетбол')) sport = 'Баскетбол';
+            if (matchName.toLowerCase().includes('теннис')) sport = 'Теннис';
+            if (matchName.toLowerCase().includes('хоккей')) sport = 'Хоккей';
+
+
             return {
-                sport: sportMatch[1].trim(),
-                matchName: matchNameMatch[1].trim(),
+                sport: sport,
+                matchName: matchName,
                 prediction: predictionMatch[1].trim(),
             };
         }
@@ -86,14 +104,15 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
       if (!messageText.trim()) return;
 
       const userMessage: Message = { role: 'user', text: messageText };
-      // Only add to messages if it's not a system-generated message
-      const newMessages = isSystemMessage ? [...messages] : [...messages, userMessage];
+      const historyForApi = [...messages, userMessage];
 
-      setMessages(newMessages);
+      if (!isSystemMessage) {
+        setMessages(historyForApi);
+      }
       setIsLoading(true);
 
       try {
-          const { text, sources } = await getAIChatResponse(bet, newMessages, analytics);
+          const { text, sources } = await getAIChatResponse(bet, historyForApi, analytics);
           const modelMessage: Message = { role: 'model', text, sources };
           if(isComponentMounted.current) {
             setMessages(prev => [...prev, modelMessage]);
@@ -127,8 +146,13 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
     e.preventDefault();
     if (chatState === 'awaiting_match_name' && tempMatchData.sport) {
         const fullPrompt = `Проанализируй матч: ${input}\nВид спорта: ${tempMatchData.sport}`;
-        sendMessage(fullPrompt, true); // Send the full prompt but don't show it as a separate user message
-        setMessages(prev => [...prev, {role: 'user', text: `Анализ матча: ${input}`}]);
+        const userMessageForUi: Message = { role: 'user', text: `Анализ матча: ${input}` };
+        
+        // This is a bit of a race condition, but it works for the UI update.
+        // The user message appears, then the API call starts.
+        setMessages(prev => [...prev, userMessageForUi]);
+        sendMessage(fullPrompt, true);
+        
         setChatState('idle');
         setTempMatchData({});
     } else {
@@ -202,7 +226,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
                 )}
 
                 {msg.sources && msg.sources.length > 0 && (
-                  <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="mt-2 text-xs text-gray-400">
                     <h4 className="font-semibold mb-1">Источники:</h4>
                     <ul className="space-y-1 list-disc list-inside">
                       {msg.sources.map((source, i) => (

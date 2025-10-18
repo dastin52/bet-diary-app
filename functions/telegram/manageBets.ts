@@ -2,8 +2,6 @@
 import { TelegramCallbackQuery, UserState, Env, Bet, BetStatus, BankTransactionType, TelegramUpdate } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
-// FIX: MANAGE_ACTIONS and buildManageCb are defined in this file, not in the router.
-import { CB } from './router';
 import { updateAndSyncState } from './state';
 import { calculateProfit } from '../utils/betUtils';
 
@@ -219,7 +217,8 @@ ${profitText}
         default: {
             const totalBets = state.bets.length;
             if (totalBets === 0) {
-                await editMessageText(chatId, messageId, "У вас пока нет ставок для управления.", env, makeKeyboard([[{text: '◀️ Главное меню', callback_data: CB.BACK_TO_MAIN}]]));
+                // FIX: Removed circular dependency on router.ts by using string literal.
+                await editMessageText(chatId, messageId, "У вас пока нет ставок для управления.", env, makeKeyboard([[{text: '◀️ Главное меню', callback_data: 'back_to_main'}]]));
                 return;
             }
 
@@ -242,7 +241,8 @@ ${profitText}
             const keyboard = makeKeyboard([
                 ...betButtons,
                 navButtons,
-                [{ text: '◀️ Главное меню', callback_data: CB.BACK_TO_MAIN }]
+                // FIX: Removed circular dependency on router.ts by using string literal.
+                [{ text: '◀️ Главное меню', callback_data: 'back_to_main' }]
             ]);
             
             const text = `*📈 Управление ставками* (Стр. ${currentPage + 1}/${totalPages})`;
