@@ -12,6 +12,19 @@ interface AIChatModalProps {
   onClose: () => void;
 }
 
+const matchAnalysisTemplate = `Проанализируй матч: [Матч] - [Турнир].
+Вид спорта: [Вид спорта].
+ДАТА МАТЧА: [ДД.ММ.ГГГГ].
+ДАТА АНАЛИЗА: Используй текущую системную дату.
+Команда 1: [Название 1]. Последние 5:
+[Результаты]. Травмы/Новости: [Данные].
+Команда 2: [Название 2]. Последние 5:
+[Результаты]. Травмы/Новости: [Данные].
+Очные встречи (5 последних) :
+[Результаты]. Стиль игры: [Команда 1] vs [Команда 2].
+Факторы: [Погода, Судья, Усталость].
+На основе текущей даты и всех предоставленных данных, создай комплексный анализ, включающий тактический прогноз, три вероятных сценария и итоговую рекомендацию на матч. Учти любые изменения в составах или новостной фон, произошедшие после последних матчей команд.`;
+
 const LoadingSpinner = () => (
     <div className="flex items-center space-x-2">
         <div className="w-2 h-2 rounded-full bg-gray-500 dark:bg-gray-400 animate-pulse"></div>
@@ -42,6 +55,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
   const [isLoading, setIsLoading] = useState(false);
   const chatBodyRef = useRef<HTMLDivElement>(null);
   const isComponentMounted = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     isComponentMounted.current = true;
@@ -90,6 +104,15 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bet]);
 
+  const handleSuggestionClick = (prompt: string) => {
+    sendMessage(prompt);
+  };
+
+  const handleTemplateClick = () => {
+    setInput(matchAnalysisTemplate);
+    inputRef.current?.focus();
+  };
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +129,34 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
     <Modal title={modalTitle} onClose={onClose}>
       <div className="flex flex-col h-[60vh]">
         <div ref={chatBodyRef} className="flex-1 overflow-y-auto pr-2 space-y-6">
+          {messages.length === 0 && !isLoading && !bet && (
+             <div className="text-center p-4 flex flex-col items-center h-full justify-center">
+                <ModelIcon />
+                <h3 className="font-semibold text-lg text-white mt-4">Чем могу помочь?</h3>
+                <p className="text-sm text-gray-400 mt-1 mb-6 max-w-sm">
+                    Я могу проанализировать вашу статистику, дать прогноз на матч или помочь со стратегией.
+                </p>
+                <div className="flex flex-col items-center gap-3 w-full">
+                    <Button variant="secondary" className="w-full max-w-sm text-left !justify-start p-3 leading-tight" onClick={() => handleSuggestionClick('Проанализируй мою эффективность за последний месяц.')}>
+                        <span className="font-semibold block">Проанализировать мою эффективность</span>
+                        <span className="text-gray-400 text-xs block font-normal">Получить разбор сильных и слабых сторон</span>
+                    </Button>
+                    <Button variant="secondary" className="w-full max-w-sm text-left !justify-start p-3 leading-tight" onClick={handleTemplateClick}>
+                        <span className="font-semibold block">Проанализировать матч по шаблону</span>
+                        <span className="text-gray-400 text-xs block font-normal">Вставить готовый шаблон для разбора матча</span>
+                    </Button>
+                </div>
+            </div>
+          )}
+           {messages.length === 0 && !isLoading && bet && (
+              <div className="text-center p-4 flex flex-col items-center h-full justify-center">
+                 <ModelIcon />
+                 <h3 className="font-semibold text-lg text-white mt-4">Анализ ставки</h3>
+                 <p className="text-sm text-gray-400 mt-1 mb-6 max-w-sm">
+                    Загружаю данные по ставке. С чего начнем анализ?
+                 </p>
+              </div>
+          )}
           {messages.map((msg, index) => (
             <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row' : 'flex-row'}`}>
               {msg.role === 'user' ? <UserIcon /> : <ModelIcon />}
@@ -142,6 +193,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
         <form onSubmit={handleSubmit} className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
           <div className="flex items-center space-x-2">
             <Input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
