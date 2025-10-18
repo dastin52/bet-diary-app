@@ -142,8 +142,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Use generic argument for reduce to ensure correct type inference for the accumulator.
-    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    // FIX: The `reduce` accumulator was not correctly typed, leading to `unknown` values. Typing the accumulator parameter `acc` resolves this.
+    const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
     }, {});
@@ -152,8 +152,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Use generic argument for reduce to ensure correct type inference for the accumulator.
-    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    // FIX: The `reduce` accumulator was not correctly typed, leading to `unknown` values. Typing the accumulator parameter `acc` resolves this.
+    const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
     }, {});

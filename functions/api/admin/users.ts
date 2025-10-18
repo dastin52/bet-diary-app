@@ -18,20 +18,16 @@ type PagesFunction<E = unknown> = (
     context: EventContext<E>
 ) => Response | Promise<Response>;
 
-const normalizeState = (data: any): UserState | null => {
+const normalizeUser = (data: any): User | null => {
     if (!data || typeof data !== 'object') {
         return null;
     }
-    // We only need the user object for this function, so a minimal normalization is fine.
-    return {
-        user: data.user || null,
-        // The rest can be defaulted as they are not used here.
-        bets: [],
-        bankroll: 0,
-        goals: [],
-        bankHistory: [],
-        dialog: null,
-    };
+    // Check for user object at the top level (from UserState)
+    const user = data.user || null;
+    if (user && user.email && user.nickname) {
+        return user;
+    }
+    return null;
 };
 
 // Helper function to handle paginated listing of KV keys
@@ -60,14 +56,14 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
             });
         }
 
-        // --- Fetch keys from both prefixes with pagination ---
-        const tgchatKeys = await listAllKeys(env.BOT_STATE, 'tgchat:');
-        const betdataKeys = await listAllKeys(env.BOT_STATE, 'betdata:');
+        // --- Fetch keys from all known user prefixes ---
+        const prefixes = ['tgchat:', 'betdata:', 'data:user:'];
+        const allKeysPromises = prefixes.map(prefix => listAllKeys(env.BOT_STATE, prefix));
+        const allKeysNested = await Promise.all(allKeysPromises);
+        const allKeys = allKeysNested.flat();
         
-        const allKeys = [...tgchatKeys, ...betdataKeys];
-        // Remove duplicate keys that might exist if a user has both tgchat and betdata records
+        // Remove duplicate keys
         const uniqueKeys = Array.from(new Set(allKeys.map(k => k.name))).map(name => ({name}));
-
 
         if (uniqueKeys.length === 0) {
             return new Response(JSON.stringify({ users: [] }), {
@@ -77,28 +73,56 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
         
         const userPromises = uniqueKeys.map(async (key) => {
             const userData = await env.BOT_STATE.get(key.name, { type: 'json' });
-            const state = normalizeState(userData);
-            return state?.user || null;
+            let user = normalizeUser(userData);
+
+            if (user) {
+                // If a full user object is found, use it
+                return user;
+            } else if (key.name.startsWith('data:user:')) {
+                // If not, but it's a legacy key, create a partial user from the key's email
+                const email = key.name.replace('data:user:', '');
+                if (email) {
+                    const partialUser: User = {
+                        email: email,
+                        nickname: email.split('@')[0], // Use part of email as a placeholder nickname
+                        registeredAt: new Date(0).toISOString(), // Placeholder, no date available
+                        password_hash: '',
+                        referralCode: '',
+                        buttercups: 0,
+                        status: 'active',
+                    };
+                    return partialUser;
+                }
+            }
+            return null;
         });
 
         const usersRaw = (await Promise.all(userPromises)).filter((u): u is User => u !== null);
 
-        // --- De-duplicate users by email ---
+        // --- De-duplicate and merge users by email to create the most complete record ---
         const userMap = new Map<string, User>();
         for (const user of usersRaw) {
-            if (user.email && !userMap.has(user.email)) {
-                userMap.set(user.email, user);
-            } else if (user.email) {
-                // If user exists, merge to get the most complete record (e.g., with telegram details)
-                const existingUser = userMap.get(user.email)!;
-                userMap.set(user.email, { ...existingUser, ...user });
+            const existingUser = userMap.get(user.email);
+            if (!existingUser) {
+                userMap.set(user.email, { ...user, source: 'telegram' });
+            } else {
+                // Merge, prioritizing records that are more complete (e.g., have a real nickname)
+                const isExistingMoreComplete = existingUser.nickname !== existingUser.email.split('@')[0] && existingUser.registeredAt !== new Date(0).toISOString();
+                const isCurrentUserMoreComplete = user.nickname !== user.email.split('@')[0] && user.registeredAt !== new Date(0).toISOString();
+                
+                if (!isExistingMoreComplete && isCurrentUserMoreComplete) {
+                     // Current user is better, so it becomes the base
+                    userMap.set(user.email, { ...existingUser, ...user, source: 'telegram' });
+                } else {
+                    // Existing user is better or they are equal, so it's the base
+                    userMap.set(user.email, { ...user, ...existingUser, source: 'telegram' });
+                }
             }
         }
-        const uniqueUsers = Array.from(userMap.values());
         
-        const usersWithSource = uniqueUsers.map(u => ({ ...u, source: 'telegram' as const }));
+        const uniqueUsers = Array.from(userMap.values());
 
-        return new Response(JSON.stringify({ users: usersWithSource }), {
+        return new Response(JSON.stringify({ users: uniqueUsers }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
         });
