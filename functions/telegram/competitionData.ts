@@ -18,8 +18,9 @@ function calculateParticipantStats(user: User, bets: Bet[], period: 'week' | 'mo
     const wins = settledBets.filter(b => b.status === BetStatus.Won);
     const losses = settledBets.filter(b => b.status === BetStatus.Lost);
     
-    const biggestWin = wins.length > 0 ? Math.max(...wins.map(b => b.profit ?? 0)) : 0;
-    const biggestLoss = losses.length > 0 ? Math.min(...losses.map(b => b.profit ?? 0)) : 0;
+    // FIX: Replaced Math.max(...array) with reduce to prevent "Maximum call stack size exceeded" error on large arrays.
+    const biggestWin = wins.reduce((max, bet) => Math.max(max, bet.profit ?? 0), 0);
+    const biggestLoss = losses.reduce((min, bet) => Math.min(min, bet.profit ?? 0), 0);
     
     return {
         user: { nickname: user.nickname, email: user.email },
