@@ -41,7 +41,13 @@ export function calculateAnalytics(state: UserState): AnalyticsData {
         wonBetsCount: wonBets.length,
         lostBetsCount,
         turnover: totalStaked,
-        profitBySport: Object.entries(statsBySport).map(([sport, data]) => ({ sport, ...data, roi: data.staked > 0 ? (data.profit / data.staked) * 100 : 0})),
+        // FIX: Rewrite map function without spread to avoid potential type inference issues.
+        profitBySport: Object.entries(statsBySport).map(([sport, data]) => ({ 
+            sport, 
+            profit: data.profit, 
+            count: data.count, 
+            roi: data.staked > 0 ? (data.profit / data.staked) * 100 : 0
+        })),
     };
 }
 

@@ -3,7 +3,7 @@ import { TelegramUpdate, Env, UserState } from './types';
 import { getUserState, setUserState } from './state';
 import { reportError, sendMessage, deleteMessage } from './telegramApi';
 import { routeCallbackQuery } from './router';
-import { continueDialog, startAiChatDialog } from './dialogs';
+import { continueDialog } from './dialogs';
 import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth, handleManageBets, handleCompetitions, handleGoals, handleAiChat } from './commands';
 
 const GLOBAL_COMMANDS = ['/start', '/help', '/reset'];
@@ -47,7 +47,6 @@ export async function handleMessage(update: TelegramUpdate, env: Env) {
                 case '/manage': await handleManageBets(update, state, env); return;
                 case '/competitions': await handleCompetitions(update, state, env); return;
                 case '/goals': await handleGoals(update, state, env); return;
-                // FIX: Route to the command handler for consistency
                 case '/ai': await handleAiChat(update, state, env); return;
                 default:
                      await sendMessage(chatId, "🤔 Неизвестная команда. Используйте /help.", env);
