@@ -82,7 +82,7 @@ export const getGoalProgress = (goal: Goal): { percentage: number, label: string
             label = `${goal.currentValue.toFixed(2)}% / ${goal.targetValue.toFixed(2)}%`;
             break;
         case GoalMetric.BetCount:
-            label = `${goal.currentValue} / ${goal.targetValue}`;
+            label = `${Math.floor(goal.currentValue)} / ${goal.targetValue}`;
             break;
     }
     // Clamp the percentage between 0 and 100 for display purposes.
