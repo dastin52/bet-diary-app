@@ -1,0 +1,1 @@
+full contents of src/components/AIPredictionLog.tsx

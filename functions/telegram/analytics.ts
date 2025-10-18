@@ -25,14 +25,16 @@ export function calculateAnalytics(state: UserState): AnalyticsData {
     const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void);
     const winRate = nonVoidBets.length > 0 ? (wonBets.length / nonVoidBets.length) * 100 : 0;
     
+    // FIX: Explicitly cast the initial object for reduce to fix type inference issues.
     const statsBySport = settledBets.reduce((acc: Record<string, { profit: number, staked: number, count: number }>, bet) => {
         if (!acc[bet.sport]) acc[bet.sport] = { profit: 0, staked: 0, count: 0 };
         acc[bet.sport].profit += bet.profit ?? 0;
         acc[bet.sport].staked += bet.stake;
         acc[bet.sport].count += 1;
         return acc;
-    }, {});
+    }, {} as Record<string, { profit: number, staked: number, count: number }>);
 
+    // FIX: Explicitly cast the initial object for reduce to fix type inference issues.
     const statsByBetType = settledBets.reduce((acc: Record<string, { profit: number, staked: number, count: number }>, bet) => {
         const betTypeLabel = bet.betType; // Simpler for bot
         if (!acc[betTypeLabel]) acc[betTypeLabel] = { profit: 0, staked: 0, count: 0 };
@@ -40,7 +42,7 @@ export function calculateAnalytics(state: UserState): AnalyticsData {
         acc[betTypeLabel].staked += bet.stake;
         acc[betTypeLabel].count += 1;
         return acc;
-    }, {});
+    }, {} as Record<string, { profit: number, staked: number, count: number }>);
 
     return {
         bankroll: state.bankroll,

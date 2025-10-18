@@ -1,3 +1,4 @@
+
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -158,26 +159,4 @@ export interface Challenge {
   description: string;
   metric: 'biggest_win' | 'highest_roi' | 'most_bets' | 'highest_parlay_odds';
   period: 'weekly';
-}
-
-// FIX: Add ParticipantStats and CompetitionParticipant interfaces for competition features.
-export interface ParticipantStats {
-    rank: number;
-    roi: number;
-    totalBets: number;
-    wonBets: number;
-    lostBets: number;
-    biggestWin: number;
-    biggestLoss: number;
-    totalStaked: number;
-    totalProfit: number;
-    achievements: Achievement[];
-}
-
-export interface CompetitionParticipant {
-    user: {
-        nickname: string;
-        email: string;
-    };
-    stats: ParticipantStats;
 }

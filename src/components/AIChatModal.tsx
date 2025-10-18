@@ -12,24 +12,6 @@ interface AIChatModalProps {
   onClose: () => void;
 }
 
-const createMatchAnalysisPrompt = (matchQuery: string) => {
-  return `Проанализируй ближайший предстоящий матч по запросу: "${matchQuery}".
-ДАТА АНАЛИЗА: Используй текущую системную дату.
-
-Для анализа найди следующую информацию, используя поиск:
-- Точные названия команд, турнир и дату матча.
-- Последние 5 игр для каждой команды (результаты).
-- Актуальные травмы и важные новости по командам.
-- 5 последних очных встреч.
-- Предполагаемый стиль игры каждой команды.
-- Внешние факторы (погода, судья, усталость).
-
-На основе текущей даты и всех найденных данных, создай комплексный анализ, включающий тактический прогноз и три вероятных сценария. 
-
-В завершение ОБЯЗАТЕЛЬНО дай итоговую рекомендацию и прогноз проходимости на основные исходы (П1, X, П2) в виде процентов, например: "Прогноз проходимости: П1 - 45%, X - 30%, П2 - 25%". Не предлагай процент от банка для ставки.`;
-};
-
-
 const LoadingSpinner = () => (
     <div className="flex items-center space-x-2">
         <div className="w-2 h-2 rounded-full bg-gray-500 dark:bg-gray-400 animate-pulse"></div>
@@ -58,10 +40,8 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [chatMode, setChatMode] = useState<'general' | 'match_analysis_input'>('general');
   const chatBodyRef = useRef<HTMLDivElement>(null);
   const isComponentMounted = useRef(true);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     isComponentMounted.current = true;
@@ -76,18 +56,16 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
     }
   }, [messages]);
   
-  const sendMessage = async (displayText: string, promptToSendOverride?: string) => {
-      if (!displayText.trim()) return;
+  const sendMessage = async (messageText: string) => {
+      if (!messageText.trim()) return;
 
-      const userMessage: Message = { role: 'user', text: displayText };
+      const userMessage: Message = { role: 'user', text: messageText };
       const newMessages = [...messages, userMessage];
       setMessages(newMessages);
       setIsLoading(true);
-      
-      const historyForAI = [...messages, { role: 'user', text: promptToSendOverride || displayText }];
 
       try {
-          const { text, sources } = await getAIChatResponse(bet, historyForAI, analytics);
+          const { text, sources } = await getAIChatResponse(bet, newMessages, analytics);
           const modelMessage: Message = { role: 'model', text, sources };
           if(isComponentMounted.current) {
             setMessages(prev => [...prev, modelMessage]);
@@ -112,58 +90,22 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bet]);
 
-  const handleSuggestionClick = (prompt: string) => {
-    sendMessage(prompt);
-  };
-  
-  const handleStartMatchAnalysis = () => {
-    setChatMode('match_analysis_input');
-    setMessages(prev => [...prev, {role: 'model', text: 'Конечно! Какой матч мне проанализировать? Введите названия команд.'}]);
-    setTimeout(() => inputRef.current?.focus(), 0);
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (chatMode === 'match_analysis_input') {
-        const fullPrompt = createMatchAnalysisPrompt(input);
-        sendMessage(input, fullPrompt); 
-        setChatMode('general');
-    } else {
-        sendMessage(input);
-    }
+    sendMessage(input);
     setInput('');
   };
 
   const modalTitle = bet ? "AI-Анализ Ставки" : "AI-Аналитик";
-  const inputPlaceholder = chatMode === 'match_analysis_input'
-    ? 'Введите матч, например: Реал Мадрид - Барселона'
-    : (bet ? "Задайте вопрос по этой ставке..." : "Спросите про вашу статистику...");
-  
-  const showWelcomeScreen = messages.length === 0 && !isLoading && !bet;
+  const inputPlaceholder = bet 
+    ? "Задайте вопрос по этой ставке..." 
+    : "Спросите про вашу статистику или предстоящий матч...";
 
   return (
     <Modal title={modalTitle} onClose={onClose}>
       <div className="flex flex-col h-[60vh]">
         <div ref={chatBodyRef} className="flex-1 overflow-y-auto pr-2 space-y-6">
-          {showWelcomeScreen && (
-             <div className="text-center p-4 flex flex-col items-center h-full justify-center">
-                <ModelIcon />
-                <h3 className="font-semibold text-lg text-white mt-4">Чем могу помочь?</h3>
-                <p className="text-sm text-gray-400 mt-1 mb-6 max-w-sm">
-                    Я могу проанализировать вашу статистику, дать прогноз на матч или помочь со стратегией.
-                </p>
-                <div className="flex flex-col items-center gap-3 w-full">
-                    <Button variant="secondary" className="w-full max-w-sm text-left !justify-start p-3 leading-tight" onClick={() => handleSuggestionClick('Проанализируй мою эффективность за последний месяц.')}>
-                        <span className="font-semibold block">Проанализировать мою эффективность</span>
-                        <span className="text-gray-400 text-xs block font-normal">Получить разбор сильных и слабых сторон</span>
-                    </Button>
-                    <Button variant="secondary" className="w-full max-w-sm text-left !justify-start p-3 leading-tight" onClick={handleStartMatchAnalysis}>
-                        <span className="font-semibold block">Проанализировать матч</span>
-                        <span className="text-gray-400 text-xs block font-normal">Получить прогноз на предстоящую игру</span>
-                    </Button>
-                </div>
-            </div>
-          )}
           {messages.map((msg, index) => (
             <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row' : 'flex-row'}`}>
               {msg.role === 'user' ? <UserIcon /> : <ModelIcon />}
@@ -197,25 +139,22 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
               </div>
           )}
         </div>
-        {!showWelcomeScreen && (
-            <form onSubmit={handleSubmit} className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-            <div className="flex items-center space-x-2">
-                <Input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={inputPlaceholder}
-                className="flex-1"
-                disabled={isLoading}
-                autoFocus
-                />
-                <Button type="submit" disabled={isLoading || !input.trim()}>
-                Отправить
-                </Button>
-            </div>
-            </form>
-        )}
+        <form onSubmit={handleSubmit} className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+          <div className="flex items-center space-x-2">
+            <Input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={inputPlaceholder}
+              className="flex-1"
+              disabled={isLoading}
+              autoFocus
+            />
+            <Button type="submit" disabled={isLoading || !input.trim()}>
+              Отправить
+            </Button>
+          </div>
+        </form>
       </div>
     </Modal>
   );

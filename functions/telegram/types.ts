@@ -1,6 +1,3 @@
-// functions/telegram/types.ts
-
-// --- Core App Types ---
 
 export enum BetStatus {
   Pending = 'pending',
@@ -25,8 +22,8 @@ export interface BetLeg {
 export interface Bet {
   id: string;
   createdAt: string;
-  event: string;
-  legs: BetLeg[];
+  event: string; // This will now be a summary string generated from legs
+  legs: BetLeg[]; // The structured data for the bet
   sport: string;
   bookmaker: string;
   betType: BetType;
@@ -59,7 +56,6 @@ export interface BankTransaction {
   betId?: string;
 }
 
-// FIX: Add missing types to be used in other function files.
 export interface GroundingSource {
   web: {
     uri: string;
@@ -73,22 +69,24 @@ export type Message = {
   sources?: GroundingSource[];
 };
 
+export interface User {
+  email: string;
+  nickname: string;
+  // NOTE: In a real application, NEVER store plain text passwords.
+  // This should be a securely hashed password managed by a backend server.
+  password_hash: string;
+  registeredAt: string;
+  referralCode: string;
+  buttercups: number;
+  status: 'active' | 'blocked';
+}
+
 export interface ChatMessage {
     id: string;
     userNickname: string;
     userEmail: string; // To identify the user, maybe for avatars later
     text: string;
     timestamp: string;
-}
-
-export interface User {
-  email: string;
-  nickname: string;
-  password_hash: string;
-  registeredAt: string;
-  referralCode: string;
-  buttercups: number;
-  status: 'active' | 'blocked';
 }
 
 export interface Achievement {
@@ -120,10 +118,39 @@ export interface Goal {
     status: GoalStatus;
     createdAt: string;
     deadline: string;
-    scope: {
+    scope: { // Optional filter for the goal
         type: 'sport' | 'betType' | 'tag' | 'all';
         value?: string;
     };
+}
+
+
+export interface UserSettings {
+  notifications: {
+    betReminders: boolean;
+    competitionUpdates: boolean;
+    aiAnalysisAlerts: boolean;
+  };
+  theme: 'light' | 'dark' | 'system';
+}
+
+export interface UpcomingMatch {
+  sport: string;
+  eventName: string;
+  teams: string;
+  date: string;
+  time: string;
+  isHotMatch: boolean;
+}
+
+export interface TeamStats {
+  name: string;
+  sport: string;
+  betCount: number;
+  winRate: number;
+  totalProfit: number;
+  roi: number;
+  avgOdds: number;
 }
 
 export interface Challenge {
@@ -133,6 +160,71 @@ export interface Challenge {
   metric: 'biggest_win' | 'highest_roi' | 'most_bets' | 'highest_parlay_odds';
   period: 'weekly';
 }
+
+// --- Telegram Specific Types ---
+
+export interface DialogState {
+    name: string;
+    step: string;
+    data: any;
+    messageId?: number;
+}
+
+export interface UserState {
+    user: User | null;
+    bets: Bet[];
+    bankroll: number;
+    goals: Goal[];
+    bankHistory: BankTransaction[];
+    dialog: DialogState | null;
+}
+
+export interface Env {
+    TELEGRAM_BOT_TOKEN: string;
+    GEMINI_API_KEY: string;
+    BOT_STATE: KVNamespace;
+}
+
+export interface KVNamespace {
+    get(key: string, options?: { type?: 'text' | 'json' | 'arrayBuffer' | 'stream' }): Promise<string | any | ArrayBuffer | ReadableStream | null>;
+    put(key: string, value: string | ArrayBuffer | FormData | ReadableStream, options?: { expirationTtl?: number }): Promise<void>;
+    delete(key: string): Promise<void>;
+}
+
+export interface TelegramUser {
+    id: number;
+    is_bot: boolean;
+    first_name: string;
+    last_name?: string;
+    username?: string;
+}
+
+export interface TelegramChat {
+    id: number;
+    type: 'private' | 'group' | 'supergroup' | 'channel';
+}
+
+export interface TelegramMessage {
+    message_id: number;
+    from?: TelegramUser;
+    chat: TelegramChat;
+    date: number;
+    text?: string;
+}
+
+export interface TelegramCallbackQuery {
+    id: string;
+    from: TelegramUser;
+    message: TelegramMessage;
+    data: string;
+}
+
+export interface TelegramUpdate {
+    update_id: number;
+    message?: TelegramMessage;
+    callback_query?: TelegramCallbackQuery;
+}
+
 
 export interface ParticipantStats {
     rank: number;
@@ -153,72 +245,4 @@ export interface CompetitionParticipant {
         email: string;
     };
     stats: ParticipantStats;
-}
-
-
-// --- Telegram Bot Specific Types ---
-
-export interface TelegramUser {
-    id: number;
-    is_bot: boolean;
-    first_name: string;
-    last_name?: string;
-    username?: string;
-}
-
-export interface TelegramChat {
-    id: number;
-    type: 'private' | 'group' | 'supergroup' | 'channel';
-}
-
-export interface TelegramMessage {
-    message_id: number;
-    from?: TelegramUser; // Optional for channel posts
-    chat: TelegramChat;
-    date: number;
-    text?: string;
-}
-
-export interface TelegramCallbackQuery {
-    id: string;
-    from: TelegramUser;
-    message: TelegramMessage;
-    data: string;
-}
-
-export interface TelegramUpdate {
-    update_id: number;
-    message?: TelegramMessage;
-    callback_query?: TelegramCallbackQuery;
-}
-
-export type DialogType = 'add_bet' | 'add_goal' | 'ai_chat' | 'register' | 'login';
-
-export interface Dialog {
-    type: DialogType;
-    step: string;
-    messageId: number;
-    data?: any;
-}
-
-export interface UserState {
-    user: User | null;
-    bets: Bet[];
-    bankroll: number;
-    goals: Goal[];
-    bankHistory: BankTransaction[];
-    dialog: Dialog | null;
-}
-
-export interface Env {
-    TELEGRAM_BOT_TOKEN: string;
-    GEMINI_API_KEY: string;
-    BOT_STATE: KVNamespace;
-}
-
-export interface KVNamespace {
-    get(key: string, options?: { type?: 'text' | 'json' | 'arrayBuffer' | 'stream' }): Promise<string | any | ArrayBuffer | ReadableStream | null>;
-    put(key: string, value: string | ArrayBuffer | ReadableStream, options?: { expiration?: number; expirationTtl?: number }): Promise<void>;
-    delete(key: string): Promise<void>;
-    list(options?: { prefix?: string; limit?: number; cursor?: string }): Promise<{ keys: { name: string }[] ; list_complete: boolean; cursor: string }>;
 }
