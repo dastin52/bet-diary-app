@@ -75,6 +75,11 @@ const AiIcon = () => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
     </svg>
 );
+const AIPredictionIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16 4.992c2.613.621 4.225 3.332 3.604 5.945-1.24 5.256-4.237 8.23-7.604 8.23-3.367 0-6.364-2.974-7.604-8.23C3.775 8.324 5.387 5.613 8 4.992M12 12h.01M12 12v3.313" />
+    </svg>
+);
 const SimulatorIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -83,7 +88,7 @@ const SimulatorIcon = () => (
 
 
 
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator';
+type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 
 interface SidebarProps {
   currentView: View;
@@ -162,6 +167,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMo
                 <nav className="space-y-1">
                     <NavItem icon={<GoalIcon />} label="Мои цели" view="goals" currentView={currentView} onClick={handleSetView} />
                     <NavItem icon={<AiIcon />} label="AI-Стратег" view="ai_strategy" currentView={currentView} onClick={handleSetView} />
+                    <NavItem icon={<AIPredictionIcon />} label="База прогнозов AI" view="ai_prediction_log" currentView={currentView} onClick={handleSetView} />
                     <NavItem icon={<SimulatorIcon />} label="Симулятор Банка" view="bank_simulator" currentView={currentView} onClick={handleSetView} />
                 </nav>
             </div>

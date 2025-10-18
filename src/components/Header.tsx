@@ -11,7 +11,7 @@ const MenuIcon = () => (
 );
 
 
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator';
+type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 interface HeaderProps {
   onAddBetClick: () => void;
   onCashOutClick: () => void;
@@ -56,6 +56,10 @@ const viewTitles: Record<View, { title: string; subtitle: string }> = {
     bank_simulator: {
         title: 'Симулятор Банка',
         subtitle: 'Прогнозируйте возможные исходы с помощью симуляции Монте-Карло.'
+    },
+    ai_prediction_log: {
+        title: 'База прогнозов AI',
+        subtitle: 'Анализируйте точность прогнозов искусственного интеллекта.'
     }
 }
 

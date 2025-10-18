@@ -19,8 +19,9 @@ import AIStrategyBuilder from './AIStrategyBuilder';
 import BankrollSimulator from './BankrollSimulator';
 import ImportBetsModal from './ImportBetsModal';
 import BetDetailModal from './BetDetailModal';
+import AIPredictionLog from './AIPredictionLog';
 
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator';
+type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 
 interface LayoutProps {
   isDemoMode: boolean;
@@ -28,6 +29,7 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
+  const { analytics, addAIPrediction } = useBetContext();
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
   const [betToEdit, setBetToEdit] = useState<Bet | null>(null);
@@ -38,7 +40,6 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
   const [isUpdateBankrollModalOpen, setIsUpdateBankrollModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { analytics } = useBetContext();
   const { isAdmin } = useAuthContext();
 
   // Reset view to dashboard if user logs out from admin panel
@@ -109,6 +110,8 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
         return <GoalsPanel />;
       case 'ai_strategy':
         return <AIStrategyBuilder />;
+      case 'ai_prediction_log':
+        return <AIPredictionLog />;
       case 'bank_simulator':
         return <BankrollSimulator />;
       default:
@@ -137,7 +140,7 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
         </div>
         
         {isAddEditModalOpen && <AddBetModal onClose={() => { setIsAddEditModalOpen(false); setBetToEdit(null); }} betToEdit={betToEdit} />}
-        {isChatModalOpen && <AIChatModal bet={chatBet} analytics={analytics} onClose={() => { setIsChatModalOpen(false); setChatBet(null); }} />}
+        {isChatModalOpen && <AIChatModal bet={chatBet} analytics={analytics} onClose={() => { setIsChatModalOpen(false); setChatBet(null); }} onSavePrediction={addAIPrediction} />}
         {isCashOutModalOpen && <CashOutModal onClose={() => setIsCashOutModalOpen(false)} />}
         {isUpdateBankrollModalOpen && <UpdateBankrollModal onClose={() => setIsUpdateBankrollModalOpen(false)} />}
         {isImportModalOpen && <ImportBetsModal onClose={() => setIsImportModalOpen(false)} />}

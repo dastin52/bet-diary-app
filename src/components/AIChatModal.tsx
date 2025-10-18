@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bet, Message, GroundingSource } from '../types';
+import { Bet, Message, GroundingSource, AIPrediction } from '../types';
 import { UseBetsReturn } from '../hooks/useBets';
 import { getAIChatResponse } from '../services/aiService';
 import Modal from './ui/Modal';
@@ -10,6 +10,7 @@ interface AIChatModalProps {
   bet: Bet | null;
   analytics: UseBetsReturn['analytics'];
   onClose: () => void;
+  onSavePrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
 }
 
 const LoadingSpinner = () => (
@@ -36,10 +37,35 @@ const ModelIcon = () => (
     </div>
 );
 
-const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) => {
+const isMatchPrediction = (text: string) => /прогноз проходимости/i.test(text);
+
+const parsePrediction = (userMessage: Message, modelMessage: Message): Omit<AIPrediction, 'id' | 'createdAt' | 'status'> | null => {
+    try {
+        const sportMatch = userMessage.text.match(/Вид спорта:\s*(.+)/i);
+        const matchNameMatch = userMessage.text.match(/Проанализируй матч:\s*(.+)/i);
+        const predictionMatch = modelMessage.text.match(/Прогноз проходимости:\s*(.+)/i);
+
+        if (sportMatch && sportMatch[1] && matchNameMatch && matchNameMatch[1] && predictionMatch && predictionMatch[1]) {
+            return {
+                sport: sportMatch[1].trim(),
+                matchName: matchNameMatch[1].trim(),
+                prediction: predictionMatch[1].trim(),
+            };
+        }
+        return null;
+    } catch {
+        return null;
+    }
+};
+
+
+const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSavePrediction }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [chatState, setChatState] = useState<'idle' | 'awaiting_match_name' | 'awaiting_sport'>('idle');
+  const [tempMatchData, setTempMatchData] = useState<{ sport?: string, matchName?: string }>({});
+  const [savedPredictions, setSavedPredictions] = useState<Set<string>>(new Set());
   const chatBodyRef = useRef<HTMLDivElement>(null);
   const isComponentMounted = useRef(true);
 
@@ -56,11 +82,13 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
     }
   }, [messages]);
   
-  const sendMessage = async (messageText: string) => {
+  const sendMessage = async (messageText: string, isSystemMessage: boolean = false) => {
       if (!messageText.trim()) return;
 
       const userMessage: Message = { role: 'user', text: messageText };
-      const newMessages = [...messages, userMessage];
+      // Only add to messages if it's not a system-generated message
+      const newMessages = isSystemMessage ? [...messages] : [...messages, userMessage];
+
       setMessages(newMessages);
       setIsLoading(true);
 
@@ -86,33 +114,93 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
   useEffect(() => {
       if (bet && messages.length === 0) {
           sendMessage('Привет! Проанализируй, пожалуйста, эту ставку.');
+      } else if (!bet && messages.length === 0) {
+          setMessages([{
+              role: 'model',
+              text: 'Здравствуйте! Я ваш AI-Аналитик. Чем могу помочь? Вы можете задать вопрос о своей статистике или запросить анализ предстоящего матча.'
+          }]);
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bet]);
 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    sendMessage(input);
+    if (chatState === 'awaiting_match_name' && tempMatchData.sport) {
+        const fullPrompt = `Проанализируй матч: ${input}\nВид спорта: ${tempMatchData.sport}`;
+        sendMessage(fullPrompt, true); // Send the full prompt but don't show it as a separate user message
+        setMessages(prev => [...prev, {role: 'user', text: `Анализ матча: ${input}`}]);
+        setChatState('idle');
+        setTempMatchData({});
+    } else {
+        sendMessage(input);
+    }
     setInput('');
   };
 
+  const handleQuickAction = (type: 'performance' | 'match_analysis') => {
+      if (type === 'performance') {
+          sendMessage("Проанализируй мою эффективность");
+      } else if (type === 'match_analysis') {
+          setChatState('awaiting_match_name');
+          setTempMatchData({ sport: 'Футбол' }); // Default to football, can be changed
+          setMessages(prev => [...prev, { role: 'model', text: 'Пожалуйста, введите название матча (например, "Реал Мадрид - Барселона").' }]);
+      }
+  };
+
+  const handleSavePrediction = (userMsg: Message, modelMsg: Message) => {
+      const predictionData = parsePrediction(userMsg, modelMsg);
+      if (predictionData) {
+          onSavePrediction(predictionData);
+          setSavedPredictions(prev => new Set(prev).add(modelMsg.text));
+      }
+  };
+
+
   const modalTitle = bet ? "AI-Анализ Ставки" : "AI-Аналитик";
-  const inputPlaceholder = bet 
-    ? "Задайте вопрос по этой ставке..." 
-    : "Спросите про вашу статистику или предстоящий матч...";
+  const inputPlaceholder = chatState === 'awaiting_match_name' 
+    ? "Введите название матча..." 
+    : (bet ? "Задайте вопрос по этой ставке..." : "Спросите про вашу статистику...");
+
+  const showWelcomeScreen = messages.length <= 1 && !bet;
 
   return (
     <Modal title={modalTitle} onClose={onClose}>
       <div className="flex flex-col h-[60vh]">
         <div ref={chatBodyRef} className="flex-1 overflow-y-auto pr-2 space-y-6">
-          {messages.map((msg, index) => (
+          {showWelcomeScreen && (
+            <div className="text-center p-4">
+              <h3 className="font-semibold text-lg mb-4">Чем могу помочь?</h3>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Button variant="secondary" onClick={() => handleQuickAction('performance')}>Проанализируй мою эффективность</Button>
+                <Button variant="secondary" onClick={() => handleQuickAction('match_analysis')}>Проанализируй матч</Button>
+              </div>
+            </div>
+          )}
+          {messages.map((msg, index) => {
+            const isPrediction = msg.role === 'model' && isMatchPrediction(msg.text);
+            const userMessageForPrediction = isPrediction ? messages[index - 1] : null;
+
+            return (
             <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row' : 'flex-row'}`}>
               {msg.role === 'user' ? <UserIcon /> : <ModelIcon />}
               <div className="flex flex-col">
                 <div className={`px-4 py-2 rounded-lg max-w-md break-words ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tl-none' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tr-none'}`}>
                   <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                 </div>
+                
+                {isPrediction && userMessageForPrediction && (
+                    <div className="mt-2">
+                        <Button
+                            variant="secondary"
+                            className="text-xs !py-1 !px-2"
+                            onClick={() => handleSavePrediction(userMessageForPrediction, msg)}
+                            disabled={savedPredictions.has(msg.text)}
+                        >
+                            {savedPredictions.has(msg.text) ? '✅ Сохранено' : '💾 Сохранить прогноз'}
+                        </Button>
+                    </div>
+                )}
+
                 {msg.sources && msg.sources.length > 0 && (
                   <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                     <h4 className="font-semibold mb-1">Источники:</h4>
@@ -129,7 +217,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
                 )}
               </div>
             </div>
-          ))}
+          )})}
           {isLoading && (
               <div className="flex items-start gap-3">
                   <ModelIcon />

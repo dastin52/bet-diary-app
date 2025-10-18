@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-// FIX: Import GoalStatus enum.
-import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus } from '../types';
+import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus, AIPrediction, AIPredictionStatus } from '../types';
 import { BET_TYPE_OPTIONS } from '../constants';
 import { generateEventString, calculateProfit } from '../utils/betUtils';
 import { loadUserData, saveUserData } from '../data/betStore';
@@ -11,6 +10,7 @@ export interface UseBetsReturn {
   bankroll: number;
   goals: Goal[];
   bankHistory: BankTransaction[];
+  aiPredictions: AIPrediction[];
   addBet: (bet: Omit<Bet, 'id' | 'createdAt' | 'event'>) => void;
   addMultipleBets: (bets: Omit<Bet, 'id' | 'createdAt' | 'event'>[]) => void;
   updateBet: (id: string, updatedBet: Partial<Omit<Bet, 'id' | 'createdAt' | 'event'>>) => void;
@@ -19,9 +19,10 @@ export interface UseBetsReturn {
   addGoal: (goal: Omit<Goal, 'id' | 'createdAt' | 'currentValue' | 'status'>) => void;
   updateGoal: (id: string, updatedGoal: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
+  addAIPrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
+  updateAIPrediction: (id: string, status: AIPredictionStatus) => void;
   analytics: {
     totalStaked: number;
-    // FIX: Add turnover property to analytics interface.
     turnover: number;
     totalProfit: number;
     roi: number;
@@ -44,12 +45,14 @@ export const useBets = (userKey: string): UseBetsReturn => {
   const [bankroll, setBankroll] = useState<number>(10000);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [bankHistory, setBankHistory] = useState<BankTransaction[]>([]);
+  const [aiPredictions, setAIPredictions] = useState<AIPrediction[]>([]);
   
   useEffect(() => {
     const data = loadUserData(userKey);
     setBets(data.bets);
     setBankroll(data.bankroll);
     setGoals(data.goals);
+    setAIPredictions(data.aiPredictions);
     
     if (data.bankHistory.length === 0 && data.bets.length === 0 && !isDemoMode) {
       // New user: create initial bank deposit transaction
@@ -71,8 +74,8 @@ export const useBets = (userKey: string): UseBetsReturn => {
 
   useEffect(() => {
     if (isDemoMode) return;
-    saveUserData(userKey, { bets, bankroll, goals, bankHistory });
-  }, [bets, bankroll, goals, bankHistory, userKey, isDemoMode]);
+    saveUserData(userKey, { bets, bankroll, goals, bankHistory, aiPredictions });
+  }, [bets, bankroll, goals, bankHistory, aiPredictions, userKey, isDemoMode]);
 
   // Effect for updating goal progress safely
   useEffect(() => {
@@ -267,7 +270,6 @@ export const useBets = (userKey: string): UseBetsReturn => {
             id: new Date().toISOString() + Math.random(),
             createdAt: new Date().toISOString(),
             currentValue: 0,
-            // FIX: Use GoalStatus enum instead of a magic string.
             status: GoalStatus.InProgress,
         };
         setGoals(prev => [newGoal, ...prev]);
@@ -281,6 +283,22 @@ export const useBets = (userKey: string): UseBetsReturn => {
     const deleteGoal = useCallback((id: string) => {
         if(isDemoMode) return;
         setGoals(prev => prev.filter(g => g.id !== id));
+    }, [isDemoMode]);
+    
+    const addAIPrediction = useCallback((predictionData: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => {
+        if (isDemoMode) return;
+        const newPrediction: AIPrediction = {
+            ...predictionData,
+            id: new Date().toISOString() + Math.random(),
+            createdAt: new Date().toISOString(),
+            status: AIPredictionStatus.Pending,
+        };
+        setAIPredictions(prev => [newPrediction, ...prev]);
+    }, [isDemoMode]);
+
+    const updateAIPrediction = useCallback((id: string, status: AIPredictionStatus) => {
+        if (isDemoMode) return;
+        setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, status } : p));
     }, [isDemoMode]);
 
 
@@ -407,7 +425,6 @@ export const useBets = (userKey: string): UseBetsReturn => {
 
     return {
       totalStaked,
-      // FIX: Add turnover property to returned object.
       turnover: totalStaked,
       totalProfit,
       roi,
@@ -423,5 +440,5 @@ export const useBets = (userKey: string): UseBetsReturn => {
     };
   }, [bets, bankroll, bankHistory, isDemoMode]);
 
-  return { bets, bankHistory, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal };
+  return { bets, bankHistory, aiPredictions, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal, addAIPrediction, updateAIPrediction };
 };
