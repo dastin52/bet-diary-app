@@ -38,7 +38,8 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
     const messageId = cb.message.message_id;
 
     if (cb.data.startsWith(MANAGE_PREFIX)) {
-        await manageBets(cb, state, env);
+        // FIX: Pass the entire update object instead of just the callback query.
+        await manageBets(update, state, env);
         return;
     }
     if (cb.data.startsWith(GOAL_PREFIX)) {

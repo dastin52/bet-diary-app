@@ -53,7 +53,7 @@ const parsePrediction = (userMessage: Message, modelMessage: Message): Omit<AIPr
             }
         }
 
-        const predictionMatch = modelMessage.text.match(/Прогноз проходимости:\s*(.+)/i);
+        const predictionMatch = modelMessage.text.match(/Прогноз проходимости:([\s\S]*)/i);
 
         if (matchNameMatch && matchNameMatch[1] && predictionMatch && predictionMatch[1]) {
             let matchName = matchNameMatch[1].trim();
@@ -145,7 +145,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (chatState === 'awaiting_match_name' && tempMatchData.sport) {
-        const fullPrompt = `Проанализируй матч: ${input}\nВид спорта: ${tempMatchData.sport}`;
+        const fullPrompt = `Анализ матча: ${input} ${tempMatchData.sport}`;
         const userMessageForUi: Message = { role: 'user', text: `Анализ матча: ${input}` };
         
         // This is a bit of a race condition, but it works for the UI update.
@@ -166,7 +166,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
           sendMessage("Проанализируй мою эффективность");
       } else if (type === 'match_analysis') {
           setChatState('awaiting_match_name');
-          setTempMatchData({ sport: 'Футбол' }); // Default to football, can be changed
+          setTempMatchData({ sport: 'футбол' }); // Default to football, can be changed
           setMessages(prev => [...prev, { role: 'model', text: 'Пожалуйста, введите название матча (например, "Реал Мадрид - Барселона").' }]);
       }
   };

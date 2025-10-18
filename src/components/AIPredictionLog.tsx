@@ -104,7 +104,7 @@ const AIPredictionLog: React.FC = () => {
                                         {p.matchName}
                                         <p className="text-xs text-gray-500">{p.sport}</p>
                                     </td>
-                                    <td className="px-4 py-3 text-sm text-gray-300 max-w-sm truncate">{p.prediction}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-300 whitespace-pre-wrap">{p.prediction.replace(/\*/g, '').trim()}</td>
                                     <td className="px-4 py-3 text-center">
                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(p.status).color}`}>
                                             {getStatusInfo(p.status).label}

@@ -117,10 +117,20 @@ export async function startManageBets(update: TelegramUpdate, state: UserState, 
         message: message,
         data: buildManageCb(MANAGE_ACTIONS.LIST, 0)
     };
-    await manageBets(fakeCallbackQuery, state, env);
+    // FIX: Construct a fake TelegramUpdate to pass to manageBets.
+    const fakeUpdate: TelegramUpdate = {
+        update_id: update.update_id,
+        callback_query: fakeCallbackQuery,
+    };
+    await manageBets(fakeUpdate, state, env);
 }
 
-export async function manageBets(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
+// FIX: Changed signature to accept TelegramUpdate to resolve type error.
+export async function manageBets(update: TelegramUpdate, state: UserState, env: Env) {
+    // FIX: Extract callbackQuery from the update object.
+    const callbackQuery = update.callback_query;
+    if (!callbackQuery) return;
+
     const chatId = callbackQuery.message.chat.id;
     const messageId = callbackQuery.message.message_id;
     const [_, action, ...args] = callbackQuery.data.split('|');
@@ -183,7 +193,9 @@ ${profitText}
             await sendMessage(chatId, `Статус ставки обновлен на *${newStatus}*!`, env);
             
             const newCallbackQuery = { ...callbackQuery, data: buildManageCb(MANAGE_ACTIONS.LIST, page) };
-            await manageBets(newCallbackQuery, newState, env);
+            // FIX: Construct a new update object for recursive call.
+            const newUpdate: TelegramUpdate = { ...update, callback_query: newCallbackQuery };
+            await manageBets(newUpdate, newState, env);
             break;
         }
 
@@ -209,7 +221,9 @@ ${profitText}
             
             const newPage = page > 0 && newState.bets.length <= page * BETS_PER_PAGE ? page - 1 : page;
             const newCallbackQuery = { ...callbackQuery, data: buildManageCb(MANAGE_ACTIONS.LIST, newPage) };
-            await manageBets(newCallbackQuery, newState, env);
+            // FIX: Construct a new update object for recursive call.
+            const newUpdate: TelegramUpdate = { ...update, callback_query: newCallbackQuery };
+            await manageBets(newUpdate, newState, env);
             break;
         }
         
