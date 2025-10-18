@@ -1,5 +1,8 @@
 // functions/telegram/analytics.ts
 import { BetStatus, UserState } from './types';
+import { getPeriodStart } from '../utils/dateHelpers';
+
+export type AnalyticsPeriod = 'week' | 'month' | 'quarter' | 'year' | 'all_time';
 
 export interface AnalyticsData {
     bankroll: number;
@@ -12,10 +15,26 @@ export interface AnalyticsData {
     turnover: number;
     profitBySport: { sport: string; profit: number; roi: number; count: number }[];
     profitByBetType: { type: string; profit: number; roi: number; count: number }[];
+    period: AnalyticsPeriod;
 }
 
-export function calculateAnalytics(state: UserState): AnalyticsData {
-    const settledBets = state.bets.filter(b => b.status !== BetStatus.Pending);
+const periodLabels: Record<AnalyticsPeriod, string> = {
+    week: 'за неделю',
+    month: 'за месяц',
+    quarter: 'за квартал',
+    year: 'за год',
+    all_time: 'за все время',
+};
+
+
+export function calculateAnalytics(state: UserState, period: AnalyticsPeriod = 'all_time'): AnalyticsData {
+    const periodStartDate = period === 'all_time' ? null : getPeriodStart(period as 'week' | 'month' | 'quarter' | 'year');
+    
+    const relevantBets = periodStartDate 
+        ? state.bets.filter(b => new Date(b.createdAt) >= periodStartDate)
+        : state.bets;
+
+    const settledBets = relevantBets.filter(b => b.status !== BetStatus.Pending);
     const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
     const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
     const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
@@ -66,6 +85,7 @@ export function calculateAnalytics(state: UserState): AnalyticsData {
             count: data.count, 
             roi: data.staked > 0 ? (data.profit / data.staked) * 100 : 0
         })),
+        period,
     };
 }
 
@@ -83,7 +103,9 @@ export function analyticsToText(analytics: AnalyticsData): string {
 
 export function formatShortReportText(analytics: AnalyticsData): string {
     const profitSign = analytics.totalProfit >= 0 ? '+' : '';
-    return `*📊 Ваша статистика*
+    const periodText = periodLabels[analytics.period];
+
+    return `*📊 Ваша статистика (${periodText})*
     
 - 💰 *Текущий банк:* ${analytics.bankroll.toFixed(2)} ₽
 - ${analytics.totalProfit >= 0 ? '📈' : '📉'} *Общая прибыль:* ${profitSign}${analytics.totalProfit.toFixed(2)} ₽
@@ -111,8 +133,9 @@ export function formatDetailedReportText(analytics: AnalyticsData): string {
 
 export function generateAnalyticsHtml(analytics: AnalyticsData): string {
     const styles = `<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background-color:#111827;color:#e5e7eb;padding:2rem}div{background-color:#1f2937;border:1px solid #374151;border-radius:0.75rem;padding:1.5rem;margin-bottom:1.5rem}h1,h2{color:white}h1{font-size:2rem}h2{border-bottom:1px solid #374151;padding-bottom:0.5rem;margin-top:2rem}ul{list-style:none;padding:0}li{display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid #374151}span:last-child{font-weight:600}.profit{color:#4ade80}.loss{color:#f87171}</style>`;
+    const periodText = periodLabels[analytics.period];
     
-    let body = `<h1>📊 Отчет BetDiary</h1>`;
+    let body = `<h1>📊 Отчет BetDiary (${periodText})</h1>`;
     body += `<div><h2>Общая сводка</h2><ul>`;
     body += `<li><span>Текущий банк</span><span>${analytics.bankroll.toFixed(2)} ₽</span></li>`;
     body += `<li><span>Общая прибыль</span><span class="${analytics.totalProfit >= 0 ? 'profit' : 'loss'}">${analytics.totalProfit.toFixed(2)} ₽</span></li>`;

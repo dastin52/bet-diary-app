@@ -6,9 +6,9 @@ import { setUserState, updateAndSyncState } from './state';
 import { startManageBets } from './manageBets';
 import { showCompetitionsMenu } from './competition';
 import { startManageGoals } from './goals';
-import { calculateAnalytics, formatShortReportText, formatDetailedReportText, generateAnalyticsHtml } from './analytics';
+import { calculateAnalytics, formatShortReportText, formatDetailedReportText, generateAnalyticsHtml, AnalyticsPeriod } from './analytics';
 import { startAddBetDialog, startAiChatDialog } from './dialogs';
-import { CB } from './router';
+import { CB, STATS_PREFIX } from './router';
 
 
 export async function showLinkAccountInfo(chatId: number, messageId: number, env: Env) {
@@ -107,24 +107,38 @@ export async function handleStats(update: TelegramUpdate, state: UserState, env:
         return;
     }
 
-    const analytics = calculateAnalytics(state);
+    const cb_data = update.callback_query?.data;
+    let action = 'show';
+    let period: AnalyticsPeriod = 'week';
+
+    if (cb_data && cb_data.startsWith(STATS_PREFIX)) {
+        const parts = cb_data.split('|');
+        action = parts[1] || 'show';
+        period = (parts[2] as AnalyticsPeriod) || 'week';
+    } else if (update.message) { // coming from /stats command
+        period = 'week'; // Default for command
+        action = 'show';
+    }
+
+    const analytics = calculateAnalytics(state, period);
     const messageId = update.callback_query ? message.message_id : null;
 
-    // Check if it's a callback for a specific report type
-    if (update.callback_query?.data === CB.SHOW_DETAILED_ANALYTICS) {
-         await sendMessage(message.chat.id, formatDetailedReportText(analytics), env);
-         return;
+    switch (action) {
+        case 'detailed':
+            await sendMessage(message.chat.id, formatDetailedReportText(analytics), env);
+            // After sending detailed, we don't want to edit the main menu away.
+            return;
+        case 'download':
+            const html = generateAnalyticsHtml(analytics);
+            const file = new Blob([html], { type: 'text/html' });
+            await sendDocument(message.chat.id, file, 'BetDiary_Report.html', env);
+            return;
+        case 'show':
+        default:
+            const text = formatShortReportText(analytics);
+            await showStatsMenu(message.chat.id, messageId, text, analytics.period, env);
+            break;
     }
-    if (update.callback_query?.data === CB.DOWNLOAD_ANALYTICS_REPORT) {
-        const html = generateAnalyticsHtml(analytics);
-        const file = new Blob([html], { type: 'text/html' });
-        await sendDocument(message.chat.id, file, 'BetDiary_Report.html', env);
-        return;
-    }
-
-    // Default action: show stats menu
-    const text = formatShortReportText(analytics);
-    await showStatsMenu(message.chat.id, messageId, text, env);
 }
 
 export async function handleManageBets(update: TelegramUpdate, state: UserState, env: Env) {

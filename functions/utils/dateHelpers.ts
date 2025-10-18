@@ -1,5 +1,5 @@
 // functions/utils/dateHelpers.ts
-export const getPeriodStart = (period: 'week' | 'month' | 'year'): Date => {
+export const getPeriodStart = (period: 'week' | 'month' | 'quarter' | 'year'): Date => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -10,6 +10,10 @@ export const getPeriodStart = (period: 'week' | 'month' | 'year'): Date => {
             return new Date(today.setDate(diff));
         case 'month':
             return new Date(today.getFullYear(), today.getMonth(), 1);
+        case 'quarter':
+            const currentMonth = today.getMonth();
+            const firstMonthOfQuarter = Math.floor(currentMonth / 3) * 3;
+            return new Date(today.getFullYear(), firstMonthOfQuarter, 1);
         case 'year':
             return new Date(today.getFullYear(), 0, 1);
     }

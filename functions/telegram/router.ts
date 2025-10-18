@@ -8,6 +8,10 @@ import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handl
 import { answerCallbackQuery } from './telegramApi';
 import { startAddBetDialog, startScreenshotDialog } from './dialogs';
 
+export const STATS_PREFIX = 'stats|';
+
+export const buildStatsCb = (action: string, period: string) => `${STATS_PREFIX}${action}|${period}`;
+
 export const CB = {
     // start
     START_REGISTER: 'start_register',
@@ -15,16 +19,14 @@ export const CB = {
     SHOW_LINK_INFO: 'show_link_info',
 
     // main menu
-    SHOW_STATS: 'show_stats',
+    SHOW_STATS: buildStatsCb('show', 'week'),
     ADD_BET: 'add_bet',
     COMPETITIONS: 'competitions',
     GOALS: 'goals',
     MANAGE_BETS: 'manage_bets',
     AI_CHAT: 'ai_chat',
     
-    // stats menu
-    SHOW_DETAILED_ANALYTICS: 'show_detailed_analytics',
-    DOWNLOAD_ANALYTICS_REPORT: 'download_analytics_report',
+    // stats menu is handled by STATS_PREFIX now
     BACK_TO_MAIN: 'back_to_main',
 
     // Add bet dialog
@@ -44,6 +46,10 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
     const chatId = cb.message.chat.id;
     const messageId = cb.message.message_id;
 
+    if (cb.data.startsWith(STATS_PREFIX)) {
+        await handleStats(update, state, env);
+        return;
+    }
     if (cb.data.startsWith(MANAGE_PREFIX)) {
         await manageBets(update, state, env);
         return;
@@ -82,10 +88,6 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             break;
         
         // Other routes
-        case CB.SHOW_DETAILED_ANALYTICS:
-        case CB.DOWNLOAD_ANALYTICS_REPORT:
-            await handleStats(update, state, env);
-            break;
         case CB.SHOW_LINK_INFO:
             await showLinkAccountInfo(chatId, messageId, env);
             break;
