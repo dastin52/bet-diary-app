@@ -344,7 +344,7 @@ async function saveParsedBet(chatId: number, state: UserState, env: Env) {
     
     await updateAndSyncState(chatId, newState, env);
     await deleteMessage(chatId, state.dialog!.messageId!, env);
-    await showMainMenu(chatId, null, env, `✅ Ставка "${betWithDetails.event}" успешно сохранена!`);
+    await showMainMenu(chatId, null, env, `✅ Ставка "${betWithDetails.event}" успешно сохранена!\n*Дата добавления:* ${new Date(betWithDetails.createdAt).toLocaleString('ru-RU')}`);
 }
 
 
