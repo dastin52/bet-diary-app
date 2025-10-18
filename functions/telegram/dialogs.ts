@@ -224,7 +224,8 @@ async function handleAddGoalResponse(update: TelegramUpdate, state: UserState, e
                 };
                 const newState = addGoalToState(state, goalData);
                 await updateAndSyncState(chatId, newState, env);
-                await endDialog(chatId, state, env, "Новая цель успешно создана!");
+                // FIX: Pass the updated newState to endDialog to prevent state rollback.
+                await endDialog(chatId, newState, env, "Новая цель успешно создана!");
                 return; 
             } else {
                 await endDialog(chatId, state, env);

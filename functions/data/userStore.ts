@@ -1,5 +1,5 @@
 // functions/data/userStore.ts
-import { Env, User, UserState, BankTransactionType } from '../telegram/types';
+import { Env, User, UserState, BankTransactionType, Bet } from '../telegram/types';
 import { normalizeState } from '../telegram/state';
 
 const USER_INDEX_KEY = 'user_index'; // A key to store a set of all user emails
@@ -19,6 +19,29 @@ export async function getUsers(env: Env): Promise<User[]> {
     const users = await Promise.all(userPromises);
     return users.filter((u): u is User => !!u);
 }
+
+/**
+ * Efficiently fetches all user states (user and bets) in a single parallel batch.
+ * This prevents timeouts that occur when fetching user data one by one.
+ */
+export async function getAllUsersWithBets(env: Env): Promise<{ user: User, bets: Bet[] }[]> {
+    const userIndex: string[] = await env.BOT_STATE.get(USER_INDEX_KEY, { type: 'json' }) || [];
+    if (userIndex.length === 0) {
+        return [];
+    }
+
+    const userStatePromises = userIndex.map(email => 
+        env.BOT_STATE.get(`betdata:${email.toLowerCase()}`, { type: 'json' })
+    );
+
+    const allStatesRaw = await Promise.all(userStatePromises);
+
+    return allStatesRaw
+        .map(stateRaw => normalizeState(stateRaw)) // Sanitize each state
+        .filter(state => state.user && Array.isArray(state.bets)) // Ensure user and bets exist
+        .map(state => ({ user: state.user!, bets: state.bets }));
+}
+
 
 export async function addUser(newUser: User, env: Env): Promise<void> {
     const emailKey = `betdata:${newUser.email.toLowerCase()}`;
