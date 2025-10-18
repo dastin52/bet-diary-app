@@ -31,27 +31,53 @@ export const useAdminData = (): UseAdminDataReturn => {
 
   useEffect(() => {
     try {
-      // 1. Get all registered users
-      const allUsers = getUsers();
-      
-      // MOCK TELEGRAM DATA for demonstration purposes, as this data lives in server-side KV storage
-      const allUsersWithTelegram = allUsers.map((user, index) => {
-          // Link every second user for demonstration
+      // 1. Get all registered web users
+      const allWebUsers = getUsers();
+
+      const webUsersWithData = allWebUsers.map((user, index) => {
+          const webUser: User = { ...user, source: 'web' };
+          // Link every second web user to a mock Telegram account for demonstration
           if (index % 2 === 0 && user.email !== 'admin@example.com') {
-              return {
-                  ...user,
-                  telegramId: 100000000 + (user.email.length * 12345) + index,
-                  telegramUsername: user.nickname.toLowerCase().replace(/\s/g, '_'),
-              };
+              webUser.telegramId = 100000000 + (user.email.length * 12345) + index;
+              webUser.telegramUsername = user.nickname.toLowerCase().replace(/\s/g, '_');
           }
-          return user;
+          return webUser;
       });
 
-      setUsers(allUsersWithTelegram.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
+      // 2. Create mock bot-only users to simulate users registered via Telegram
+      const mockBotOnlyUsers: User[] = [
+        {
+            email: 'botuser1@telegram.bot',
+            nickname: 'TelegramFan',
+            password_hash: '', 
+            registeredAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            referralCode: 'BOTREF123',
+            buttercups: 0,
+            status: 'active',
+            telegramId: 987654321,
+            telegramUsername: 'telegramfan',
+            source: 'telegram',
+        },
+        {
+            email: 'botuser2@telegram.bot',
+            nickname: 'SuperCapper',
+            password_hash: '',
+            registeredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+            referralCode: 'CAPPERXYZ',
+            buttercups: 0,
+            status: 'active',
+            telegramId: 123456789,
+            telegramUsername: 'supercapper',
+            source: 'telegram',
+        }
+      ];
+      
+      const combinedUsers = [...webUsersWithData, ...mockBotOnlyUsers];
+      setUsers(combinedUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
-      // 2. Aggregate bets from all users
+      // 3. Aggregate bets from all web users (bot-only users have no bets in this simulation)
       let collectedBets: Bet[] = [];
-      for (const user of allUsers) {
+      for (const user of allWebUsers) {
         const { bets } = loadUserData(user.email);
         collectedBets = [...collectedBets, ...bets];
       }
@@ -97,23 +123,23 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
+    // FIX: Refactor reduce to use generic argument for better type inference.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularSports = Object.entries(popularSportsCounts)
-        // FIX: Cast count to number to resolve type inference issue.
-        .map(([name, count]) => ({ name, count: count as number }))
+        .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
+    // FIX: Refactor reduce to use generic argument for better type inference.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
-        // FIX: Cast count to number to resolve type inference issue.
-        .map(([name, count]) => ({ name, count: count as number }))
+        .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     

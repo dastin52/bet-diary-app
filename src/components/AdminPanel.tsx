@@ -128,6 +128,9 @@ const AdminPanel: React.FC = () => {
                                                 @{user.telegramUsername}
                                             </a>
                                             <p className="text-xs text-gray-500">ID: {user.telegramId}</p>
+                                            {user.source === 'telegram' && (
+                                                <p className="text-xs text-blue-400 font-semibold">(Bot)</p>
+                                            )}
                                         </span>
                                     ) : (
                                         <span className="text-gray-500">-</span>
@@ -140,7 +143,9 @@ const AdminPanel: React.FC = () => {
                                     </span>
                                 </td>
                                 <td className="px-4 py-3 text-sm text-center">
-                                    {user.status === 'active' ? (
+                                    {user.email.endsWith('@telegram.bot') ? (
+                                        <span className="text-xs text-gray-500">N/A</span>
+                                    ) : user.status === 'active' ? (
                                         <Button variant="secondary" className="!bg-red-100 dark:!bg-red-500/20 hover:!bg-red-200 dark:hover:!bg-red-500/40 !text-red-600 dark:!text-red-300 text-xs py-1 px-2" onClick={() => updateUserStatus(user.email, 'blocked')}>
                                             Заблокировать
                                         </Button>
