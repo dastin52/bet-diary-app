@@ -3,11 +3,7 @@
 // This file is a new API endpoint to securely fetch all user data from the KV store.
 // In a real application, this endpoint MUST be protected and only accessible by administrators.
 
-import { User, UserState } from '../../telegram/types';
-
-interface KVNamespace {
-    get(key: string, options?: { type?: 'json' }): Promise<any | null>;
-}
+import { User, UserState, KVNamespace } from '../../telegram/types';
 
 interface Env {
     BOT_STATE: KVNamespace;
@@ -26,13 +22,15 @@ const normalizeState = (data: any): UserState | null => {
     if (!data || typeof data !== 'object') {
         return null;
     }
+    // We only need the user object for this function, so a minimal normalization is fine.
     return {
         user: data.user || null,
-        bets: Array.isArray(data.bets) ? data.bets : [],
-        bankroll: typeof data.bankroll === 'number' ? data.bankroll : 10000,
-        goals: Array.isArray(data.goals) ? data.goals : [],
-        bankHistory: Array.isArray(data.bankHistory) ? data.bankHistory : [],
-        dialog: data.dialog || null,
+        // The rest can be defaulted as they are not used here.
+        bets: [],
+        bankroll: 0,
+        goals: [],
+        bankHistory: [],
+        dialog: null,
     };
 };
 
@@ -44,16 +42,18 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
             });
         }
 
-        const userEmails: string[] = await env.BOT_STATE.get('tgusers:list', { type: 'json' }) || [];
+        // List all keys with the prefix for individual bot user states
+        const list = await env.BOT_STATE.list({ prefix: 'tgchat:' });
+        const userStateKeys = list.keys;
         
-        if (userEmails.length === 0) {
+        if (userStateKeys.length === 0) {
             return new Response(JSON.stringify({ users: [] }), {
                 status: 200, headers: { 'Content-Type': 'application/json' },
             });
         }
         
-        const userPromises = userEmails.map(async (email) => {
-            const userData = await env.BOT_STATE.get(`betdata:${email}`, { type: 'json' });
+        const userPromises = userStateKeys.map(async (key) => {
+            const userData = await env.BOT_STATE.get(key.name, { type: 'json' });
             const state = normalizeState(userData);
             return state?.user || null;
         });
