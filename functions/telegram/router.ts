@@ -3,9 +3,10 @@ import { TelegramCallbackQuery, UserState, Env, TelegramUpdate } from './types';
 import { answerCallbackQuery, reportError } from './telegramApi';
 import { handleCompetitionCallback, showCompetitionsMenu } from './competition';
 import { manageBets, startManageBets } from './manageBets';
-import { showMainMenu, showStatsMenu } from './ui';
+import { showMainMenu } from './ui';
 import { handleGoalCallback, startManageGoals } from './goals';
-import { handleAddBet, handleAiChat, handleStats } from './commands';
+import { handleAddBet, handleAiChat, handleStats, showLinkAccountInfo } from './commands';
+import { startLoginDialog, startRegistrationDialog } from './dialogs';
 
 // Callback Data prefixes
 export const COMP_PREFIX = 'c|';
@@ -14,6 +15,7 @@ export const MANAGE_PREFIX = 'm|';
 
 // General callback actions
 export const CB = {
+    // Main Menu
     SHOW_STATS: 'stats',
     ADD_BET: 'add_bet',
     COMPETITIONS: 'comps',
@@ -21,6 +23,13 @@ export const CB = {
     MANAGE_BETS: 'manage',
     AI_CHAT: 'ai_chat',
     BACK_TO_MAIN: 'main_menu',
+    
+    // Auth Menu
+    START_REGISTER: 'start_register',
+    START_LOGIN: 'start_login',
+    SHOW_LINK_INFO: 'show_link_info',
+
+    // Stats Menu
     SHOW_DETAILED_ANALYTICS: 'stats_detailed',
     DOWNLOAD_ANALYTICS_REPORT: 'stats_download',
 };
@@ -58,6 +67,18 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
         } else {
             // Handle general callbacks
             switch (data) {
+                // Auth
+                case CB.START_REGISTER:
+                    await startRegistrationDialog(chatId, state, env, messageId);
+                    break;
+                case CB.START_LOGIN:
+                    await startLoginDialog(chatId, state, env, messageId);
+                    break;
+                case CB.SHOW_LINK_INFO:
+                    await showLinkAccountInfo(chatId, messageId, env);
+                    break;
+
+                // Main Menu
                 case CB.BACK_TO_MAIN:
                     await showMainMenu(chatId, messageId, env);
                     break;
@@ -79,6 +100,7 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
                 case CB.AI_CHAT:
                     await handleAiChat(update, state, env);
                     break;
+
                  // Analytics callbacks are handled within the stats command/menu itself
                 case CB.SHOW_DETAILED_ANALYTICS:
                 case CB.DOWNLOAD_ANALYTICS_REPORT:
@@ -87,6 +109,6 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             }
         }
     } catch (error) {
-        await reportError(chatId, env, 'Callback Router', error);
+        await reportError(chatId, env, `Callback Router (${callbackQuery.data})`, error);
     }
 }

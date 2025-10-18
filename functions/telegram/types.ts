@@ -59,6 +59,28 @@ export interface BankTransaction {
   betId?: string;
 }
 
+// FIX: Add missing types to be used in other function files.
+export interface GroundingSource {
+  web: {
+    uri: string;
+    title: string;
+  };
+}
+
+export type Message = {
+  role: 'user' | 'model';
+  text: string;
+  sources?: GroundingSource[];
+};
+
+export interface ChatMessage {
+    id: string;
+    userNickname: string;
+    userEmail: string; // To identify the user, maybe for avatars later
+    text: string;
+    timestamp: string;
+}
+
 export interface User {
   email: string;
   nickname: string;
@@ -170,8 +192,10 @@ export interface TelegramUpdate {
     callback_query?: TelegramCallbackQuery;
 }
 
+export type DialogType = 'add_bet' | 'add_goal' | 'ai_chat' | 'register' | 'login';
+
 export interface Dialog {
-    type: 'add_bet' | 'add_goal' | 'ai_chat';
+    type: DialogType;
     step: string;
     messageId: number;
     data?: any;

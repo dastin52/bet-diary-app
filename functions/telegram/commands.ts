@@ -1,7 +1,7 @@
 // functions/telegram/commands.ts
 import { TelegramUpdate, UserState, Env, TelegramMessage } from './types';
-import { sendMessage, sendDocument } from './telegramApi';
-import { showMainMenu, showStatsMenu } from './ui';
+import { sendMessage, sendDocument, editMessageText } from './telegramApi';
+import { showMainMenu, showStatsMenu, makeKeyboard } from './ui';
 import { setUserState, updateAndSyncState } from './state';
 import { startManageBets } from './manageBets';
 import { showCompetitionsMenu } from './competition';
@@ -10,12 +10,46 @@ import { calculateAnalytics, formatShortReportText, formatDetailedReportText, ge
 import { startAddBetDialog, startAiChatDialog } from './dialogs';
 import { CB } from './router';
 
+
+export async function showLinkAccountInfo(chatId: number, messageId: number, env: Env) {
+    const text = `*🔗 Привязка аккаунта*
+
+Чтобы привязать существующий аккаунт из веб-приложения, выполните следующие шаги:
+
+1. Откройте веб-приложение BetDiary.
+2. Перейдите в 'Настройки' 
+3. Нажмите 'Интеграция с Telegram' -> 'Сгенерировать код'.
+4. Отправьте полученный 6-значный код мне в чат.
+
+Код действителен 5 минут.`;
+    const keyboard = makeKeyboard([
+        [{ text: '◀️ Назад', callback_data: 'start_menu_back' }] // Note: This needs a handler or to be handled by start command again
+    ]);
+    // For simplicity, we just edit the message. Going back will be handled by sending /start
+    await editMessageText(chatId, messageId, text, env);
+}
+
+async function showStartMenu(chatId: number, env: Env) {
+    const text = "👋 Добро пожаловать в BetDiary Bot! \n\nВыберите действие, чтобы начать.";
+    const keyboard = makeKeyboard([
+        [
+            { text: '🚀 Регистрация', callback_data: CB.START_REGISTER },
+            { text: '🔑 Вход', callback_data: CB.START_LOGIN }
+        ],
+        [
+            { text: '🔗 Привязать аккаунт', callback_data: CB.SHOW_LINK_INFO }
+        ]
+    ]);
+    await sendMessage(chatId, text, env, keyboard);
+}
+
+
 export async function handleStart(update: TelegramUpdate, state: UserState, env: Env) {
     const chatId = update.message!.chat.id;
     if (state.user) {
         await showMainMenu(chatId, null, env, `С возвращением, ${state.user.nickname}!`);
     } else {
-        await sendMessage(chatId, "👋 Добро пожаловать в BetDiary Bot! Для начала работы, пожалуйста, пройдите аутентификацию.\n\n1. Откройте веб-приложение.\n2. Перейдите в 'Настройки' -> 'Интеграция с Telegram'.\n3. Нажмите 'Сгенерировать код'.\n4. Отправьте полученный 6-значный код мне в чат.", env);
+        await showStartMenu(chatId, env);
     }
 }
 
@@ -60,13 +94,18 @@ export async function handleAddBet(update: TelegramUpdate, state: UserState, env
     if (!message) return;
     
     // In a real implementation, this would trigger a multi-step dialog.
-    // await startAddBetDialog(message.chat.id, state, env, message.message_id);
-    await sendMessage(message.chat.id, "Добавление ставок через бота находится в разработке. Пожалуйста, используйте веб-интерфейс.", env);
+    await startAddBetDialog(message.chat.id, state, env, message.message_id);
+    // await sendMessage(message.chat.id, "Добавление ставок через бота находится в разработке. Пожалуйста, используйте веб-интерфейс.", env);
 }
 
 export async function handleStats(update: TelegramUpdate, state: UserState, env: Env) {
     const message = update.message || update.callback_query?.message;
     if (!message) return;
+
+    if (!state.user) {
+        await sendMessage(message.chat.id, "Пожалуйста, войдите или зарегистрируйтесь для доступа к статистике.", env);
+        return;
+    }
 
     const analytics = calculateAnalytics(state);
     const messageId = update.callback_query ? message.message_id : null;
@@ -89,18 +128,35 @@ export async function handleStats(update: TelegramUpdate, state: UserState, env:
 }
 
 export async function handleManageBets(update: TelegramUpdate, state: UserState, env: Env) {
+    if (!state.user) {
+        await sendMessage(update.message!.chat.id, "Пожалуйста, войдите или зарегистрируйтесь.", env);
+        return;
+    }
     await startManageBets(update, state, env);
 }
 
 export async function handleCompetitions(update: TelegramUpdate, state: UserState, env: Env) {
+    if (!state.user) {
+        await sendMessage(update.message!.chat.id, "Пожалуйста, войдите или зарегистрируйтесь.", env);
+        return;
+    }
     await showCompetitionsMenu(update, state, env);
 }
 
 export async function handleGoals(update: TelegramUpdate, state: UserState, env: Env) {
+    if (!state.user) {
+        await sendMessage(update.message!.chat.id, "Пожалуйста, войдите или зарегистрируйтесь.", env);
+        return;
+    }
     await startManageGoals(update, state, env);
 }
 
 export async function handleAiChat(update: TelegramUpdate, state: UserState, env: Env) {
+    if (!state.user) {
+        const chatId = update.message?.chat.id || update.callback_query?.message.chat.id;
+        if (chatId) await sendMessage(chatId, "Пожалуйста, войдите или зарегистрируйтесь.", env);
+        return;
+    }
     const messageId = update.callback_query ? update.callback_query.message.message_id : null;
     const chatId = messageId ? update.callback_query!.message.chat.id : update.message!.chat.id;
     await startAiChatDialog(chatId, state, env, messageId);
