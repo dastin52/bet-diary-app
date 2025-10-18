@@ -1,5 +1,5 @@
 // functions/telegram/ui.ts
-import { Env, TelegramUpdatePayload } from './types';
+import { Env, TelegramUpdate } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { CB } from './router';
 
@@ -27,7 +27,6 @@ export async function showMainMenu(chatId: number, messageId: number | null, env
         try {
             await editMessageText(chatId, messageId, messageText, env, keyboard);
         } catch (e) {
-            // Message might have been deleted, send a new one
             await sendMessage(chatId, messageText, env, keyboard);
         }
     } else {
@@ -35,7 +34,7 @@ export async function showMainMenu(chatId: number, messageId: number | null, env
     }
 }
 
-export async function showStatsMenu(chatId: number, messageId: number, text: string, env: Env) {
+export async function showStatsMenu(chatId: number, messageId: number | null, text: string, env: Env) {
     const keyboard = makeKeyboard([
         [
             { text: '📝 Подробный отчет', callback_data: CB.SHOW_DETAILED_ANALYTICS },
@@ -43,5 +42,10 @@ export async function showStatsMenu(chatId: number, messageId: number, text: str
         ],
         [{ text: '⬅️ В меню', callback_data: CB.BACK_TO_MAIN }]
     ]);
-    await editMessageText(chatId, messageId, text, env, keyboard);
+
+    if (messageId) {
+         await editMessageText(chatId, messageId, text, env, keyboard);
+    } else {
+        await sendMessage(chatId, text, env, keyboard);
+    }
 }

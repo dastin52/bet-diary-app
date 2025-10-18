@@ -2,13 +2,13 @@
 import { BetStatus, Env, TelegramMessage, TelegramUpdate, UserState } from './types';
 import { getUserState, setUserState, normalizeState } from './state';
 import { reportError, sendMessage } from './telegramApi';
-// FIX: Corrected function name from startGlobalChatDialog to startAiChatDialog.
 import { startAddBetDialog, startAiChatDialog } from './dialogs';
 import { showMainMenu, showStatsMenu } from './ui';
 import { calculateAnalytics, formatDetailedReportText, formatShortReportText, generateAnalyticsHtml } from './analytics';
 import { sendDocument } from './telegramApi';
 import { startManageBets } from './manageBets';
-import { showCompetitions } from './competition';
+import { showCompetitionsMenu } from './competition';
+import { startManageGoals } from './goals';
 
 
 export async function handleStart(update: TelegramUpdate, state: UserState, env: Env) {
@@ -85,7 +85,9 @@ export async function handleStats(update: TelegramUpdate, state: UserState, env:
     const analytics = calculateAnalytics(state);
     const shortReport = formatShortReportText(analytics);
     
-    await showStatsMenu(chatId, message.message_id, shortReport, env);
+    // Check if we need to edit an existing message or send a new one
+    const messageId = update.callback_query ? message.message_id : null;
+    await showStatsMenu(chatId, messageId, shortReport, env);
 }
 
 export async function handleShowDetailedReport(update: TelegramUpdate, state: UserState, env: Env) {
@@ -125,24 +127,23 @@ export async function handleManageBets(update: TelegramUpdate, state: UserState,
 }
 
 export async function handleCompetitions(update: TelegramUpdate, state: UserState, env: Env) {
-    const message = update.callback_query?.message;
+    const message = update.message || update.callback_query?.message;
     if (!message) return;
      if (!state.user) {
         await sendMessage(message.chat.id, "Пожалуйста, сначала привяжите свой аккаунт.", env);
         return;
     }
-    await sendMessage(message.chat.id, "🏆 Раздел соревнований в разработке.", env);
-    // await showCompetitions(callbackQuery, env);
+    await showCompetitionsMenu(update, state, env);
 }
 
 export async function handleGoals(update: TelegramUpdate, state: UserState, env: Env) {
-    const message = update.callback_query?.message;
+    const message = update.message || update.callback_query?.message;
     if (!message) return;
      if (!state.user) {
         await sendMessage(message.chat.id, "Пожалуйста, сначала привяжите свой аккаунт.", env);
         return;
     }
-    await sendMessage(message.chat.id, "🎯 Раздел целей в разработке.", env);
+    await startManageGoals(update, state, env);
 }
 
 export async function handleAiChat(update: TelegramUpdate, state: UserState, env: Env) {

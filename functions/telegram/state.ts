@@ -1,6 +1,5 @@
 // functions/telegram/state.ts
-// FIX: Added Bet, BetStatus, and BankTransactionType to imports
-import { Env, UserState, User, Bet, Goal, BankTransaction, BankTransactionType, BetStatus } from './types';
+import { Env, UserState, User, Bet, Goal, BankTransaction, BankTransactionType, BetStatus, GoalStatus } from './types';
 import { calculateProfit, generateEventString } from '../utils/betUtils';
 
 export function normalizeState(data: any): UserState {
@@ -23,39 +22,22 @@ export function normalizeState(data: any): UserState {
     };
 }
 
-/**
- * Retrieves the state for a given chat ID from the KV store.
- * @param chatId The user's Telegram chat ID.
- * @param env The Cloudflare environment object.
- * @returns A promise that resolves to the user's state.
- */
 export async function getUserState(chatId: number, env: Env): Promise<UserState> {
     const key = `tgchat:${chatId}`;
     try {
-        // FIX: Correctly call KV get with options object, not a generic type argument.
         const data = await env.BOT_STATE.get(key, { type: 'json' });
-        // Always normalize the data retrieved from KV.
         return normalizeState(data);
     } catch (e) {
         console.error(`Failed to parse state for chat ${chatId}, returning default. Error:`, e);
-        // If JSON parsing fails, it's safer to start with a clean, default state
-        // to prevent the bot from getting stuck on corrupted data.
         return normalizeState(null);
     }
 }
 
-/**
- * Saves the user's state to the KV store.
- * @param chatId The user's Telegram chat ID.
- * @param state The user state object to save.
- * @param env The Cloudflare environment object.
- */
 export async function setUserState(chatId: number, state: UserState, env: Env): Promise<void> {
     const key = `tgchat:${chatId}`;
     await env.BOT_STATE.put(key, JSON.stringify(state));
 }
 
-// FIX: Moved this function from dialogs.ts to centralize state logic.
 export function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'createdAt' | 'event'>): UserState {
     const newBet: Bet = {
         ...betData,
@@ -67,7 +49,6 @@ export function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'creat
     const newState = { ...state };
     let newBankroll = state.bankroll;
     
-    // FIX: Imported BetStatus to resolve error.
     if (newBet.status !== BetStatus.Pending) {
         newBet.profit = calculateProfit(newBet);
         if(newBet.profit !== 0) {
@@ -91,5 +72,24 @@ export function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'creat
     newState.bets = [newBet, ...state.bets].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     newState.bankroll = newBankroll;
     
+    return newState;
+}
+
+export function addGoalToState(state: UserState, goalData: Omit<Goal, 'id' | 'createdAt' | 'currentValue' | 'status'>): UserState {
+    const newGoal: Goal = {
+        ...goalData,
+        id: new Date().toISOString() + Math.random(),
+        createdAt: new Date().toISOString(),
+        currentValue: 0,
+        status: GoalStatus.InProgress,
+    };
+    const newState = { ...state };
+    newState.goals = [newGoal, ...state.goals];
+    return newState;
+}
+
+export function deleteGoalFromState(state: UserState, goalId: string): UserState {
+    const newState = { ...state };
+    newState.goals = newState.goals.filter(g => g.id !== goalId);
     return newState;
 }

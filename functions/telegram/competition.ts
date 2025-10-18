@@ -1,14 +1,21 @@
 // functions/telegram/competition.ts
-import { TelegramCallbackQuery, Env, Bet, User } from './types';
-import { editMessageText } from './telegramApi';
+import { TelegramCallbackQuery, Env, Bet, User, UserState, TelegramUpdate, CompetitionParticipant } from './types';
+// FIX: Import sendMessage to make it available in this module.
+import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
 import { generateLeaderboards } from './competitionData';
-// FIX: Import KV-compatible data access functions instead of localStorage-based ones.
 import { getUsers, findUserByEmail } from '../data/userStore';
 
+export const COMP_PREFIX = 'c|';
+export const COMP_ACTIONS = {
+    VIEW: 'view',
+};
+export const buildCompCb = (action: string, ...args: (string | number)[]): string => `${COMP_PREFIX}${action}|${args.join('|')}`;
 
-// FIX: This function now correctly uses KV to fetch all user data, although it remains inefficient for large user bases.
+type LeaderboardType = 'roi' | 'top_winners' | 'unluckiest' | 'most_active';
+type TimePeriod = 'week' | 'month' | 'year' | 'all_time';
+
 async function getAllUsersWithBetsFromKV(env: Env): Promise<{ user: User, bets: Bet[] }[]> {
     const users = await getUsers(env);
     const usersWithBets: { user: User, bets: Bet[] }[] = [];
@@ -21,36 +28,76 @@ async function getAllUsersWithBetsFromKV(env: Env): Promise<{ user: User, bets: 
     return usersWithBets;
 }
 
+export async function showCompetitionsMenu(update: TelegramUpdate, state: UserState, env: Env, period: TimePeriod = 'week', boardType: LeaderboardType = 'roi') {
+    const message = update.message || update.callback_query?.message;
+    if (!message) return;
 
-export async function showCompetitions(callbackQuery: TelegramCallbackQuery, env: Env) {
-    const chatId = callbackQuery.message.chat.id;
-    const messageId = callbackQuery.message.message_id;
+    const chatId = message.chat.id;
+    const messageId = update.callback_query ? message.message_id : null;
 
-    // Acknowledge that this is a placeholder for a complex operation
-    await editMessageText(chatId, messageId, "🔄 Загрузка данных соревнований...", env);
+    const loadingText = "🔄 Загрузка данных соревнований...";
+    if (messageId) {
+        await editMessageText(chatId, messageId, loadingText, env);
+    } else {
+        await sendMessage(chatId, loadingText, env);
+    }
     
-    // This is the problematic part in a real serverless setup.
     const allUsersWithBets = await getAllUsersWithBetsFromKV(env);
-
-    const leaderboards = generateLeaderboards(allUsersWithBets, 'week'); // Default to weekly
+    const leaderboards = generateLeaderboards(allUsersWithBets, period);
     
-    const roiLeaders = leaderboards.roi.slice(0, 5);
+    const boardData = leaderboards[boardType];
+    const boardTitles = { roi: 'Короли ROI', top_winners: 'Топ выигрыши', unluckiest: 'Клуб "Неповезло"', most_active: 'Самые активные' };
+    const periodTitles = { week: 'Неделя', month: 'Месяц', year: 'Год', all_time: 'Всё время' };
+    
+    let text = `*🏆 Соревнования (${periodTitles[period]})*\n\n`;
+    text += `*${boardTitles[boardType]} (Топ-5):*\n`;
 
-    let text = '*🏆 Еженедельные Соревнования*\n\n';
-    text += '*Короли ROI (Топ-5):*\n';
-    if (roiLeaders.length > 0) {
-        roiLeaders.forEach(p => {
-            text += `${p.stats.rank}. ${p.user.nickname} - *${p.stats.roi.toFixed(2)}%*\n`;
+    if (boardData.length > 0) {
+        boardData.slice(0, 5).forEach((p: CompetitionParticipant) => {
+            let value = '';
+            switch(boardType) {
+                case 'roi': value = `${p.stats.roi.toFixed(2)}%`; break;
+                case 'top_winners': value = `${p.stats.biggestWin.toFixed(2)} ₽`; break;
+                case 'unluckiest': value = `${p.stats.biggestLoss.toFixed(2)} ₽`; break;
+                case 'most_active': value = `${p.stats.totalBets} ставок`; break;
+            }
+            text += `${p.stats.rank}. ${p.user.nickname} - *${value}*\n`;
         });
     } else {
-        text += '_Пока нет участников в таблице лидеров. Возможно, бот не смог загрузить данные всех игроков._\n';
+        text += '_Нет данных для отображения в этом периоде._\n';
     }
 
-    text += '\n(Функционал соревнований в разработке)';
+    const periodButtons = (Object.keys(periodTitles) as TimePeriod[]).map(p => ({
+        text: period === p ? `• ${periodTitles[p]} •` : periodTitles[p],
+        callback_data: buildCompCb(COMP_ACTIONS.VIEW, p, boardType)
+    }));
 
+    const boardButtons = (Object.keys(boardTitles) as LeaderboardType[]).map(b => ({
+        text: boardType === b ? `• ${boardTitles[b]} •` : boardTitles[b],
+        callback_data: buildCompCb(COMP_ACTIONS.VIEW, period, b)
+    }));
+    
     const keyboard = makeKeyboard([
+        boardButtons.slice(0, 2),
+        boardButtons.slice(2, 4),
+        periodButtons,
         [{ text: '◀️ Главное меню', callback_data: CB.BACK_TO_MAIN }]
     ]);
 
-    await editMessageText(chatId, messageId, text, env, keyboard);
+    if (messageId) {
+         await editMessageText(chatId, messageId, text, env, keyboard);
+    } else {
+        // This case should not happen if called from a command
+        await sendMessage(chatId, text, env, keyboard);
+    }
+}
+
+export async function handleCompetitionCallback(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
+    const [_, action, period, boardType] = callbackQuery.data.split('|');
+
+    if (action === COMP_ACTIONS.VIEW) {
+        // Create a fake update object to pass to showCompetitionsMenu
+        const update: TelegramUpdate = { update_id: 0, callback_query: callbackQuery };
+        await showCompetitionsMenu(update, state, env, period as TimePeriod, boardType as LeaderboardType);
+    }
 }

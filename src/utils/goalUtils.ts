@@ -56,7 +56,21 @@ export const updateGoalProgress = (goal: Goal, allSettledBets: Bet[]): Goal => {
 
 // This function gets display-ready progress information for a goal.
 export const getGoalProgress = (goal: Goal): { percentage: number, label: string } => {
-    const percentage = goal.targetValue !== 0 ? (goal.currentValue / goal.targetValue) * 100 : 0;
+    // Handle cases where target is 0 to avoid division by zero.
+    // Also handle cases where a user might set a negative profit goal (e.g., "lose no more than -500").
+    let percentage = 0;
+    if (goal.targetValue > 0) {
+        percentage = (goal.currentValue / goal.targetValue) * 100;
+    } else if (goal.targetValue === 0) {
+        percentage = goal.currentValue >= 0 ? 100 : 0;
+    } else { // targetValue is negative
+        // If current is less than a negative target, it's "better", so percentage should be higher.
+        // If current is -600 and target is -500, you are further away.
+        // If current is -400 and target is -500, you are "20%" of the way there from 0.
+        // This logic can be complex, a simple approach is to see how much of the negative goal is "filled".
+        percentage = (goal.currentValue / goal.targetValue) * 100;
+    }
+
     let label = '';
     switch (goal.metric) {
         case GoalMetric.Profit:
@@ -70,5 +84,6 @@ export const getGoalProgress = (goal: Goal): { percentage: number, label: string
             label = `${goal.currentValue} / ${goal.targetValue}`;
             break;
     }
+    // Clamp the percentage between 0 and 100 for display purposes.
     return { percentage: Math.max(0, Math.min(100, percentage)), label };
 };

@@ -20,7 +20,7 @@ export interface KVNamespace {
 }
 
 export interface DialogState {
-    type: 'add_bet' | 'register' | 'login' | 'ai_chat';
+    type: 'add_bet' | 'register' | 'login' | 'ai_chat' | 'add_goal';
     step: string;
     messageId?: number; 
     data: { [key: string]: any };
@@ -37,7 +37,6 @@ export interface UserState {
 
 // --- Telegram API Structures ---
 
-// FIX: Renamed from TelegramUpdatePayload to TelegramUpdate to resolve import errors.
 export interface TelegramUpdate {
     update_id: number;
     message?: TelegramMessage;

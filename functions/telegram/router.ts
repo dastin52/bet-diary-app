@@ -3,9 +3,10 @@ import { TelegramCallbackQuery, UserState, Env, TelegramUpdate } from './types';
 import { showMainMenu } from './ui';
 import { continueDialog } from './dialogs';
 import { manageBets } from './manageBets';
-// FIX: Import missing command handlers.
 import { handleAddBet, handleStats, handleShowDetailedReport, handleDownloadReport, handleManageBets, handleCompetitions, handleGoals, handleAiChat } from './commands';
 import { reportError } from './telegramApi';
+import { handleCompetitionCallback, COMP_PREFIX } from './competition';
+import { handleGoalCallback, GOAL_PREFIX } from './goals';
 
 export const CB = {
     BACK_TO_MAIN: 'main_menu',
@@ -20,7 +21,10 @@ export const CB = {
     DOWNLOAD_ANALYTICS_REPORT: 'download_analytics_report',
 };
 
-// FIX: Defined and exported MANAGE_ACTIONS to resolve import errors in other files.
+export const MANAGE_PREFIX = 'm|';
+export const buildManageCb = (action: string, ...args: (string | number)[]): string => {
+    return `${MANAGE_PREFIX}${action}|${args.join('|')}`;
+};
 export const MANAGE_ACTIONS = {
     LIST: 'list',
     VIEW: 'view',
@@ -30,16 +34,8 @@ export const MANAGE_ACTIONS = {
     CONFIRM_DELETE: 'c_delete',
 };
 
-// ... (buildManageCb and other helpers remain the same)
-export const MANAGE_PREFIX = 'm|';
-export const buildManageCb = (action: string, ...args: (string | number)[]): string => {
-    return `${MANAGE_PREFIX}${action}|${args.join('|')}`;
-};
 
-
-// FIX: Changed signature to accept the full TelegramUpdate object to resolve type errors.
 export async function routeCallbackQuery(update: TelegramUpdate, state: UserState, env: Env) {
-    // FIX: Extracted callbackQuery from the full update object.
     const callbackQuery = update.callback_query;
     if (!callbackQuery) return;
     const chatId = callbackQuery.message.chat.id;
@@ -50,12 +46,19 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             await manageBets(callbackQuery, state, env);
             return;
         }
+        if (data.startsWith(COMP_PREFIX)) {
+            await handleCompetitionCallback(callbackQuery, state, env);
+            return;
+        }
+        if (data.startsWith(GOAL_PREFIX)) {
+            await handleGoalCallback(callbackQuery, state, env);
+            return;
+        }
 
         switch (data) {
             case CB.BACK_TO_MAIN:
                 await showMainMenu(chatId, callbackQuery.message.message_id, env);
                 break;
-            // FIX: Pass the full update object to command handlers.
             case CB.ADD_BET:
                 await handleAddBet(update, state, env);
                 break;
