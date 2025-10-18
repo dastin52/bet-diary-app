@@ -34,6 +34,24 @@ const normalizeState = (data: any): UserState | null => {
     };
 };
 
+// Helper function to handle paginated listing of KV keys
+async function listAllKeys(kv: KVNamespace, prefix: string): Promise<{ name: string }[]> {
+    let allKeys: { name: string }[] = [];
+    let cursor: string | undefined = undefined;
+    let listComplete = false;
+
+    while (!listComplete) {
+        const result = await kv.list({ prefix, cursor });
+        allKeys = allKeys.concat(result.keys);
+        listComplete = result.list_complete;
+        if (!listComplete) {
+            cursor = result.cursor;
+        }
+    }
+    return allKeys;
+}
+
+
 export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
     try {
         if (!env.BOT_STATE) {
@@ -42,26 +60,43 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
             });
         }
 
-        // List all keys with the prefix for individual bot user states
-        const list = await env.BOT_STATE.list({ prefix: 'tgchat:' });
-        const userStateKeys = list.keys;
+        // --- Fetch keys from both prefixes with pagination ---
+        const tgchatKeys = await listAllKeys(env.BOT_STATE, 'tgchat:');
+        const betdataKeys = await listAllKeys(env.BOT_STATE, 'betdata:');
         
-        if (userStateKeys.length === 0) {
+        const allKeys = [...tgchatKeys, ...betdataKeys];
+        // Remove duplicate keys that might exist if a user has both tgchat and betdata records
+        const uniqueKeys = Array.from(new Set(allKeys.map(k => k.name))).map(name => ({name}));
+
+
+        if (uniqueKeys.length === 0) {
             return new Response(JSON.stringify({ users: [] }), {
                 status: 200, headers: { 'Content-Type': 'application/json' },
             });
         }
         
-        const userPromises = userStateKeys.map(async (key) => {
+        const userPromises = uniqueKeys.map(async (key) => {
             const userData = await env.BOT_STATE.get(key.name, { type: 'json' });
             const state = normalizeState(userData);
             return state?.user || null;
         });
 
-        const users = (await Promise.all(userPromises)).filter((u): u is User => u !== null);
+        const usersRaw = (await Promise.all(userPromises)).filter((u): u is User => u !== null);
 
-        // Add source for clarity
-        const usersWithSource = users.map(u => ({ ...u, source: 'telegram' as const }));
+        // --- De-duplicate users by email ---
+        const userMap = new Map<string, User>();
+        for (const user of usersRaw) {
+            if (user.email && !userMap.has(user.email)) {
+                userMap.set(user.email, user);
+            } else if (user.email) {
+                // If user exists, merge to get the most complete record (e.g., with telegram details)
+                const existingUser = userMap.get(user.email)!;
+                userMap.set(user.email, { ...existingUser, ...user });
+            }
+        }
+        const uniqueUsers = Array.from(userMap.values());
+        
+        const usersWithSource = uniqueUsers.map(u => ({ ...u, source: 'telegram' as const }));
 
         return new Response(JSON.stringify({ users: usersWithSource }), {
             status: 200,
