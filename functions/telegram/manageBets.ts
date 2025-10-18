@@ -6,6 +6,7 @@ import { buildManageCb, MANAGE_ACTIONS, CB } from './router';
 import { updateAndSyncState } from './state';
 import { calculateProfit } from '../utils/betUtils';
 
+export const MANAGE_PREFIX = 'm|';
 const BETS_PER_PAGE = 5;
 
 function updateBetInState(state: UserState, betId: string, updates: Partial<Bet>): UserState {
@@ -102,7 +103,7 @@ export async function startManageBets(update: TelegramUpdate, state: UserState, 
 
     const fakeCallbackQuery: TelegramCallbackQuery = {
         id: update.callback_query?.id || 'fake_id_from_startManageBets',
-        from: message.from,
+        from: message.from!,
         message: message,
         data: buildManageCb(MANAGE_ACTIONS.LIST, 0)
     };

@@ -11,6 +11,7 @@ export interface AnalyticsData {
     lostBetsCount: number;
     turnover: number;
     profitBySport: { sport: string; profit: number; roi: number; count: number }[];
+    profitByBetType: { type: string; profit: number; roi: number; count: number }[];
 }
 
 export function calculateAnalytics(state: UserState): AnalyticsData {
@@ -32,6 +33,15 @@ export function calculateAnalytics(state: UserState): AnalyticsData {
         return acc;
     }, {});
 
+    const statsByBetType = settledBets.reduce((acc: Record<string, { profit: number, staked: number, count: number }>, bet) => {
+        const betTypeLabel = bet.betType; // Simpler for bot
+        if (!acc[betTypeLabel]) acc[betTypeLabel] = { profit: 0, staked: 0, count: 0 };
+        acc[betTypeLabel].profit += bet.profit ?? 0;
+        acc[betTypeLabel].staked += bet.stake;
+        acc[betTypeLabel].count += 1;
+        return acc;
+    }, {});
+
     return {
         bankroll: state.bankroll,
         totalProfit,
@@ -48,7 +58,25 @@ export function calculateAnalytics(state: UserState): AnalyticsData {
             count: data.count, 
             roi: data.staked > 0 ? (data.profit / data.staked) * 100 : 0
         })),
+        profitByBetType: Object.entries(statsByBetType).map(([type, data]) => ({ 
+            type, 
+            profit: data.profit, 
+            count: data.count, 
+            roi: data.staked > 0 ? (data.profit / data.staked) * 100 : 0
+        })),
     };
+}
+
+export function analyticsToText(analytics: AnalyticsData): string {
+    return `
+Вот сводные данные по ставкам пользователя для анализа:
+- Общая прибыль: ${analytics.totalProfit.toFixed(2)}
+- ROI: ${analytics.roi.toFixed(2)}%
+- Количество ставок: ${analytics.betCount}
+- Процент выигрышей: ${analytics.winRate.toFixed(2)}%
+- Прибыль по видам спорта: ${JSON.stringify(analytics.profitBySport.map(p => `${p.sport}: ${p.profit.toFixed(2)}`))}
+- Прибыль по типам ставок: ${JSON.stringify(analytics.profitByBetType.map(p => `${p.type}: ${p.profit.toFixed(2)}`))}
+    `;
 }
 
 export function formatShortReportText(analytics: AnalyticsData): string {
