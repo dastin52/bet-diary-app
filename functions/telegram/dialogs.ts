@@ -1,5 +1,5 @@
 // functions/telegram/dialogs.ts
-import { TelegramUpdate, UserState, Env, DialogState, BetType, BetStatus, GoalMetric, Message, BetLeg } from './types';
+import { TelegramUpdate, UserState, Env, DialogState, BetType, BetStatus, GoalMetric, Message, BetLeg, GoalStatus, Goal } from './types';
 import { setUserState, addBetToState, updateAndSyncState, addGoalToState } from './state';
 import { sendMessage, editMessageText, deleteMessage, reportError } from './telegramApi';
 import { showMainMenu, makeKeyboard } from './ui';
@@ -18,12 +18,16 @@ const chunk = <T,>(arr: T[], size: number): T[][] =>
 async function endDialog(chatId: number, state: UserState, env: Env, successText: string = "Действие отменено.") {
     if (state.dialog && state.dialog.messageId) {
         try {
-            await deleteMessage(chatId, state.dialog.messageId, env);
-        } catch (e) { console.warn(`Could not delete dialog message: ${e}`); }
+            // Edit the message to show the final status, then show the main menu in a new message
+            await editMessageText(chatId, state.dialog.messageId, `🏁 ${successText}`, env);
+        } catch (e) { 
+            console.warn(`Could not edit final dialog message: ${e}`);
+            await sendMessage(chatId, `🏁 ${successText}`, env);
+        }
     }
     const newState = { ...state, dialog: null };
     await setUserState(chatId, newState, env);
-    await showMainMenu(chatId, null, env, successText);
+    await showMainMenu(chatId, null, env);
 }
 
 
@@ -46,35 +50,12 @@ export async function startAddBetDialog(chatId: number, state: UserState, env: E
 }
 
 async function handleAddBetResponse(update: TelegramUpdate, state: UserState, env: Env) {
-    const { dialog } = state;
-    if (!dialog || !dialog.messageId) return;
-
-    const chatId = update.callback_query?.message.chat.id || update.message!.chat.id;
-    const messageId = dialog.messageId;
-    const answer = update.callback_query?.data || update.message?.text || '';
-
-    let newDialogState = { ...dialog };
-    let text = '';
-    let keyboard: any;
-
-    switch (dialog.step) {
-        case 'select_sport':
-            newDialogState.data.sport = answer;
-            newDialogState.step = 'enter_teams';
-            text = `Выбрано: *${answer}*. Введите команды/участников через дефис (например, Реал Мадрид - Барселона)`;
-            keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'cancel' }]]);
-            break;
-        
-        // Other cases for adding a bet can be added here (market, stake, odds, etc.)
-        // This is a simplified version for demonstration
-
-        default:
-            await endDialog(chatId, state, env, "Что-то пошло не так. Диалог отменен.");
-            return;
-    }
-    
-    await editMessageText(chatId, messageId, text, env, keyboard);
-    await setUserState(chatId, { ...state, dialog: newDialogState }, env);
+    // This function is still a placeholder as the main reported issues are goals and competitions.
+    // A full implementation would be similar to handleAddGoalResponse.
+    const chatId = update.message?.chat.id || update.callback_query?.message.chat.id;
+    if (!chatId) return;
+    await sendMessage(chatId, "Добавление ставок через бота находится в разработке.", env);
+    await endDialog(chatId, state, env, "Функция в разработке.");
 }
 
 
@@ -87,7 +68,7 @@ export async function startAiChatDialog(chatId: number, state: UserState, env: E
         data: { history: [] },
     };
     const text = "🤖 *AI-Аналитик*\n\nЗадайте любой вопрос о вашей статистике, попросите проанализировать предстоящий матч или просто спросите совета. Чтобы закончить диалог, отправьте /stop.";
-    await sendMessage(chatId, text, env); // Don't use startDialog, this is a new conversation thread
+    await sendMessage(chatId, text, env);
     await setUserState(chatId, { ...state, dialog }, env);
 }
 
@@ -99,12 +80,11 @@ async function handleAiChatResponse(update: TelegramUpdate, state: UserState, en
     const userMessage: Message = { role: 'user', text: message.text };
     const history = [...(state.dialog.data.history || []), userMessage];
 
-    await sendMessage(chatId, "⏳ Думаю...", env);
+    const thinkingMsg = await sendMessage(chatId, "⏳ Думаю...", env);
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
     const analytics = calculateAnalytics(state);
     
-    // Simplified context for now
     const prompt = `User analytics summary: ROI is ${analytics.roi.toFixed(2)}%, Win rate is ${analytics.winRate.toFixed(2)}%. User question: ${message.text}`;
     
     const result = await ai.models.generateContent({
@@ -118,6 +98,7 @@ async function handleAiChatResponse(update: TelegramUpdate, state: UserState, en
     const modelResponse = result.text;
     const modelMessage: Message = { role: 'model', text: modelResponse };
     
+    await deleteMessage(chatId, thinkingMsg.result.message_id, env);
     await sendMessage(chatId, modelResponse, env);
 
     const newDialog = { ...state.dialog, data: { history: [...history, modelMessage] } };
@@ -130,16 +111,134 @@ async function handleAiChatResponse(update: TelegramUpdate, state: UserState, en
 export async function startAddGoalDialog(chatId: number, state: UserState, env: Env, messageId: number) {
      const dialog: DialogState = {
         type: 'add_goal',
-        step: 'enter_title',
+        step: 'explanation',
         data: {},
         messageId: messageId,
     };
-    const text = "Введите название для вашей цели (например, 'Выйти в плюс по футболу').";
-    await editMessageText(chatId, messageId, text, env);
+    const text = `🎯 *Давайте поставим цель!*
+
+Хорошая цель помогает сфокусироваться и улучшить стратегию. Попробуем поставить SMART-цель: конкретную, измеримую, достижимую, релевантную и ограниченную по времени.
+
+*Примеры:*
+- *Прибыль:* Достичь +5000 ₽ прибыли на футболе за месяц.
+- *ROI:* Добиться ROI 10% на ставках с коэф. > 2.0 за 3 месяца.
+
+Нажмите "Начать", чтобы продолжить.`;
+    const keyboard = makeKeyboard([
+        [{ text: "▶️ Начать", callback_data: 'start_goal_dialog' }],
+        [{ text: "❌ Отмена", callback_data: 'cancel' }]
+    ]);
+
+    await editMessageText(chatId, messageId, text, env, keyboard);
     await setUserState(chatId, { ...state, dialog }, env);
 }
 
-async function handleAddGoalResponse(update: TelegramUpdate, state: UserState, env: Env) { /* ... implementation ... */ }
+async function handleAddGoalResponse(update: TelegramUpdate, state: UserState, env: Env) {
+    const { dialog } = state;
+    if (!dialog || !dialog.messageId) return;
+
+    const chatId = update.callback_query?.message.chat.id || update.message!.chat.id;
+    const messageId = dialog.messageId;
+    const answer = update.callback_query?.data || update.message?.text || '';
+
+    let newDialogState = { ...dialog };
+    let text = '';
+    let keyboard: any;
+
+    switch (dialog.step) {
+        case 'explanation':
+            newDialogState.step = 'enter_title';
+            text = "📝 *Шаг 1/5:* Введите название для вашей цели (например, 'Выйти в плюс по футболу').";
+            keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'cancel' }]]);
+            break;
+        
+        case 'enter_title':
+            newDialogState.data.title = answer;
+            newDialogState.step = 'select_metric';
+            text = `✅ Название: *${answer}*\n\n*Шаг 2/5:* Выберите главную метрику для отслеживания.`;
+            keyboard = makeKeyboard([
+                [{ text: 'Прибыль (₽)', callback_data: GoalMetric.Profit }, { text: 'ROI (%)', callback_data: GoalMetric.ROI }],
+                [{ text: 'Процент побед (%)', callback_data: GoalMetric.WinRate }, { text: 'Кол-во ставок', callback_data: GoalMetric.BetCount }],
+                [{ text: '❌ Отмена', callback_data: 'cancel' }]
+            ]);
+            break;
+
+        case 'select_metric':
+            newDialogState.data.metric = answer;
+            newDialogState.step = 'enter_target';
+            text = `✅ Метрика: *${answer}*\n\n*Шаг 3/5:* Введите целевое значение. Например, '5000' для прибыли или '10' для ROI.`;
+            keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'cancel' }]]);
+            break;
+
+        case 'enter_target':
+            const target = parseFloat(answer);
+            if (isNaN(target)) {
+                text = "⚠️ Неверное значение. Пожалуйста, введите число (например, 5000 или -200).";
+                // Don't change step, wait for correct input
+                keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'cancel' }]]);
+            } else {
+                newDialogState.data.targetValue = target;
+                newDialogState.step = 'select_deadline';
+                text = `✅ Цель: *${answer}*\n\n*Шаг 4/5:* Выберите срок выполнения цели.`;
+                keyboard = makeKeyboard([
+                    [{ text: 'Неделя', callback_data: 'week' }, { text: 'Месяц', callback_data: 'month' }, { text: 'Квартал', callback_data: 'quarter' }],
+                    [{ text: '❌ Отмена', callback_data: 'cancel' }]
+                ]);
+            }
+            break;
+            
+        case 'select_deadline':
+            const deadline = new Date();
+            if (answer === 'week') deadline.setDate(deadline.getDate() + 7);
+            else if (answer === 'month') deadline.setMonth(deadline.getMonth() + 1);
+            else if (answer === 'quarter') deadline.setMonth(deadline.getMonth() + 3);
+            
+            newDialogState.data.deadline = deadline.toISOString();
+            newDialogState.step = 'confirm';
+            
+            // For simplicity, we skip scope selection in this version
+            newDialogState.data.scope = { type: 'all' };
+
+            text = `*✨ Почти готово! Проверьте вашу цель:*
+            
+- *Название:* ${newDialogState.data.title}
+- *Метрика:* ${newDialogState.data.metric}
+- *Цель:* ${newDialogState.data.targetValue}
+- *Дедлайн:* ${deadline.toLocaleDateString('ru-RU')}
+
+Всё верно?`;
+            keyboard = makeKeyboard([
+                [{ text: '✅ Создать цель', callback_data: 'confirm' }],
+                [{ text: '❌ Отмена', callback_data: 'cancel' }]
+            ]);
+            break;
+            
+        case 'confirm':
+            if (answer === 'confirm') {
+                const goalData: Omit<Goal, 'id' | 'createdAt' | 'currentValue' | 'status'> = {
+                    title: newDialogState.data.title,
+                    metric: newDialogState.data.metric,
+                    targetValue: newDialogState.data.targetValue,
+                    deadline: newDialogState.data.deadline,
+                    scope: newDialogState.data.scope,
+                };
+                const newState = addGoalToState(state, goalData);
+                await updateAndSyncState(chatId, newState, env);
+                await endDialog(chatId, state, env, "Новая цель успешно создана!");
+                return; 
+            } else {
+                await endDialog(chatId, state, env);
+                return;
+            }
+
+        default:
+            await endDialog(chatId, state, env, "Что-то пошло не так. Диалог отменен.");
+            return;
+    }
+    
+    await editMessageText(chatId, messageId, text, env, keyboard);
+    await setUserState(chatId, { ...state, dialog: newDialogState }, env);
+}
 
 
 // --- MAIN DIALOG ROUTER ---
@@ -151,7 +250,7 @@ export async function continueDialog(update: TelegramUpdate, state: UserState, e
 
     if (!chatId || !state.dialog) return;
 
-    if ((message?.text && message.text === '/stop') || (callbackQuery?.data === 'cancel')) {
+    if ((message?.text && (message.text === '/stop' || message.text === '/cancel')) || (callbackQuery?.data === 'cancel')) {
         await endDialog(chatId, state, env);
         return;
     }
@@ -165,9 +264,7 @@ export async function continueDialog(update: TelegramUpdate, state: UserState, e
                 await handleAiChatResponse(update, state, env);
                 break;
             case 'add_goal':
-                // For simplicity, we'll assume the goal dialog is not fully implemented yet
-                await sendMessage(chatId, "Добавление целей через бота в разработке.", env);
-                await endDialog(chatId, state, env);
+                await handleAddGoalResponse(update, state, env);
                 break;
         }
     } catch(error) {

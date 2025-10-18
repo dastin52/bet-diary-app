@@ -51,7 +51,8 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             return;
         }
         if (data.startsWith(COMP_PREFIX)) {
-            await handleCompetitionCallback(callbackQuery, state, env);
+            // FIX: Pass the entire update object to the handler to preserve the update_id.
+            await handleCompetitionCallback(update, state, env);
             return;
         }
         if (data.startsWith(GOAL_PREFIX)) {

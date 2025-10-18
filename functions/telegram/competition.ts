@@ -2,7 +2,7 @@
 import { TelegramCallbackQuery, TelegramUpdate, UserState, Env, CompetitionParticipant } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
-import { getUsers } from '../data/userStore';
+import { getUsers, findUserByEmail } from '../data/userStore';
 import { generateLeaderboards } from './competitionData';
 import { CB } from './router';
 
@@ -36,9 +36,10 @@ export async function showCompetitionsMenu(update: TelegramUpdate, state: UserSt
     const chatId = message.chat.id;
     const messageId = update.callback_query?.message.message_id;
 
+    const users = await getUsers(env);
     const allUsersWithBets = await Promise.all(
-        (await getUsers(env)).map(async user => {
-            const userState = await (await import('../data/userStore')).findUserByEmail(user.email, env);
+        users.map(async user => {
+            const userState = await findUserByEmail(user.email, env);
             return { user, bets: userState?.bets || [] };
         })
     );
@@ -75,8 +76,10 @@ export async function showCompetitionsMenu(update: TelegramUpdate, state: UserSt
     }
 }
 
-export async function handleCompetitionCallback(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
+// FIX: Change function signature to accept the full TelegramUpdate object. This avoids creating a partial "fakeUpdate" that lacks the required 'update_id' property.
+export async function handleCompetitionCallback(update: TelegramUpdate, state: UserState, env: Env) {
+    const callbackQuery = update.callback_query;
+    if (!callbackQuery) return;
     const [_, board, period] = callbackQuery.data.split('|') as [string, Board, Period];
-    const fakeUpdate = { callback_query: callbackQuery }; // Create a fake update object
-    await showCompetitionsMenu(fakeUpdate, state, env, board, period);
+    await showCompetitionsMenu(update, state, env, board, period);
 }
