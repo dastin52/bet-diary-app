@@ -171,6 +171,7 @@ export interface AIParsedBetData {
     odds: number;
     bookmaker: string;
     betType: BetType;
+    status?: BetStatus;
 }
 
 export interface DialogState {

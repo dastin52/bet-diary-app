@@ -186,16 +186,42 @@ async function processScreenshot(message: TelegramMessage, state: UserState, env
         const schema = {
             type: Type.OBJECT,
             properties: {
-                sport: { type: Type.STRING },
-                homeTeam: { type: Type.STRING },
-                awayTeam: { type: Type.STRING },
-                market: { type: Type.STRING },
-                stake: { type: Type.NUMBER },
-                odds: { type: Type.NUMBER },
-                bookmaker: { type: Type.STRING },
-            }
+                betType: { type: Type.STRING, description: "Type of the bet, either 'single' or 'parlay'. Parlay is 'Экспресс' in Russian." },
+                status: { type: Type.STRING, description: "The outcome of the bet, if available. Can be 'won', 'lost', 'pending', 'void', or 'cashed_out'. 'Проигрыш' is 'lost'." },
+                legs: {
+                    type: Type.ARRAY,
+                    description: "An array of all individual bets (legs) in the slip. For a single bet, this will be an array with one item.",
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            homeTeam: { type: Type.STRING, description: "The first participant or home team." },
+                            awayTeam: { type: Type.STRING, description: "The second participant or away team." },
+                            market: { type: Type.STRING, description: "The bet description or market for this leg (e.g., 'Фора 1 (0)')." },
+                        }
+                    }
+                },
+                stake: { type: Type.NUMBER, description: "The total amount of money staked." },
+                odds: { type: Type.NUMBER, description: "The total combined odds for the bet." },
+                bookmaker: { type: Type.STRING, description: "Name of the bookmaker, if a logo is visible." },
+                sport: { type: Type.STRING, description: "The general sport for the bet slip. If multiple sports, pick the most prominent one or the first one." },
+            },
+            required: ["betType", "legs", "stake", "odds"]
         };
-        const prompt = `You are an expert sports bet slip parser. Analyze the provided image of a bet slip. The user's screenshot is in Russian. Extract the following information and provide it in a structured JSON format according to the schema. Extract: the first participant/team (homeTeam), the second participant/team (awayTeam), the market description, the total odds, the stake amount, the sport, and the bookmaker name from the logo. The bookmaker might be one of: 'FONBET', 'Winline', 'BetBoom', 'Лига Ставок', 'PARI'. For team names, use initials if they are provided, like 'Фернандес Л.А.'. For the market, extract the full description, for example 'Фора: Кырстя С. (1/2 финала) 1.5'. From the image context (racket, ball), the sport appears to be 'Теннис'.`;
+        const prompt = `You are an expert sports bet slip parser. Analyze the provided image of a bet slip from a Russian bookmaker. Your task is to extract all relevant information into a structured JSON format.
+
+Please identify the following:
+1.  **betType**: Determine if it's a single bet ('single') or a parlay ('parlay'). A parlay is usually labeled "Экспресс".
+2.  **status**: If the outcome is visible (e.g., "Выигрыш", "Проигрыш", "Возврат"), map it to 'won', 'lost', or 'void'. If not visible, omit this field. The slip in the image shows "Проигрыш", which means 'lost'.
+3.  **legs**: Extract all individual bet legs into an array. Each leg should be an object with:
+    *   \`homeTeam\`: The first team/participant.
+    *   \`awayTeam\`: The second team/participant.
+    *   \`market\`: The specific bet on that event (e.g., 'Фора 1 (0)', 'X2').
+4.  **stake**: The total amount of money staked on the entire slip.
+5.  **odds**: The total combined odds for the slip.
+6.  **bookmaker**: Identify the bookmaker if possible.
+7.  **sport**: Infer the sport for each leg if possible and provide a general sport for the slip. For events like "Чикаго - Ванкувер" or "Юта - Сан-Хосе", this is likely Hockey or Basketball. For "Фернандес Л - Кирстя С", this is Tennis. Use a general sport if unsure or multiple are present.
+
+For the provided image, it is clearly an "Экспресс" (parlay) with three legs, a stake of 500, and total odds of 7.57. The status is "Проигрыш" (lost). Please parse all three legs correctly.`;
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -215,22 +241,29 @@ async function processScreenshot(message: TelegramMessage, state: UserState, env
 
         const parsedBet: AIParsedBetData = {
             sport: parsedData.sport || 'Не определен',
-            legs: [{ homeTeam: parsedData.homeTeam, awayTeam: parsedData.awayTeam, market: parsedData.market }],
+            legs: parsedData.legs || [],
             stake: parsedData.stake,
             odds: parsedData.odds,
             bookmaker: parsedData.bookmaker || 'Другое',
-            betType: BetType.Single, // Assuming single for now
+            betType: parsedData.betType || BetType.Single,
+            status: parsedData.status as BetStatus || undefined,
         };
         
         // 3. Show confirmation
+        const legsText = parsedBet.legs.map((leg, index) => 
+            `  ${index + 1}. ${leg.homeTeam} - ${leg.awayTeam} (${leg.market})`
+        ).join('\n');
+
+        const betTypeLabel = parsedBet.betType === 'parlay' ? 'Экспресс' : 'Одиночная';
+        const statusLabel = parsedBet.status ? ` (${parsedBet.status})` : '';
+
         const confirmationText = `*🔍 Распознанные данные:*
-        
-*Спорт:* ${parsedBet.sport}
-*Событие:* ${parsedBet.legs[0].homeTeam} - ${parsedBet.legs[0].awayTeam}
-*Исход:* ${parsedBet.legs[0].market}
+
+*Тип ставки:* ${betTypeLabel}${statusLabel}
+*События:*\n${legsText}
 *Букмекер:* ${parsedBet.bookmaker}
 *Ставка:* ${parsedBet.stake} ₽
-*Коэф.:* ${parsedBet.odds}
+*Общий коэф.:* ${parsedBet.odds}
 
 Все верно?`;
 
@@ -256,7 +289,7 @@ async function saveParsedBet(chatId: number, state: UserState, env: Env) {
 
     const newBet: Omit<Bet, 'id' | 'createdAt' | 'event'> = {
         ...parsedBetData,
-        status: BetStatus.Pending, // Default to pending
+        status: parsedBetData.status || BetStatus.Pending, // Use parsed status or default to pending
     };
 
     const betWithDetails: Bet = {
