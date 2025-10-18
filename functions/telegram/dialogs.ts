@@ -211,7 +211,7 @@ async function processScreenshot(message: TelegramMessage, state: UserState, env
 
 Please identify the following:
 1.  **betType**: Determine if it's a single bet ('single') or a parlay ('parlay'). A parlay is usually labeled "Экспресс".
-2.  **status**: If the outcome is visible (e.g., "Выигрыш", "Проигрыш", "Возврат"), map it to 'won', 'lost', or 'void'. If not visible, omit this field. The slip in the image shows "Проигрыш", which means 'lost'.
+2.  **status**: If the outcome is visible (e.g., "Выигрыш", "Проигрыш", "Возврат"), map it to 'won', 'lost', or 'void'. If not visible, omit this field. "Проигрыш" means 'lost'.
 3.  **legs**: Extract all individual bet legs into an array. Each leg should be an object with:
     *   \`homeTeam\`: The first team/participant.
     *   \`awayTeam\`: The second team/participant.
@@ -221,7 +221,7 @@ Please identify the following:
 6.  **bookmaker**: Identify the bookmaker if possible.
 7.  **sport**: Infer the sport for each leg if possible and provide a general sport for the slip. For events like "Чикаго - Ванкувер" or "Юта - Сан-Хосе", this is likely Hockey or Basketball. For "Фернандес Л - Кирстя С", this is Tennis. Use a general sport if unsure or multiple are present.
 
-For the provided image, it is clearly an "Экспресс" (parlay) with three legs, a stake of 500, and total odds of 7.57. The status is "Проигрыш" (lost). Please parse all three legs correctly.`;
+For the provided image, it might be an "Экспресс" (parlay). Extract all legs correctly.`;
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -262,6 +262,7 @@ For the provided image, it is clearly an "Экспресс" (parlay) with three 
 *Тип ставки:* ${betTypeLabel}${statusLabel}
 *События:*\n${legsText}
 *Букмекер:* ${parsedBet.bookmaker}
+*Спорт:* ${parsedBet.sport}
 *Ставка:* ${parsedBet.stake} ₽
 *Общий коэф.:* ${parsedBet.odds}
 
@@ -287,28 +288,58 @@ async function saveParsedBet(chatId: number, state: UserState, env: Env) {
     const parsedBetData = state.dialog?.data.parsedBet;
     if (!parsedBetData) return;
 
-    const newBet: Omit<Bet, 'id' | 'createdAt' | 'event'> = {
+    let betToSave: Omit<Bet, 'id' | 'createdAt' | 'event'> = {
         ...parsedBetData,
-        status: parsedBetData.status || BetStatus.Pending, // Use parsed status or default to pending
+        status: parsedBetData.status || BetStatus.Pending,
     };
+
+    let profit = 0;
+    // If the bet is settled, calculate profit and create a bank transaction
+    if (betToSave.status !== BetStatus.Pending) {
+        profit = calculateProfit(betToSave);
+        betToSave.profit = profit;
+    }
 
     const betWithDetails: Bet = {
-        ...newBet,
+        ...betToSave,
         id: new Date().toISOString() + Math.random(),
         createdAt: new Date().toISOString(),
-        event: generateEventString(newBet.legs, newBet.betType, newBet.sport),
+        event: generateEventString(betToSave.legs, betToSave.betType, betToSave.sport),
     };
 
-    const newState = {
+    const newState: UserState = {
         ...state,
-        bets: [betWithDetails, ...state.bets],
+        bets: [betWithDetails, ...state.bets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
         dialog: null,
+        bankroll: state.bankroll,
+        bankHistory: [...state.bankHistory],
     };
+
+    if (profit !== 0) {
+        const type = profit > 0 ? BankTransactionType.BetWin : BankTransactionType.BetLoss;
+        const description = type === BankTransactionType.BetWin ? `Выигрыш: ${betWithDetails.event}` : `Проигрыш: ${betWithDetails.event}`;
+        const newBalance = state.bankroll + profit;
+        
+        const newTransaction = {
+            id: new Date().toISOString() + Math.random(),
+            timestamp: new Date().toISOString(),
+            type,
+            amount: profit,
+            previousBalance: state.bankroll,
+            newBalance,
+            description,
+            betId: betWithDetails.id,
+        };
+
+        newState.bankroll = newBalance;
+        newState.bankHistory.unshift(newTransaction);
+    }
     
     await updateAndSyncState(chatId, newState, env);
     await deleteMessage(chatId, state.dialog!.messageId!, env);
     await showMainMenu(chatId, null, env, `✅ Ставка "${betWithDetails.event}" успешно сохранена!`);
 }
+
 
 async function handleAddBetDialog(update: TelegramUpdate, state: UserState, env: Env) {
     const step = state.dialog?.step;
