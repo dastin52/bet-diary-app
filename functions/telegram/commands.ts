@@ -82,6 +82,10 @@ export async function handleStats(update: TelegramUpdate, state: UserState, env:
     }
 
     const analytics = calculateAnalytics(state);
+    if (!analytics) {
+        // This case should not happen if state is correct, but it's a good safeguard.
+        throw new Error("Не удалось рассчитать аналитику. Данные могут быть повреждены.");
+    }
     const shortReport = formatShortReportText(analytics);
     
     const messageId = update.callback_query ? message.message_id : null;

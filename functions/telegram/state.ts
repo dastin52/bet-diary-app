@@ -38,6 +38,27 @@ export async function setUserState(chatId: number, state: UserState, env: Env): 
     await env.BOT_STATE.put(key, JSON.stringify(state));
 }
 
+/**
+ * Saves the user's state to both the session (tgchat:) and master (betdata:) stores.
+ * This ensures data consistency across sessions. The dialog state is omitted from the master record.
+ * @param chatId The user's Telegram chat ID.
+ * @param state The complete user state object to save.
+ * @param env The Cloudflare environment object.
+ */
+export async function updateAndSyncState(chatId: number, state: UserState, env: Env): Promise<void> {
+    // 1. Save the session state (including the dialog)
+    await setUserState(chatId, state, env);
+
+    // 2. If the user is logged in, also sync the master record
+    if (state.user?.email) {
+        const key = `betdata:${state.user.email}`;
+        // We save the state *without* the temporary dialog property to the master record.
+        const { dialog, ...masterState } = state;
+        await env.BOT_STATE.put(key, JSON.stringify(masterState));
+    }
+}
+
+
 export function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'createdAt' | 'event'>): UserState {
     const newBet: Bet = {
         ...betData,

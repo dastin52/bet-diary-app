@@ -1,18 +1,13 @@
 // functions/telegram/manageBets.ts
-
-// FIX: Added TelegramUpdate to imports
 import { TelegramCallbackQuery, UserState, Env, Bet, BetStatus, BankTransactionType, TelegramUpdate } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
-// FIX: Import the newly exported constants from the router.
 import { buildManageCb, MANAGE_ACTIONS, CB } from './router';
-import { setUserState } from './state';
+import { setUserState, updateAndSyncState } from './state';
 import { calculateProfit } from '../utils/betUtils';
 
 const BETS_PER_PAGE = 5;
 
-// This function replicates the bet update logic from the `useBets` hook,
-// including calculating profit and creating a bank history transaction.
 function updateBetInState(state: UserState, betId: string, updates: Partial<Bet>): UserState {
     const newState = { ...state };
     const betIndex = newState.bets.findIndex(b => b.id === betId);
@@ -63,7 +58,6 @@ function updateBetInState(state: UserState, betId: string, updates: Partial<Bet>
     return newState;
 }
 
-// Replicates delete logic from `useBets`
 function deleteBetFromState(state: UserState, betId: string): UserState {
     const newState = { ...state };
     const betToDelete = newState.bets.find(b => b.id === betId);
@@ -102,12 +96,10 @@ const getStatusEmoji = (status: BetStatus): string => {
     }
 };
 
-// FIX: Add an entry point function to be called from the command router.
 export async function startManageBets(update: TelegramUpdate, state: UserState, env: Env) {
     const message = update.message || update.callback_query?.message;
     if (!message) return;
 
-    // We create a "fake" callback query to trigger the list view
     const fakeCallbackQuery: TelegramCallbackQuery = {
         id: update.callback_query?.id || 'fake_id_from_startManageBets',
         from: message.from,
@@ -117,9 +109,6 @@ export async function startManageBets(update: TelegramUpdate, state: UserState, 
     await manageBets(fakeCallbackQuery, state, env);
 }
 
-/**
- * Main router for all bet management actions triggered by callback queries.
- */
 export async function manageBets(callbackQuery: TelegramCallbackQuery, state: UserState, env: Env) {
     const chatId = callbackQuery.message.chat.id;
     const messageId = callbackQuery.message.message_id;
@@ -178,14 +167,10 @@ ${profitText}
         case MANAGE_ACTIONS.SET_STATUS: {
             const [betId, newStatus] = args;
             const newState = updateBetInState(state, betId, { status: newStatus as BetStatus });
-            await setUserState(chatId, newState, env);
-            if (newState.user) {
-                await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState)); // Sync back
-            }
+            await updateAndSyncState(chatId, newState, env); // FIX: Use new sync function
             
             await sendMessage(chatId, `Статус ставки обновлен на *${newStatus}*!`, env);
             
-            // Go back to the list view after update
             callbackQuery.data = buildManageCb(MANAGE_ACTIONS.LIST, page);
             await manageBets(callbackQuery, newState, env);
             break;
@@ -207,14 +192,10 @@ ${profitText}
         case MANAGE_ACTIONS.CONFIRM_DELETE: {
             const betId = args[0];
             const newState = deleteBetFromState(state, betId);
-            await setUserState(chatId, newState, env);
-            if (newState.user) {
-                await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState)); // Sync back
-            }
+            await updateAndSyncState(chatId, newState, env); // FIX: Use new sync function
             
             await sendMessage(chatId, "Ставка успешно удалена.", env);
-
-            // Go back to the list view after delete
+            
             callbackQuery.data = buildManageCb(MANAGE_ACTIONS.LIST, page > 0 && newState.bets.length <= page * BETS_PER_PAGE ? page - 1 : page);
             await manageBets(callbackQuery, newState, env);
             break;

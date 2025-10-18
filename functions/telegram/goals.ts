@@ -5,7 +5,7 @@ import { makeKeyboard } from './ui';
 import { CB } from './router';
 import { startAddGoalDialog } from './dialogs';
 import { getGoalProgress } from '../utils/goalUtils';
-import { deleteGoalFromState, setUserState } from './state';
+import { deleteGoalFromState, setUserState, updateAndSyncState } from './state';
 import { updateGoalProgress } from '../../src/utils/goalUtils';
 
 export const GOAL_PREFIX = 'g|';
@@ -92,13 +92,9 @@ export async function handleGoalCallback(callbackQuery: TelegramCallbackQuery, s
         case GOAL_ACTIONS.CONFIRM_DELETE: {
             const goalId = args[0];
             const newState = deleteGoalFromState(state, goalId);
-            await setUserState(chatId, newState, env);
-            // Sync back to main user data
-            if (newState.user) {
-                await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
-            }
+            await updateAndSyncState(chatId, newState, env); // FIX: Use new sync function
             await sendMessage(chatId, "Цель удалена.", env);
-            // Refresh the goals list
+            
             const update: TelegramUpdate = { update_id: 0, callback_query: callbackQuery };
             await startManageGoals(update, newState, env);
             break;

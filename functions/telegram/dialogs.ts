@@ -1,6 +1,6 @@
 // functions/telegram/dialogs.ts
 import { Bet, BetStatus, BetType, DialogState, Env, TelegramMessage, UserState, TelegramCallbackQuery, TelegramUpdate, GoalMetric } from './types';
-import { setUserState, addBetToState, addGoalToState } from './state';
+import { setUserState, addBetToState, addGoalToState, updateAndSyncState } from './state';
 import { deleteMessage, editMessageText, sendMessage } from './telegramApi';
 import { BOOKMAKERS, SPORTS, BET_TYPE_OPTIONS, MARKETS_BY_SPORT, COMMON_ODDS } from '../constants';
 import { calculateRiskManagedStake } from '../utils/betUtils';
@@ -10,7 +10,6 @@ import { buildGoalCb, GOAL_ACTIONS } from './goals';
 
 const makeKeyboard = (options: { text: string, callback_data: string }[][]) => ({ inline_keyboard: options });
 
-// FIX: Add 'as const' to ensure TypeScript infers literal types ('add_bet') instead of the general 'string' type.
 const DIALOG_TYPES = {
     ADD_BET: 'add_bet',
     AI_CHAT: 'ai_chat',
@@ -180,7 +179,17 @@ async function continueAddBetDialog(update: TelegramUpdate, state: UserState, en
         }
 
         switch (dialog.step) {
-            // ... cases for each step ...
+            case STEPS.CONFIRM:
+                if (userInput === 'dialog_confirm') {
+                    const finalBetData = { ...dialog.data, status: BetStatus.Pending };
+                    let newState = addBetToState(state, finalBetData as Omit<Bet, 'id'|'createdAt'|'event'>);
+                    newState.dialog = null;
+                    await updateAndSyncState(chatId, newState, env); // FIX: Use new sync function
+                    await editMessageText(chatId, dialog.messageId!, `✅ Ставка на "${newState.bets[0].event}" успешно добавлена!`, env);
+                    await showMainMenu(chatId, null, env);
+                    return;
+                }
+            // ... other cases
         }
 
     } catch (error) {
@@ -231,7 +240,6 @@ async function continueAddGoalDialog(update: TelegramUpdate, state: UserState, e
             state.dialog = null;
             await setUserState(chatId, state, env);
             await editMessageText(chatId, dialog.messageId!, "❌ Создание цели отменено.", env);
-            // Go back to goals list
             const fakeCallbackQuery: TelegramCallbackQuery = { id: 'fake', from: update.callback_query!.from, message: update.callback_query!.message, data: buildGoalCb(GOAL_ACTIONS.LIST) };
             const fakeUpdate: TelegramUpdate = { update_id: 0, callback_query: fakeCallbackQuery };
             await (await import('./goals')).startManageGoals(fakeUpdate, state, env);
@@ -265,14 +273,10 @@ async function continueAddGoalDialog(update: TelegramUpdate, state: UserState, e
                 break;
              case STEPS.GOAL_CONFIRM:
                 if (userInput === 'goal_confirm') {
-                    const newState = addGoalToState(state, dialog.data as any);
-                    await setUserState(chatId, newState, env);
-                    if (newState.user) {
-                        await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
-                    }
-                    await editMessageText(chatId, dialog.messageId!, `✅ Цель "${dialog.data.title}" успешно создана!`, env);
+                    let newState = addGoalToState(state, dialog.data as any);
                     newState.dialog = null;
-                    await setUserState(chatId, newState, env);
+                    await updateAndSyncState(chatId, newState, env); // FIX: Use new sync function
+                    await editMessageText(chatId, dialog.messageId!, `✅ Цель "${dialog.data.title}" успешно создана!`, env);
                     
                     const fakeCallbackQuery: TelegramCallbackQuery = { id: 'fake', from: update.callback_query!.from, message: update.callback_query!.message, data: buildGoalCb(GOAL_ACTIONS.LIST) };
                     const fakeUpdate: TelegramUpdate = { update_id: 0, callback_query: fakeCallbackQuery };
