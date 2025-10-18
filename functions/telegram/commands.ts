@@ -1,11 +1,10 @@
 // functions/telegram/commands.ts
 import { BetStatus, Env, TelegramMessage, TelegramUpdate, UserState } from './types';
 import { getUserState, setUserState, normalizeState } from './state';
-import { reportError, sendMessage } from './telegramApi';
+import { reportError, sendMessage, sendDocument } from './telegramApi';
 import { startAddBetDialog, startAiChatDialog } from './dialogs';
 import { showMainMenu, showStatsMenu } from './ui';
 import { calculateAnalytics, formatDetailedReportText, formatShortReportText, generateAnalyticsHtml } from './analytics';
-import { sendDocument } from './telegramApi';
 import { startManageBets } from './manageBets';
 import { showCompetitionsMenu } from './competition';
 import { startManageGoals } from './goals';
@@ -85,7 +84,6 @@ export async function handleStats(update: TelegramUpdate, state: UserState, env:
     const analytics = calculateAnalytics(state);
     const shortReport = formatShortReportText(analytics);
     
-    // Check if we need to edit an existing message or send a new one
     const messageId = update.callback_query ? message.message_id : null;
     await showStatsMenu(chatId, messageId, shortReport, env);
 }
@@ -147,7 +145,7 @@ export async function handleGoals(update: TelegramUpdate, state: UserState, env:
 }
 
 export async function handleAiChat(update: TelegramUpdate, state: UserState, env: Env) {
-     const message = update.callback_query?.message;
+     const message = update.message || update.callback_query?.message;
     if (!message) return;
     if (!state.user) {
         await sendMessage(message.chat.id, "Пожалуйста, сначала привяжите свой аккаунт.", env);

@@ -1,9 +1,9 @@
 // functions/telegram/types.ts
-import { User, Bet, Goal, BankTransaction } from '../../src/types';
+import { User, Bet, Goal, BankTransaction, BetStatus, BetType, BetLeg, BankTransactionType, GroundingSource, Message, ChatMessage, Achievement, GoalMetric, GoalStatus, UserSettings, UpcomingMatch, TeamStats, Challenge, CompetitionParticipant } from '../../src/types';
 
 // Re-export core types for convenience within the Telegram module
 export * from '../../src/types';
-export type { UserBetData } from '../../src/data/betStore';
+export type { UserBetData } from '../data/betStore';
 
 // --- Environment & State ---
 
@@ -20,7 +20,7 @@ export interface KVNamespace {
 }
 
 export interface DialogState {
-    type: 'add_bet' | 'register' | 'login' | 'ai_chat' | 'add_goal';
+    type: 'add_bet' | 'ai_chat' | 'add_goal';
     step: string;
     messageId?: number; 
     data: { [key: string]: any };
@@ -34,6 +34,7 @@ export interface UserState {
     bankHistory: BankTransaction[];
     dialog: DialogState | null;
 }
+
 
 // --- Telegram API Structures ---
 

@@ -82,6 +82,7 @@ export function addGoalToState(state: UserState, goalData: Omit<Goal, 'id' | 'cr
         createdAt: new Date().toISOString(),
         currentValue: 0,
         status: GoalStatus.InProgress,
+        scope: goalData.scope || { type: 'all' }
     };
     const newState = { ...state };
     newState.goals = [newGoal, ...state.goals];

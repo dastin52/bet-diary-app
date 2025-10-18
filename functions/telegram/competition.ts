@@ -1,6 +1,5 @@
 // functions/telegram/competition.ts
 import { TelegramCallbackQuery, Env, Bet, User, UserState, TelegramUpdate, CompetitionParticipant } from './types';
-// FIX: Import sendMessage to make it available in this module.
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
@@ -87,7 +86,7 @@ export async function showCompetitionsMenu(update: TelegramUpdate, state: UserSt
     if (messageId) {
          await editMessageText(chatId, messageId, text, env, keyboard);
     } else {
-        // This case should not happen if called from a command
+        // This case is for when it's called directly by a command
         await sendMessage(chatId, text, env, keyboard);
     }
 }
@@ -96,7 +95,6 @@ export async function handleCompetitionCallback(callbackQuery: TelegramCallbackQ
     const [_, action, period, boardType] = callbackQuery.data.split('|');
 
     if (action === COMP_ACTIONS.VIEW) {
-        // Create a fake update object to pass to showCompetitionsMenu
         const update: TelegramUpdate = { update_id: 0, callback_query: callbackQuery };
         await showCompetitionsMenu(update, state, env, period as TimePeriod, boardType as LeaderboardType);
     }

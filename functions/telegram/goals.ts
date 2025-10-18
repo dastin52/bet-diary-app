@@ -6,6 +6,7 @@ import { CB } from './router';
 import { startAddGoalDialog } from './dialogs';
 import { getGoalProgress } from '../utils/goalUtils';
 import { deleteGoalFromState, setUserState } from './state';
+import { updateGoalProgress } from '../../src/utils/goalUtils';
 
 export const GOAL_PREFIX = 'g|';
 export const GOAL_ACTIONS = {
@@ -22,12 +23,16 @@ export async function startManageGoals(update: TelegramUpdate, state: UserState,
     const chatId = message.chat.id;
     const messageId = update.callback_query ? message.message_id : null;
 
-    const activeGoals = state.goals.filter(g => g.status === GoalStatus.InProgress);
-    const completedGoals = state.goals.filter(g => g.status !== GoalStatus.InProgress);
+    // Update goal progress before displaying
+    const settledBets = state.bets.filter(b => b.status !== 'pending');
+    const updatedGoals = state.goals.map(g => updateGoalProgress(g, settledBets));
+
+    const activeGoals = updatedGoals.filter(g => g.status === GoalStatus.InProgress);
+    const completedGoals = updatedGoals.filter(g => g.status !== GoalStatus.InProgress);
 
     let text = '*🎯 Мои Цели*\n\n';
 
-    if (state.goals.length === 0) {
+    if (updatedGoals.length === 0) {
         text += 'У вас пока нет целей. Время поставить новую!';
     } else {
         if (activeGoals.length > 0) {

@@ -21,6 +21,7 @@ export const CB = {
     DOWNLOAD_ANALYTICS_REPORT: 'download_analytics_report',
 };
 
+// Prefixes to route callbacks to the correct module
 export const MANAGE_PREFIX = 'm|';
 export const buildManageCb = (action: string, ...args: (string | number)[]): string => {
     return `${MANAGE_PREFIX}${action}|${args.join('|')}`;
@@ -41,7 +42,11 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
     const chatId = callbackQuery.message.chat.id;
     const data = callbackQuery.data;
 
+    // Acknowledge the button press immediately
+    await (await import('./telegramApi')).answerCallbackQuery(callbackQuery.id, env);
+
     try {
+        // Route by prefix
         if (data.startsWith(MANAGE_PREFIX)) {
             await manageBets(callbackQuery, state, env);
             return;
@@ -55,6 +60,7 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             return;
         }
 
+        // Route by exact match
         switch (data) {
             case CB.BACK_TO_MAIN:
                 await showMainMenu(chatId, callbackQuery.message.message_id, env);
@@ -84,6 +90,7 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
                 await handleDownloadReport(update, state, env);
                 break;
             default:
+                // If no global match, it might be a dialog action
                 if (state.dialog) {
                     await continueDialog(update, state, env);
                 } else {

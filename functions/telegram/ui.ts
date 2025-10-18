@@ -27,6 +27,7 @@ export async function showMainMenu(chatId: number, messageId: number | null, env
         try {
             await editMessageText(chatId, messageId, messageText, env, keyboard);
         } catch (e) {
+            // Message might have been deleted or is otherwise un-editable, send a new one.
             await sendMessage(chatId, messageText, env, keyboard);
         }
     } else {

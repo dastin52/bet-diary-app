@@ -11,10 +11,7 @@ export interface AnalyticsData {
     wonBetsCount: number;
     lostBetsCount: number;
     turnover: number;
-    profitBySport: { sport: string; profit: number; roi: number; }[];
-    profitByBetType: { type: string; profit: number; roi: number; }[];
-    winLossBySport: { sport: string; wins: number; losses: number; }[];
-    performanceByOdds: { range: string; wins: number; losses: number; winRate: number; roi: number; }[];
+    profitBySport: { sport: string; profit: number; roi: number; count: number }[];
 }
 
 export function calculateAnalytics(state: UserState): AnalyticsData {
@@ -28,15 +25,13 @@ export function calculateAnalytics(state: UserState): AnalyticsData {
     const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void);
     const winRate = nonVoidBets.length > 0 ? (wonBets.length / nonVoidBets.length) * 100 : 0;
     
-    // The rest of the complex calculations for profitBySport, byBetType, etc.
-    // ... (full logic from useBets hook) ...
-    const statsBySport = settledBets.reduce((acc: Record<string, { profit: number, staked: number }>, bet) => {
-        if (!acc[bet.sport]) acc[bet.sport] = { profit: 0, staked: 0 };
+    const statsBySport = settledBets.reduce((acc: Record<string, { profit: number, staked: number, count: number }>, bet) => {
+        if (!acc[bet.sport]) acc[bet.sport] = { profit: 0, staked: 0, count: 0 };
         acc[bet.sport].profit += bet.profit ?? 0;
         acc[bet.sport].staked += bet.stake;
+        acc[bet.sport].count += 1;
         return acc;
     }, {});
-    // ... and so on for all other metrics
 
     return {
         bankroll: state.bankroll,
@@ -48,10 +43,6 @@ export function calculateAnalytics(state: UserState): AnalyticsData {
         lostBetsCount,
         turnover: totalStaked,
         profitBySport: Object.entries(statsBySport).map(([sport, data]) => ({ sport, ...data, roi: data.staked > 0 ? (data.profit / data.staked) * 100 : 0})),
-        // ... (return all other calculated metrics)
-        profitByBetType: [], 
-        winLossBySport: [], 
-        performanceByOdds: []
     };
 }
 
@@ -69,11 +60,37 @@ export function formatShortReportText(analytics: AnalyticsData): string {
 }
 
 export function formatDetailedReportText(analytics: AnalyticsData): string {
-    // ... (full formatting logic with emojis for all sections)
-    return `*📝 Ваш подробный отчет*\n\n${formatShortReportText(analytics)}\n\n... (detailed sections would go here)`;
+    let text = formatShortReportText(analytics);
+    text += '\n\n*Прибыль по видам спорта:*\n';
+    if(analytics.profitBySport.length > 0) {
+        analytics.profitBySport.sort((a,b) => b.profit - a.profit).forEach(s => {
+             const sign = s.profit >= 0 ? '+' : '';
+             text += `- ${s.sport}: ${sign}${s.profit.toFixed(2)} ₽ (ROI: ${s.roi.toFixed(1)}%)\n`;
+        });
+    } else {
+        text += '_Нет данных_\n';
+    }
+
+    return text;
 }
 
 export function generateAnalyticsHtml(analytics: AnalyticsData): string {
-    // ... (full logic to generate a styled HTML string)
-    return `<!DOCTYPE html><html><head><title>Отчет</title></head><body><h1>Ваш отчет</h1><p>Банк: ${analytics.bankroll}</p></body></html>`;
+    const styles = `<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background-color:#111827;color:#e5e7eb;padding:2rem}div{background-color:#1f2937;border:1px solid #374151;border-radius:0.75rem;padding:1.5rem;margin-bottom:1.5rem}h1,h2{color:white}h1{font-size:2rem}h2{border-bottom:1px solid #374151;padding-bottom:0.5rem;margin-top:2rem}ul{list-style:none;padding:0}li{display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid #374151}span:last-child{font-weight:600}.profit{color:#4ade80}.loss{color:#f87171}</style>`;
+    
+    let body = `<h1>📊 Отчет BetDiary</h1>`;
+    body += `<div><h2>Общая сводка</h2><ul>`;
+    body += `<li><span>Текущий банк</span><span>${analytics.bankroll.toFixed(2)} ₽</span></li>`;
+    body += `<li><span>Общая прибыль</span><span class="${analytics.totalProfit >= 0 ? 'profit' : 'loss'}">${analytics.totalProfit.toFixed(2)} ₽</span></li>`;
+    body += `<li><span>ROI</span><span class="${analytics.roi >= 0 ? 'profit' : 'loss'}">${analytics.roi.toFixed(2)}%</span></li>`;
+    body += `<li><span>Процент побед</span><span>${analytics.winRate.toFixed(2)}%</span></li>`;
+    body += `<li><span>Всего ставок</span><span>${analytics.betCount}</span></li>`;
+    body += `</ul></div>`;
+    
+    body += `<div><h2>Прибыль по спортам</h2><ul>`;
+    analytics.profitBySport.sort((a,b) => b.profit - a.profit).forEach(s => {
+        body += `<li><span>${s.sport} (${s.count} ставок)</span><span class="${s.profit >= 0 ? 'profit' : 'loss'}">${s.profit.toFixed(2)} ₽ (ROI: ${s.roi.toFixed(1)}%)</span></li>`;
+    });
+    body += `</ul></div>`;
+
+    return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Отчет BetDiary</title>${styles}</head><body>${body}</body></html>`;
 }
