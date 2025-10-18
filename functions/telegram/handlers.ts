@@ -35,8 +35,15 @@ export async function handleMessage(update: TelegramUpdate, env: Env) {
         }
         
         if (state.dialog) {
-            await continueDialog(update, state, env);
-            return;
+            // Special handling for photo uploads in a dialog
+            if (state.dialog.name === 'add_bet' && state.dialog.step === 'awaiting_screenshot' && message.photo) {
+                await continueDialog(update, state, env);
+                return;
+            }
+            if(state.dialog && text) {
+                await continueDialog(update, state, env);
+                return;
+            }
         }
 
         if (text.startsWith('/')) {
@@ -71,7 +78,12 @@ export async function handleCallbackQuery(update: TelegramUpdate, env: Env) {
     const chatId = callbackQuery.message.chat.id;
     try {
         const state = await getUserState(chatId, env);
-        await routeCallbackQuery(update, state, env);
+        // Pass to dialog if active, otherwise route normally
+        if (state.dialog) {
+            await continueDialog(update, state, env);
+        } else {
+            await routeCallbackQuery(update, state, env);
+        }
     } catch (error) {
         await reportError(chatId, env, 'Callback Query Handler', error);
     }

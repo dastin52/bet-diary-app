@@ -1,3 +1,4 @@
+// functions/telegram/types.ts
 
 export enum BetStatus {
   Pending = 'pending',
@@ -163,10 +164,19 @@ export interface Challenge {
 
 // --- Telegram Specific Types ---
 
+export interface AIParsedBetData {
+    sport: string;
+    legs: BetLeg[];
+    stake: number;
+    odds: number;
+    bookmaker: string;
+    betType: BetType;
+}
+
 export interface DialogState {
     name: string;
     step: string;
-    data: any;
+    data: any | { parsedBet?: AIParsedBetData };
     messageId?: number;
 }
 
@@ -210,6 +220,7 @@ export interface TelegramMessage {
     chat: TelegramChat;
     date: number;
     text?: string;
+    photo?: { file_id: string }[];
 }
 
 export interface TelegramCallbackQuery {

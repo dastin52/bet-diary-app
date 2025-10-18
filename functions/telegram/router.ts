@@ -6,7 +6,7 @@ import { manageBets, MANAGE_PREFIX } from './manageBets';
 import { showMainMenu } from './ui';
 import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat } from './commands';
 import { answerCallbackQuery } from './telegramApi';
-import { startAddBetDialog } from './dialogs';
+import { startAddBetDialog, startScreenshotDialog } from './dialogs';
 
 export const CB = {
     // start
@@ -26,19 +26,25 @@ export const CB = {
     SHOW_DETAILED_ANALYTICS: 'show_detailed_analytics',
     DOWNLOAD_ANALYTICS_REPORT: 'download_analytics_report',
     BACK_TO_MAIN: 'back_to_main',
+
+    // Add bet dialog
+    ADD_BET_SCREENSHOT: 'add_bet_screenshot',
+    ADD_BET_MANUAL: 'add_bet_manual',
+    CONFIRM_PARSED_BET: 'confirm_parsed_bet',
+    RETRY_PARSE_BET: 'retry_parse_bet',
 };
 
 export async function routeCallbackQuery(update: TelegramUpdate, state: UserState, env: Env) {
     const cb = update.callback_query;
     if (!cb || !cb.data) return;
 
+    // It's good practice to answer the callback query immediately to remove the loading spinner on the user's client.
     await answerCallbackQuery(cb.id, env);
     
     const chatId = cb.message.chat.id;
     const messageId = cb.message.message_id;
 
     if (cb.data.startsWith(MANAGE_PREFIX)) {
-        // FIX: Pass the entire update object instead of just the callback query.
         await manageBets(update, state, env);
         return;
     }
@@ -47,17 +53,20 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
         return;
     }
     if (cb.data.startsWith(COMP_PREFIX)) {
-        // FIX: Pass the entire update object instead of just the callback query.
         await handleCompetitionCallback(update, state, env);
         return;
     }
 
     switch (cb.data) {
+        // Main menu routing
         case CB.SHOW_STATS:
             await handleStats(update, state, env);
             break;
         case CB.ADD_BET:
             await startAddBetDialog(chatId, state, env, messageId);
+            break;
+        case CB.ADD_BET_SCREENSHOT:
+            await startScreenshotDialog(chatId, messageId, state, env);
             break;
         case CB.MANAGE_BETS:
             await handleManageBets(update, state, env);
@@ -71,6 +80,8 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
         case CB.AI_CHAT:
             await handleAiChat(update, state, env);
             break;
+        
+        // Other routes
         case CB.SHOW_DETAILED_ANALYTICS:
         case CB.DOWNLOAD_ANALYTICS_REPORT:
             await handleStats(update, state, env);
@@ -81,6 +92,7 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
         case CB.BACK_TO_MAIN:
             await showMainMenu(chatId, messageId, env, 'Главное меню');
             break;
+            
         default:
             console.warn(`Unhandled callback query: ${cb.data}`);
             break;

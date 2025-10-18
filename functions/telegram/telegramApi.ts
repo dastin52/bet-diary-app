@@ -25,6 +25,19 @@ async function apiRequest(method: string, token: string, body: any, isFormData: 
     return responseBody;
 }
 
+export async function getFile(file_id: string, env: Env): Promise<{ ok: boolean, result: { file_path: string } }> {
+    return apiRequest('getFile', env.TELEGRAM_BOT_TOKEN, { file_id });
+}
+
+export async function downloadFile(file_path: string, env: Env): Promise<ArrayBuffer> {
+    const url = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${file_path}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+    return response.arrayBuffer();
+}
+
 export async function sendMessage(chatId: number, text: string, env: Env, reply_markup?: object) {
     return apiRequest('sendMessage', env.TELEGRAM_BOT_TOKEN, {
         chat_id: chatId,
