@@ -1,3 +1,4 @@
+// functions/constants.ts
 import { BetStatus, BetType, Challenge } from './telegram/types';
 
 export const SPORTS = [

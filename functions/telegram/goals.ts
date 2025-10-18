@@ -1,12 +1,12 @@
 // functions/telegram/goals.ts
-import { TelegramCallbackQuery, UserState, Env, GoalStatus, Goal, TelegramUpdate } from './types';
+import { TelegramCallbackQuery, UserState, Env, GoalStatus, TelegramUpdate } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
 import { startAddGoalDialog } from './dialogs';
 import { getGoalProgress } from '../utils/goalUtils';
-import { deleteGoalFromState, setUserState, updateAndSyncState } from './state';
-import { updateGoalProgress } from '../../src/utils/goalUtils';
+import { deleteGoalFromState, updateAndSyncState } from './state';
+import { updateGoalProgress } from '../utils/goalUtils';
 
 export const GOAL_PREFIX = 'g|';
 export const GOAL_ACTIONS = {
@@ -53,7 +53,7 @@ export async function startManageGoals(update: TelegramUpdate, state: UserState,
     const goalButtons = activeGoals.map(g => ({ text: `🗑️ ${g.title.substring(0, 20)}...`, callback_data: buildGoalCb(GOAL_ACTIONS.PROMPT_DELETE, g.id) }));
 
     const keyboard = makeKeyboard([
-        ...goalButtons.map(b => [b]), // Each button on its own row
+        ...goalButtons.map(b => [b]),
         [{ text: '📝 Добавить новую цель', callback_data: buildGoalCb(GOAL_ACTIONS.START_ADD) }],
         [{ text: '◀️ Главное меню', callback_data: CB.BACK_TO_MAIN }]
     ]);
@@ -92,7 +92,7 @@ export async function handleGoalCallback(callbackQuery: TelegramCallbackQuery, s
         case GOAL_ACTIONS.CONFIRM_DELETE: {
             const goalId = args[0];
             const newState = deleteGoalFromState(state, goalId);
-            await updateAndSyncState(chatId, newState, env); // FIX: Use new sync function
+            await updateAndSyncState(chatId, newState, env);
             await sendMessage(chatId, "Цель удалена.", env);
             
             const update: TelegramUpdate = { update_id: 0, callback_query: callbackQuery };

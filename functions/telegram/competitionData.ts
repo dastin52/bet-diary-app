@@ -3,9 +3,6 @@ import { Bet, User, BetStatus, Achievement, CompetitionParticipant } from './typ
 import { getPeriodStart } from '../utils/dateHelpers';
 import { calculateAchievements } from '../utils/achievements';
 
-// This is not a hook, but a data processing function for the serverless environment.
-
-// Helper function to calculate stats for one user
 function calculateParticipantStats(user: User, bets: Bet[], period: 'week' | 'month' | 'year' | 'all_time') {
     const periodStartDate = period === 'all_time' ? null : getPeriodStart(period);
 
@@ -26,7 +23,7 @@ function calculateParticipantStats(user: User, bets: Bet[], period: 'week' | 'mo
     
     return {
         user: { nickname: user.nickname, email: user.email },
-        bets: settledBets, // for achievement calculation
+        bets: settledBets,
         stats: {
             roi,
             totalBets: settledBets.length,
@@ -46,13 +43,11 @@ export function generateLeaderboards(allUsersWithBets: { user: User, bets: Bet[]
         .map(({ user, bets }) => calculateParticipantStats(user, bets, period))
         .filter(p => p.stats.totalBets > 0);
 
-    // Leaderboards
     const roiBoard = [...participantRawData].sort((a, b) => b.stats.roi - a.stats.roi);
     const winnersBoard = [...participantRawData].sort((a, b) => b.stats.biggestWin - a.stats.biggestWin);
     const unluckiestBoard = [...participantRawData].sort((a, b) => a.stats.biggestLoss - b.stats.biggestLoss);
     const activeBoard = [...participantRawData].sort((a, b) => b.stats.totalBets - a.stats.totalBets);
 
-    // Achievements
     const achievementsByUser = calculateAchievements(participantRawData, roiBoard);
 
     const formatBoard = (board: typeof participantRawData): CompetitionParticipant[] => {

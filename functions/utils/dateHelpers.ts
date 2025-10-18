@@ -1,3 +1,4 @@
+// functions/utils/dateHelpers.ts
 export const getPeriodStart = (period: 'week' | 'month' | 'year'): Date => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());

@@ -1,5 +1,5 @@
 // functions/telegram/router.ts
-import { TelegramCallbackQuery, UserState, Env, TelegramUpdate } from './types';
+import { UserState, Env, TelegramUpdate } from './types';
 import { showMainMenu } from './ui';
 import { continueDialog } from './dialogs';
 import { manageBets } from './manageBets';
@@ -42,7 +42,6 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
     const chatId = callbackQuery.message.chat.id;
     const data = callbackQuery.data;
 
-    // Acknowledge the button press immediately
     await (await import('./telegramApi')).answerCallbackQuery(callbackQuery.id, env);
 
     try {
@@ -80,7 +79,7 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             case CB.GOALS:
                 await handleGoals(update, state, env);
                 break;
-            case CB.AI_CHAT:
+             case CB.AI_CHAT:
                 await handleAiChat(update, state, env);
                 break;
             case CB.SHOW_DETAILED_ANALYTICS:

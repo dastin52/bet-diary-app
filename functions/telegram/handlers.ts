@@ -1,11 +1,10 @@
 // functions/telegram/handlers.ts
 import { TelegramUpdate, Env, UserState } from './types';
 import { getUserState, setUserState } from './state';
-import { reportError, sendMessage } from './telegramApi';
+import { reportError, sendMessage, deleteMessage } from './telegramApi';
 import { routeCallbackQuery } from './router';
-// FIX: Import startAiChatDialog to resolve reference error.
 import { continueDialog, startAiChatDialog } from './dialogs';
-import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth, handleManageBets, handleCompetitions, handleGoals, handleAiChat } from './commands';
+import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth, handleManageBets, handleCompetitions, handleGoals } from './commands';
 
 const GLOBAL_COMMANDS = ['/start', '/help', '/reset'];
 
@@ -20,18 +19,16 @@ export async function handleMessage(update: TelegramUpdate, env: Env) {
 
         // Global commands can interrupt dialogs
         if (GLOBAL_COMMANDS.includes(text)) {
-            if (state.dialog) {
-                // Clean up previous dialog message if it exists
-                if (state.dialog.messageId) {
-                    try {
-                       await (await import('./telegramApi')).deleteMessage(chatId, state.dialog.messageId, env);
-                    } catch (e) { console.warn(`Could not delete previous dialog message: ${e}`); }
-                }
-                state.dialog = null;
-                await setUserState(chatId, state, env);
+            if (state.dialog && state.dialog.messageId) {
+                try {
+                   await deleteMessage(chatId, state.dialog.messageId, env);
+                } catch (e) { console.warn(`Could not delete previous dialog message: ${e}`); }
             }
+            const cleanState = { ...state, dialog: null };
+            await setUserState(chatId, cleanState, env);
+            
             switch (text) {
-                case '/start': await handleStart(update, state, env); return;
+                case '/start': await handleStart(update, cleanState, env); return;
                 case '/help': await handleHelp(message, env); return;
                 case '/reset': await handleReset(message, env); return;
             }
@@ -50,7 +47,7 @@ export async function handleMessage(update: TelegramUpdate, env: Env) {
                 case '/manage': await handleManageBets(update, state, env); return;
                 case '/competitions': await handleCompetitions(update, state, env); return;
                 case '/goals': await handleGoals(update, state, env); return;
-                case '/ai': await startAiChatDialog(chatId, state, env); return; // Direct call to start dialog
+                case '/ai': await startAiChatDialog(chatId, state, env); return;
                 default:
                      await sendMessage(chatId, "🤔 Неизвестная команда. Используйте /help.", env);
                     return;

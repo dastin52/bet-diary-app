@@ -1,6 +1,5 @@
 // functions/telegram/analytics.ts
 import { BetStatus, UserState } from './types';
-import { BET_TYPE_OPTIONS } from '../constants';
 
 export interface AnalyticsData {
     bankroll: number;

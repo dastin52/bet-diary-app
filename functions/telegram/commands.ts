@@ -2,6 +2,7 @@
 import { BetStatus, Env, TelegramMessage, TelegramUpdate, UserState } from './types';
 import { getUserState, setUserState, normalizeState } from './state';
 import { reportError, sendMessage, sendDocument } from './telegramApi';
+// FIX: Import startAiChatDialog to be used in handleAiChat.
 import { startAddBetDialog, startAiChatDialog } from './dialogs';
 import { showMainMenu, showStatsMenu } from './ui';
 import { calculateAnalytics, formatDetailedReportText, formatShortReportText, generateAnalyticsHtml } from './analytics';
@@ -83,7 +84,6 @@ export async function handleStats(update: TelegramUpdate, state: UserState, env:
 
     const analytics = calculateAnalytics(state);
     if (!analytics) {
-        // This case should not happen if state is correct, but it's a good safeguard.
         throw new Error("Не удалось рассчитать аналитику. Данные могут быть повреждены.");
     }
     const shortReport = formatShortReportText(analytics);
@@ -148,16 +148,19 @@ export async function handleGoals(update: TelegramUpdate, state: UserState, env:
     await startManageGoals(update, state, env);
 }
 
+// FIX: Add handler for AI chat command.
 export async function handleAiChat(update: TelegramUpdate, state: UserState, env: Env) {
-     const message = update.message || update.callback_query?.message;
+    const message = update.message || update.callback_query?.message;
     if (!message) return;
+    const chatId = message.chat.id;
+
     if (!state.user) {
-        await sendMessage(message.chat.id, "Пожалуйста, сначала привяжите свой аккаунт.", env);
+        await sendMessage(chatId, "Пожалуйста, сначала привяжите свой аккаунт.", env);
         return;
     }
-    await startAiChatDialog(message.chat.id, state, env);
+    
+    await startAiChatDialog(chatId, state, env);
 }
-
 
 export async function handleAuth(message: TelegramMessage, code: string, env: Env) {
     const chatId = message.chat.id;
@@ -178,7 +181,6 @@ export async function handleAuth(message: TelegramMessage, code: string, env: En
             throw new Error("User data retrieved from KV is invalid.");
         }
         
-        // Save the main user data under their email for future reference
         await env.BOT_STATE.put(`betdata:${newState.user.email}`, JSON.stringify(newState));
         await setUserState(chatId, newState, env);
         await env.BOT_STATE.delete(key);

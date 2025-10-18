@@ -18,7 +18,6 @@ interface ParticipantData {
     bets: Bet[];
 }
 
-// Simplified ROI leaderboard type for this function's purpose
 interface RoiParticipant {
     user: { email: string };
     stats: { roi: number };
@@ -31,36 +30,29 @@ export const calculateAchievements = (
     const achievements: UserAchievements = {};
     if (participantsData.length === 0) return {};
 
-    // Initialize
     participantsData.forEach(p => { achievements[p.user.email] = []; });
     
-    // 1. ROI King
     if (roiLeaderboard.length > 0 && roiLeaderboard[0].stats.roi > 0) {
         achievements[roiLeaderboard[0].user.email]?.push(ACHIEVEMENTS.ROI_KING);
     }
 
-    // 2. Other achievements
     let maxWin = { email: '', value: 0 };
     let maxLoss = { email: '', value: 0 };
     let maxBets = { email: '', value: 0 };
     let maxParlayOdds = { email: '', value: 0 };
 
     participantsData.forEach(p => {
-        // Max bets
         if (p.bets.length > maxBets.value) {
             maxBets = { email: p.user.email, value: p.bets.length };
         }
         
         p.bets.forEach(bet => {
-            // Max win
             if (bet.status === BetStatus.Won && (bet.profit ?? 0) > maxWin.value) {
                 maxWin = { email: p.user.email, value: bet.profit! };
             }
-            // Max loss
             if (bet.status === BetStatus.Lost && Math.abs(bet.profit ?? 0) > maxLoss.value) {
                 maxLoss = { email: p.user.email, value: Math.abs(bet.profit!) };
             }
-            // Max parlay odds
             if (bet.status === BetStatus.Won && bet.betType === BetType.Parlay && bet.odds > maxParlayOdds.value) {
                 maxParlayOdds = { email: p.user.email, value: bet.odds };
             }

@@ -1,5 +1,5 @@
 // functions/telegram/competition.ts
-import { TelegramCallbackQuery, Env, Bet, User, UserState, TelegramUpdate, CompetitionParticipant } from './types';
+import { TelegramCallbackQuery, Env, User, UserState, TelegramUpdate, CompetitionParticipant, Bet } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
@@ -86,7 +86,6 @@ export async function showCompetitionsMenu(update: TelegramUpdate, state: UserSt
     if (messageId) {
          await editMessageText(chatId, messageId, text, env, keyboard);
     } else {
-        // This case is for when it's called directly by a command
         await sendMessage(chatId, text, env, keyboard);
     }
 }

@@ -1,12 +1,12 @@
 // functions/telegram/ui.ts
-import { Env, TelegramUpdate } from './types';
+import { Env } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { CB } from './router';
 
 export const makeKeyboard = (options: { text: string, callback_data: string }[][]) => ({ inline_keyboard: options });
 
 export async function showMainMenu(chatId: number, messageId: number | null, env: Env, text?: string) {
-    const messageText = text || '👋 Привет! Чем могу помочь?';
+    const messageText = text || '👋 Чем могу помочь?';
     const keyboard = makeKeyboard([
         [
             { text: '📊 Статистика', callback_data: CB.SHOW_STATS },
@@ -18,16 +18,13 @@ export async function showMainMenu(chatId: number, messageId: number | null, env
         ],
         [
             { text: '📈 Управление ставками', callback_data: CB.MANAGE_BETS },
-        ],
-        [
-             { text: '🤖 AI-Аналитик', callback_data: CB.AI_CHAT }
+            { text: '🤖 AI-Аналитик', callback_data: CB.AI_CHAT }
         ]
     ]);
     if (messageId) {
         try {
             await editMessageText(chatId, messageId, messageText, env, keyboard);
         } catch (e) {
-            // Message might have been deleted or is otherwise un-editable, send a new one.
             await sendMessage(chatId, messageText, env, keyboard);
         }
     } else {
@@ -39,7 +36,7 @@ export async function showStatsMenu(chatId: number, messageId: number | null, te
     const keyboard = makeKeyboard([
         [
             { text: '📝 Подробный отчет', callback_data: CB.SHOW_DETAILED_ANALYTICS },
-            { text: '📥 Скачать отчет', callback_data: CB.DOWNLOAD_ANALYTICS_REPORT }
+            { text: '📥 Скачать HTML', callback_data: CB.DOWNLOAD_ANALYTICS_REPORT }
         ],
         [{ text: '⬅️ В меню', callback_data: CB.BACK_TO_MAIN }]
     ]);

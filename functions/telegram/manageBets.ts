@@ -3,7 +3,7 @@ import { TelegramCallbackQuery, UserState, Env, Bet, BetStatus, BankTransactionT
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { buildManageCb, MANAGE_ACTIONS, CB } from './router';
-import { setUserState, updateAndSyncState } from './state';
+import { updateAndSyncState } from './state';
 import { calculateProfit } from '../utils/betUtils';
 
 const BETS_PER_PAGE = 5;
@@ -167,12 +167,12 @@ ${profitText}
         case MANAGE_ACTIONS.SET_STATUS: {
             const [betId, newStatus] = args;
             const newState = updateBetInState(state, betId, { status: newStatus as BetStatus });
-            await updateAndSyncState(chatId, newState, env); // FIX: Use new sync function
+            await updateAndSyncState(chatId, newState, env);
             
             await sendMessage(chatId, `Статус ставки обновлен на *${newStatus}*!`, env);
             
-            callbackQuery.data = buildManageCb(MANAGE_ACTIONS.LIST, page);
-            await manageBets(callbackQuery, newState, env);
+            const newCallbackQuery = { ...callbackQuery, data: buildManageCb(MANAGE_ACTIONS.LIST, page) };
+            await manageBets(newCallbackQuery, newState, env);
             break;
         }
 
@@ -192,12 +192,13 @@ ${profitText}
         case MANAGE_ACTIONS.CONFIRM_DELETE: {
             const betId = args[0];
             const newState = deleteBetFromState(state, betId);
-            await updateAndSyncState(chatId, newState, env); // FIX: Use new sync function
+            await updateAndSyncState(chatId, newState, env);
             
             await sendMessage(chatId, "Ставка успешно удалена.", env);
             
-            callbackQuery.data = buildManageCb(MANAGE_ACTIONS.LIST, page > 0 && newState.bets.length <= page * BETS_PER_PAGE ? page - 1 : page);
-            await manageBets(callbackQuery, newState, env);
+            const newPage = page > 0 && newState.bets.length <= page * BETS_PER_PAGE ? page - 1 : page;
+            const newCallbackQuery = { ...callbackQuery, data: buildManageCb(MANAGE_ACTIONS.LIST, newPage) };
+            await manageBets(newCallbackQuery, newState, env);
             break;
         }
         
