@@ -3,12 +3,11 @@
 // FIX: Added TelegramUpdate to imports
 import { TelegramCallbackQuery, UserState, Env, Bet, BetStatus, BankTransactionType, TelegramUpdate } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
-import { makeKeyboard, showMainMenu } from './ui';
+import { makeKeyboard } from './ui';
 // FIX: Import the newly exported constants from the router.
-import { buildManageCb, MANAGE_ACTIONS } from './router';
+import { buildManageCb, MANAGE_ACTIONS, CB } from './router';
 import { setUserState } from './state';
 import { calculateProfit } from '../utils/betUtils';
-import { CB } from './router';
 
 const BETS_PER_PAGE = 5;
 
@@ -105,10 +104,12 @@ const getStatusEmoji = (status: BetStatus): string => {
 
 // FIX: Add an entry point function to be called from the command router.
 export async function startManageBets(update: TelegramUpdate, state: UserState, env: Env) {
-    const message = 'message' in update ? update.message : update.callbackQuery.message;
+    const message = update.message || update.callback_query?.message;
+    if (!message) return;
+
     // We create a "fake" callback query to trigger the list view
     const fakeCallbackQuery: TelegramCallbackQuery = {
-        id: 'callbackQuery' in update ? update.callbackQuery.id : 'fake_id_from_startManageBets',
+        id: update.callback_query?.id || 'fake_id_from_startManageBets',
         from: message.from,
         message: message,
         data: buildManageCb(MANAGE_ACTIONS.LIST, 0)

@@ -37,6 +37,17 @@ export async function findUserBy(predicate: (user: User) => boolean, env: Env): 
     return undefined;
 }
 
+// FIX: Implement getUsers to fetch all users for leaderboards.
+export async function getUsers(env: Env): Promise<User[]> {
+    const userIndex: string[] = await env.BOT_STATE.get(USER_INDEX_KEY, { type: 'json' }) || [];
+    const userPromises = userIndex.map(async (email) => {
+        const state = await findUserByEmail(email, env);
+        return state?.user;
+    });
+    const users = await Promise.all(userPromises);
+    return users.filter((u): u is User => !!u);
+}
+
 /**
  * Adds a new user to the system.
  * It saves both the user's main data and updates the email index.
@@ -44,16 +55,4 @@ export async function findUserBy(predicate: (user: User) => boolean, env: Env): 
  * @param env The Cloudflare environment object.
  */
 export async function addUser(newUser: User, env: Env): Promise<void> {
-    const email = newUser.email.toLowerCase();
-    
-    // 1. Save the main user data
-    const initialState = normalizeState({ user: newUser });
-    await env.BOT_STATE.put(`betdata:${email}`, JSON.stringify(initialState));
-
-    // 2. Update the user index
-    const userIndex: string[] = await env.BOT_STATE.get(USER_INDEX_KEY, { type: 'json' }) || [];
-    if (!userIndex.includes(email)) {
-        userIndex.push(email);
-        await env.BOT_STATE.put(USER_INDEX_KEY, JSON.stringify(userIndex));
-    }
-}
+    const

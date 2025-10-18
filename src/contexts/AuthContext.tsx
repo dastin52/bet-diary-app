@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User } from '../types';
 import * as userStore from '../data/userStore';
@@ -112,7 +113,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             userStore.updateUser(updatedReferrer);
             initialButtercups = REFERRAL_BONUS_FOR_INVITEE;
         } else {
-            // FIX: Optional: throw an error if the referral code is invalid
+            // FIX: Throw an error if the referral code is invalid.
             throw new Error("Неверный реферальный код.");
         }
     }

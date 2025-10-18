@@ -1,7 +1,7 @@
 // functions/telegram/handler.ts
 import { handleCallbackQuery, handleMessage } from './handlers';
 import { reportError } from './telegramApi';
-// FIX: Use TelegramUpdatePayload as it correctly represents the incoming object from Telegram API.
+// FIX: Use TelegramUpdatePayload as it correctly represents the incoming object from Telegram API. Renamed the import to TelegramUpdate for consistency.
 import { Env, TelegramUpdate as TelegramUpdatePayload } from './types';
 
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
@@ -17,12 +17,13 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
         const update: TelegramUpdatePayload = await request.json();
 
         // FIX: The `update` object is now correctly typed, allowing safe access to optional properties.
+        // FIX: Pass the full update object to handlers to resolve type errors downstream.
         if (update.callback_query) {
             chatId = update.callback_query.message.chat.id;
-            await handleCallbackQuery(update.callback_query, env);
+            await handleCallbackQuery(update, env);
         } else if (update.message) {
             chatId = update.message.chat.id;
-            await handleMessage(update.message, env);
+            await handleMessage(update, env);
         }
 
         // Always return OK to Telegram, errors are handled internally

@@ -1,3 +1,6 @@
+// functions/telegram/types.ts
+import { User, Bet, Goal, BankTransaction } from '../../src/types';
+
 // Re-export core types for convenience within the Telegram module
 export * from '../../src/types';
 export type { UserBetData } from '../../src/data/betStore';
@@ -33,9 +36,9 @@ export interface UserState {
 }
 
 // --- Telegram API Structures ---
-export type TelegramUpdate = { message: TelegramMessage } | { callbackQuery: TelegramCallbackQuery };
 
-export interface TelegramUpdatePayload {
+// FIX: Renamed from TelegramUpdatePayload to TelegramUpdate to resolve import errors.
+export interface TelegramUpdate {
     update_id: number;
     message?: TelegramMessage;
     callback_query?: TelegramCallbackQuery;

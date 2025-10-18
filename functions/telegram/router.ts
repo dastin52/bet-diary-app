@@ -1,80 +1,94 @@
-import { 
-    handleStart, handleReset, handleAddBet, handleStats, 
-    handleCompetitions, handleGoals, handleManageBets, handleAiAnalyst, 
-    handleRegister, handleLogin, handleHelp, handleAuth,
-    handleShowDetailedReport, handleDownloadReport
-} from './commands';
+// functions/telegram/router.ts
+import { TelegramCallbackQuery, UserState, Env, TelegramUpdate } from './types';
+import { showMainMenu } from './ui';
+import { continueDialog } from './dialogs';
+import { manageBets } from './manageBets';
+// FIX: Import missing command handlers.
+import { handleAddBet, handleStats, handleShowDetailedReport, handleDownloadReport, handleManageBets, handleCompetitions, handleGoals, handleAiChat } from './commands';
+import { reportError } from './telegramApi';
 
-// --- Callback Data Constants ---
 export const CB = {
-    // Main Menu
-    SHOW_STATS: 'show_stats',
+    BACK_TO_MAIN: 'main_menu',
     ADD_BET: 'add_bet',
-    SHOW_COMPETITIONS: 'show_competitions',
-    SHOW_GOALS: 'show_goals',
+    SHOW_STATS: 'show_stats',
     MANAGE_BETS: 'manage_bets',
-    SHOW_AI_ANALYST: 'show_ai',
-
-    // Stats Menu
+    COMPETITIONS: 'competitions',
+    GOALS: 'goals',
+    AI_CHAT: 'ai_chat',
+    // Analytics
     SHOW_DETAILED_ANALYTICS: 'show_detailed_analytics',
     DOWNLOAD_ANALYTICS_REPORT: 'download_analytics_report',
-
-    // Other simple actions
-    BACK_TO_MAIN: 'main_menu',
-    LOGIN: 'login',
-    REGISTER: 'register',
 };
 
-export const MANAGE_PREFIX = 'm';
-
-// Helper to build manage bet callbacks
-export const buildManageCb = (action: string, ...args: (string | number)[]) => 
-    [MANAGE_PREFIX, action, ...args].join('|');
-
+// FIX: Defined and exported MANAGE_ACTIONS to resolve import errors in other files.
 export const MANAGE_ACTIONS = {
-    LIST: 'l',
-    VIEW: 'v',
-    PROMPT_STATUS: 'ps',
-    SET_STATUS: 'ss',
-    PROMPT_DELETE: 'pd',
-    CONFIRM_DELETE: 'cd',
+    LIST: 'list',
+    VIEW: 'view',
+    PROMPT_STATUS: 'p_status',
+    SET_STATUS: 's_status',
+    PROMPT_DELETE: 'p_delete',
+    CONFIRM_DELETE: 'c_delete',
+};
+
+// ... (buildManageCb and other helpers remain the same)
+export const MANAGE_PREFIX = 'm|';
+export const buildManageCb = (action: string, ...args: (string | number)[]): string => {
+    return `${MANAGE_PREFIX}${action}|${args.join('|')}`;
 };
 
 
-// --- Routers ---
+// FIX: Changed signature to accept the full TelegramUpdate object to resolve type errors.
+export async function routeCallbackQuery(update: TelegramUpdate, state: UserState, env: Env) {
+    // FIX: Extracted callbackQuery from the full update object.
+    const callbackQuery = update.callback_query;
+    if (!callbackQuery) return;
+    const chatId = callbackQuery.message.chat.id;
+    const data = callbackQuery.data;
 
-// Global commands can interrupt any dialog
-export const globalCommandRouter: { [key: string]: Function } = {
-    '/start': handleStart,
-    '/menu': handleStart, 
-    '/reset': handleReset,
-    '/help': handleHelp,
-};
+    try {
+        if (data.startsWith(MANAGE_PREFIX)) {
+            await manageBets(callbackQuery, state, env);
+            return;
+        }
 
-// Regular commands are ignored if a dialog is active
-export const commandRouter: { [key: string]: Function } = {
-    '/addbet': handleAddBet,
-    '/add': handleAddBet, // Alias
-    '/stats': handleStats,
-    '/manage': handleManageBets,
-    '/auth': handleAuth, // Special case for 6-digit codes
-};
-
-// Main router for callback queries when no dialog is active
-export const mainCallbackRouter: { [key: string]: Function } = {
-    [CB.BACK_TO_MAIN]: handleStart,
-    [CB.SHOW_STATS]: handleStats,
-    [CB.ADD_BET]: handleAddBet,
-    [CB.SHOW_COMPETITIONS]: handleCompetitions,
-    [CB.SHOW_GOALS]: handleGoals,
-    [CB.MANAGE_BETS]: handleManageBets,
-    [CB.SHOW_AI_ANALYST]: handleAiAnalyst,
-    [CB.SHOW_DETAILED_ANALYTICS]: handleShowDetailedReport,
-    [CB.DOWNLOAD_ANALYTICS_REPORT]: handleDownloadReport,
-};
-
-// Routes available when user is not logged in
-export const unauthenticatedRoutes: { [key: string]: Function } = {
-    [CB.LOGIN]: handleLogin,
-    [CB.REGISTER]: handleRegister,
-};
+        switch (data) {
+            case CB.BACK_TO_MAIN:
+                await showMainMenu(chatId, callbackQuery.message.message_id, env);
+                break;
+            // FIX: Pass the full update object to command handlers.
+            case CB.ADD_BET:
+                await handleAddBet(update, state, env);
+                break;
+            case CB.SHOW_STATS:
+                await handleStats(update, state, env);
+                break;
+            case CB.MANAGE_BETS:
+                 await handleManageBets(update, state, env);
+                break;
+            case CB.COMPETITIONS:
+                await handleCompetitions(update, state, env);
+                break;
+            case CB.GOALS:
+                await handleGoals(update, state, env);
+                break;
+            case CB.AI_CHAT:
+                await handleAiChat(update, state, env);
+                break;
+            case CB.SHOW_DETAILED_ANALYTICS:
+                await handleShowDetailedReport(update, state, env);
+                break;
+            case CB.DOWNLOAD_ANALYTICS_REPORT:
+                await handleDownloadReport(update, state, env);
+                break;
+            default:
+                if (state.dialog) {
+                    await continueDialog(update, state, env);
+                } else {
+                    console.warn(`Unhandled callback query data: ${data}`);
+                }
+                break;
+        }
+    } catch (error) {
+        await reportError(chatId, env, `Callback Router (${data})`, error);
+    }
+}

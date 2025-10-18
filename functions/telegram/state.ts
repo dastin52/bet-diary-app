@@ -1,6 +1,6 @@
 // functions/telegram/state.ts
-// FIX: Added Bet and BankTransactionType to imports
-import { Env, UserState, User, Bet, Goal, BankTransaction, BankTransactionType } from './types';
+// FIX: Added Bet, BetStatus, and BankTransactionType to imports
+import { Env, UserState, User, Bet, Goal, BankTransaction, BankTransactionType, BetStatus } from './types';
 import { calculateProfit, generateEventString } from '../utils/betUtils';
 
 export function normalizeState(data: any): UserState {
@@ -67,7 +67,8 @@ export function addBetToState(state: UserState, betData: Omit<Bet, 'id' | 'creat
     const newState = { ...state };
     let newBankroll = state.bankroll;
     
-    if (newBet.status !== 'pending') {
+    // FIX: Imported BetStatus to resolve error.
+    if (newBet.status !== BetStatus.Pending) {
         newBet.profit = calculateProfit(newBet);
         if(newBet.profit !== 0) {
             const type = newBet.profit > 0 ? BankTransactionType.BetWin : BankTransactionType.BetLoss;

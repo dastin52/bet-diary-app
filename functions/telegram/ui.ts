@@ -1,43 +1,47 @@
 // functions/telegram/ui.ts
-import { Env, TelegramMessage, TelegramCallbackQuery } from './types';
+import { Env, TelegramUpdatePayload } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { CB } from './router';
 
-export const makeKeyboard = (options: { text: string, callback_data: string }[][]) => {
-    return { inline_keyboard: options };
-};
+export const makeKeyboard = (options: { text: string, callback_data: string }[][]) => ({ inline_keyboard: options });
 
-const isCallback = (update: TelegramMessage | TelegramCallbackQuery): update is TelegramCallbackQuery => 'data' in update;
-
-export async function showMainMenu(update: TelegramMessage | TelegramCallbackQuery, env: Env, text?: string) {
-    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
-    // FIX: Use the provided text or a default value.
-    const menuText = text || 'Главное меню';
+export async function showMainMenu(chatId: number, messageId: number | null, env: Env, text?: string) {
+    const messageText = text || '👋 Привет! Чем могу помочь?';
     const keyboard = makeKeyboard([
-        [{ text: '📊 Статистика', callback_data: CB.SHOW_STATS }, { text: '📝 Добавить ставку', callback_data: CB.ADD_BET }],
-        [{ text: '🏆 Соревнования', callback_data: CB.SHOW_COMPETITIONS }, { text: '🎯 Мои цели', callback_data: CB.SHOW_GOALS }],
-        [{ text: '📈 Управление ставками', callback_data: CB.MANAGE_BETS }],
-        [{ text: '🤖 AI-Аналитик', callback_data: CB.SHOW_AI_ANALYST }]
+        [
+            { text: '📊 Статистика', callback_data: CB.SHOW_STATS },
+            { text: '📝 Добавить ставку', callback_data: CB.ADD_BET },
+        ],
+        [
+            { text: '🏆 Соревнования', callback_data: CB.COMPETITIONS },
+            { text: '🎯 Мои цели', callback_data: CB.GOALS }
+        ],
+        [
+            { text: '📈 Управление ставками', callback_data: CB.MANAGE_BETS },
+        ],
+        [
+             { text: '🤖 AI-Аналитик', callback_data: CB.AI_CHAT }
+        ]
     ]);
-
-    if (isCallback(update) && update.message) {
-        await editMessageText(chatId, update.message.message_id, menuText, env, keyboard);
+    if (messageId) {
+        try {
+            await editMessageText(chatId, messageId, messageText, env, keyboard);
+        } catch (e) {
+            // Message might have been deleted, send a new one
+            await sendMessage(chatId, messageText, env, keyboard);
+        }
     } else {
-        await sendMessage(chatId, menuText, env, keyboard);
+        await sendMessage(chatId, messageText, env, keyboard);
     }
 }
 
-export async function showLoginOptions(update: TelegramMessage | TelegramCallbackQuery, env: Env, customText?: string) {
-    const chatId = isCallback(update) ? update.message.chat.id : update.chat.id;
-    const text = customText || 'Чтобы начать, войдите или зарегистрируйтесь.';
-    
+export async function showStatsMenu(chatId: number, messageId: number, text: string, env: Env) {
     const keyboard = makeKeyboard([
-        [{ text: '🔑 Войти', callback_data: CB.LOGIN }, { text: '📝 Регистрация', callback_data: CB.REGISTER }]
+        [
+            { text: '📝 Подробный отчет', callback_data: CB.SHOW_DETAILED_ANALYTICS },
+            { text: '📥 Скачать отчет', callback_data: CB.DOWNLOAD_ANALYTICS_REPORT }
+        ],
+        [{ text: '⬅️ В меню', callback_data: CB.BACK_TO_MAIN }]
     ]);
-
-    if (isCallback(update) && update.message) {
-        await editMessageText(chatId, update.message.message_id, text, env, keyboard);
-    } else {
-        await sendMessage(chatId, text, env, keyboard);
-    }
+    await editMessageText(chatId, messageId, text, env, keyboard);
 }
