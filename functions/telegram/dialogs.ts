@@ -239,14 +239,21 @@ For the provided image, it might be an "Экспресс" (parlay). Extract all 
         
         const parsedData = JSON.parse(response.text);
 
+        // Sanitize numeric inputs from Gemini that might be strings with currency symbols
+        const stakeStr = String(parsedData.stake || '0');
+        const oddsStr = String(parsedData.odds || '1');
+        const sanitizedStake = parseFloat(stakeStr.replace(/[^0-9.,]/g, '').replace(',', '.'));
+        const sanitizedOdds = parseFloat(oddsStr.replace(/[^0-9.,]/g, '').replace(',', '.'));
+
+
         const parsedBet: AIParsedBetData = {
             sport: parsedData.sport || 'Не определен',
             legs: parsedData.legs || [],
-            stake: parsedData.stake,
-            odds: parsedData.odds,
+            stake: isNaN(sanitizedStake) ? 0 : sanitizedStake,
+            odds: isNaN(sanitizedOdds) ? 1 : sanitizedOdds,
             bookmaker: parsedData.bookmaker || 'Другое',
             betType: parsedData.betType || BetType.Single,
-            status: parsedData.status as BetStatus || undefined,
+            status: parsedData.status ? (parsedData.status.toLowerCase() as BetStatus) : undefined,
         };
         
         // 3. Show confirmation
