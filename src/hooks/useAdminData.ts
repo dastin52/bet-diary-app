@@ -1,6 +1,3 @@
-
-
-
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -36,7 +33,21 @@ export const useAdminData = (): UseAdminDataReturn => {
     try {
       // 1. Get all registered users
       const allUsers = getUsers();
-      setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
+      
+      // MOCK TELEGRAM DATA for demonstration purposes, as this data lives in server-side KV storage
+      const allUsersWithTelegram = allUsers.map((user, index) => {
+          // Link every second user for demonstration
+          if (index % 2 === 0 && user.email !== 'admin@example.com') {
+              return {
+                  ...user,
+                  telegramId: 100000000 + (user.email.length * 12345) + index,
+                  telegramUsername: user.nickname.toLowerCase().replace(/\s/g, '_'),
+              };
+          }
+          return user;
+      });
+
+      setUsers(allUsersWithTelegram.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
       // 2. Aggregate bets from all users
       let collectedBets: Bet[] = [];

@@ -104,6 +104,7 @@ const AdminPanel: React.FC = () => {
                         <tr>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Никнейм</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
+                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Telegram</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Дата регистрации</th>
                             <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Статус</th>
                             <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Действия</th>
@@ -115,6 +116,23 @@ const AdminPanel: React.FC = () => {
                             <tr key={user.email} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                 <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{user.nickname}</td>
                                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{user.email}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                                    {user.telegramUsername ? (
+                                        <span>
+                                            <a 
+                                                href={`https://t.me/${user.telegramUsername}`} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="text-sky-400 hover:text-sky-300"
+                                            >
+                                                @{user.telegramUsername}
+                                            </a>
+                                            <p className="text-xs text-gray-500">ID: {user.telegramId}</p>
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-500">-</span>
+                                    )}
+                                </td>
                                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{new Date(user.registeredAt).toLocaleString('ru-RU')}</td>
                                 <td className="px-4 py-3 text-sm text-center">
                                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${user.status === 'active' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'}`}>
@@ -136,7 +154,7 @@ const AdminPanel: React.FC = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={5} className="text-center py-10 text-gray-500">
+                                <td colSpan={6} className="text-center py-10 text-gray-500">
                                     Пользователи не найдены.
                                 </td>
                             </tr>

@@ -80,6 +80,8 @@ export interface User {
   referralCode: string;
   buttercups: number;
   status: 'active' | 'blocked';
+  telegramId?: number;
+  telegramUsername?: string;
 }
 
 export interface ChatMessage {

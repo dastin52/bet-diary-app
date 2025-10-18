@@ -1,5 +1,4 @@
 
-
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -80,6 +79,8 @@ export interface User {
   referralCode: string;
   buttercups: number;
   status: 'active' | 'blocked';
+  telegramId?: number;
+  telegramUsername?: string;
 }
 
 export interface ChatMessage {
@@ -160,4 +161,19 @@ export interface Challenge {
   description: string;
   metric: 'biggest_win' | 'highest_roi' | 'most_bets' | 'highest_parlay_odds';
   period: 'weekly';
+}
+
+export enum AIPredictionStatus {
+    Pending = 'pending',
+    Correct = 'correct',
+    Incorrect = 'incorrect',
+}
+
+export interface AIPrediction {
+    id: string;
+    createdAt: string;
+    sport: string;
+    matchName: string;
+    prediction: string;
+    status: AIPredictionStatus;
 }

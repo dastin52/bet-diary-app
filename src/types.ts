@@ -1,5 +1,4 @@
 
-
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -80,6 +79,8 @@ export interface User {
   referralCode: string;
   buttercups: number;
   status: 'active' | 'blocked';
+  telegramId?: number;
+  telegramUsername?: string;
 }
 
 export interface ChatMessage {
@@ -170,9 +171,9 @@ export enum AIPredictionStatus {
 
 export interface AIPrediction {
     id: string;
-    matchName: string;
-    sport: string;
-    prediction: string;
     createdAt: string;
+    sport: string;
+    matchName: string;
+    prediction: string;
     status: AIPredictionStatus;
 }

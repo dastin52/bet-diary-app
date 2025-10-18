@@ -83,23 +83,23 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
+    // FIX: Refactor reduce to use generic argument for better type inference.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularSports = Object.entries(popularSportsCounts)
-        // FIX: Cast count to number to resolve type inference issue.
-        .map(([name, count]) => ({ name, count: count as number }))
+        .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
+    // FIX: Refactor reduce to use generic argument for better type inference.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
-        // FIX: Cast count to number to resolve type inference issue.
-        .map(([name, count]) => ({ name, count: count as number }))
+        .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     

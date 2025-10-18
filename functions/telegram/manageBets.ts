@@ -111,13 +111,13 @@ export async function startManageBets(update: TelegramUpdate, state: UserState, 
     const message = update.message || update.callback_query?.message;
     if (!message) return;
 
+    // FIX: Construct a fake TelegramUpdate to pass to manageBets, as it expects the full update object.
     const fakeCallbackQuery: TelegramCallbackQuery = {
-        id: update.callback_query?.id || 'fake_id_from_startManageBets',
+        id: update.callback_query?.id || `fake_id_${Date.now()}`,
         from: message.from!,
         message: message,
         data: buildManageCb(MANAGE_ACTIONS.LIST, 0)
     };
-    // FIX: Construct a fake TelegramUpdate to pass to manageBets.
     const fakeUpdate: TelegramUpdate = {
         update_id: update.update_id,
         callback_query: fakeCallbackQuery,
@@ -125,9 +125,8 @@ export async function startManageBets(update: TelegramUpdate, state: UserState, 
     await manageBets(fakeUpdate, state, env);
 }
 
-// FIX: Changed signature to accept TelegramUpdate to resolve type error.
+// FIX: Changed signature to accept TelegramUpdate to resolve type error and standardize handlers.
 export async function manageBets(update: TelegramUpdate, state: UserState, env: Env) {
-    // FIX: Extract callbackQuery from the update object.
     const callbackQuery = update.callback_query;
     if (!callbackQuery) return;
 
@@ -252,9 +251,12 @@ ${profitText}
             if (currentPage > 0) navButtons.push({ text: '⬅️ Пред.', callback_data: buildManageCb(MANAGE_ACTIONS.LIST, currentPage - 1)});
             if (currentPage < totalPages - 1) navButtons.push({ text: 'След. ➡️', callback_data: buildManageCb(MANAGE_ACTIONS.LIST, currentPage + 1)});
 
+            if(navButtons.length > 0) {
+                betButtons.push(navButtons);
+            }
+
             const keyboard = makeKeyboard([
                 ...betButtons,
-                navButtons,
                 // FIX: Removed circular dependency on router.ts by using string literal.
                 [{ text: '◀️ Главное меню', callback_data: 'back_to_main' }]
             ]);
