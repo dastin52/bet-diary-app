@@ -7,7 +7,7 @@ import { showMainMenu } from './ui';
 import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu, handleMatches } from './commands';
 import { answerCallbackQuery } from './telegramApi';
 import { startAddBetDialog, startScreenshotDialog, startBotRegisterDialog, startBotLoginDialog } from './dialogs';
-import { handleMatchesCallback, MATCH_PREFIX } from './matches';
+import { handleMatchesCallback, handleSportSelectionCallback, MATCH_PREFIX, MATCH_SPORT_PREFIX } from './matches';
 
 export const STATS_PREFIX = 'stats|';
 
@@ -65,6 +65,10 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
     }
     if (cb.data.startsWith(COMP_PREFIX)) {
         await handleCompetitionCallback(update, state, env);
+        return;
+    }
+    if (cb.data.startsWith(MATCH_SPORT_PREFIX)) {
+        await handleSportSelectionCallback(update, state, env);
         return;
     }
     if (cb.data.startsWith(MATCH_PREFIX)) {

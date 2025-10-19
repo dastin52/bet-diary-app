@@ -123,6 +123,22 @@ export interface Challenge {
   period: 'weekly';
 }
 
+// FIX: Add missing AIPrediction and AIPredictionStatus types.
+export enum AIPredictionStatus {
+    Pending = 'pending',
+    Correct = 'correct',
+    Incorrect = 'incorrect',
+}
+
+export interface AIPrediction {
+    id: string;
+    createdAt: string;
+    sport: string;
+    matchName: string;
+    prediction: string;
+    status: AIPredictionStatus;
+}
+
 export type Message = {
   role: 'user' | 'model';
   parts: { text: string }[];
@@ -226,31 +242,42 @@ export interface AIParsedBetData {
 
 
 // --- Sports API Types ---
-export interface HockeyTeam {
+export interface SportTeam {
     id: number;
     name: string;
     logo: string;
 }
-export interface HockeyLeague {
+export interface SportLeague {
     id: number;
     name: string;
     country: string;
     logo: string;
     season: number;
 }
-export interface HockeyGame {
+export interface SportGame {
     id: number;
     date: string;
     time: string;
     timestamp: number;
     timezone: string;
-    league: HockeyLeague;
+    league: SportLeague;
     teams: {
-        home: HockeyTeam;
-        away: HockeyTeam;
+        home: SportTeam;
+        away: SportTeam;
     };
 }
-export interface HockeyApiResponse {
-    response: HockeyGame[];
-    errors?: any;
+export interface SportApiResponse {
+    get: string;
+    parameters: any;
+    errors: any[] | Record<string, any>;
+    results: number;
+    response: SportGame[];
+}
+
+export interface SportApiConfig {
+    [sportKey: string]: {
+        host: string;
+        path: string; // e.g., 'games'
+        keyName: string; // e.g., 'x-apisports-key'
+    }
 }
