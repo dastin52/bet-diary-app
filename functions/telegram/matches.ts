@@ -24,6 +24,49 @@ const AVAILABLE_SPORTS = [
     { key: 'basketball', label: '🏀 Баскетбол' },
 ];
 
+/**
+ * Returns an emoji based on the match status short code.
+ * @param status - The status object from the API.
+ * @returns An emoji string: 🔴 for live, 🏁 for finished, ⏳ for scheduled.
+ */
+const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
+    if (!status) return '⏳'; // Default to scheduled/unknown
+
+    switch (status.short) {
+        // Live statuses from various sports
+        case '1H': // Halftime
+        case 'HT':
+        case '2H':
+        case 'ET': // Extra Time
+        case 'BT': // Break Time
+        case 'P':  // Penalties
+        case 'LIVE':
+        case 'INTR': // Interrupted
+            return '🔴'; // Live
+
+        // Finished statuses
+        case 'FT': // Finished
+        case 'AET': // Finished after Extra Time
+        case 'PEN': // Finished after Penalties
+            return '🏁'; // Finished
+
+        // Concluded but not standard finished (e.g., postponed, canceled)
+        case 'POST': // Postponed
+        case 'CANC': // Canceled
+        case 'ABD':  // Abandoned
+        case 'AWD':  // Awarded
+        case 'WO':   // Walkover
+            return '🏁';
+
+        // Scheduled statuses
+        case 'NS': // Not Started
+        case 'TBD': // To Be Defined
+        default:
+            return '⏳'; // Scheduled
+    }
+};
+
+
 export async function handleMatchesCommand(update: TelegramUpdate, state: UserState, env: Env) {
     const message = update.message || update.callback_query?.message;
     if (!message) return;
@@ -107,8 +150,9 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
         leaguesOnPage.forEach(leagueName => {
             text += `*🏆 ${leagueName}*\n`;
             gamesByLeague[leagueName].forEach(game => {
-                const gameTime = new Date(game.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
-                text += `  *${gameTime}* - ${game.teams.home.name} vs ${game.teams.away.name}\n`;
+                const gameTime = new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+                const statusEmoji = getMatchStatusEmoji(game.status);
+                text += `${statusEmoji} *${gameTime}* - ${game.teams.home.name} vs ${game.teams.away.name}\n`;
             });
             text += '\n';
         });

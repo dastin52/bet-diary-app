@@ -260,6 +260,10 @@ export interface SportGame {
     time: string;
     timestamp: number;
     timezone: string;
+    status: {
+        long: string;
+        short: string;
+    };
     league: SportLeague;
     teams: {
         home: SportTeam;
