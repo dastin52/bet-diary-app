@@ -7,8 +7,8 @@ const calculateProfit = (bet: { status: BetStatus, stake: number, odds: number, 
     const odds = Number(bet.odds);
 
     if (bet.status === BetStatus.CashedOut) {
-        const profit = Number(bet.profit);
-        return Number.isFinite(profit) ? profit : 0;
+        // FIX: Use nullish coalescing operator for safety.
+        return bet.profit ?? 0;
     }
 
     if (!Number.isFinite(stake) || stake <= 0 || !Number.isFinite(odds) || odds <= 1) {

@@ -28,19 +28,28 @@ export async function getTodaysHockeyGames(env: Env): Promise<HockeyGame[]> {
     const response = await fetch(`${API_HOST}/games?date=${today}`, {
         method: 'GET',
         headers: {
-            // This is the correct header based on the API provider's own "Live Demo" tool.
-            'x-rapidapi-key': env.SPORT_API_KEY,
+            'x-apisports-key': env.SPORT_API_KEY,
         },
     });
 
     if (!response.ok) {
         const errorBody = await response.text();
         console.error(`Sports API error: ${response.status} ${response.statusText}. Body: ${errorBody}`);
-        // Pass a more specific error back to the user-facing function
         throw new Error(`Ошибка API (${response.status}): ${errorBody}`);
     }
 
     const data: HockeyApiResponse = await response.json();
+
+    // CRITICAL FIX: Check for logical errors within the API's JSON response,
+    // as it can return 200 OK even for auth failures.
+    const hasErrors = data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0);
+    if (hasErrors) {
+        const errorString = JSON.stringify(data.errors);
+        console.error(`Sports API returned logical error: ${errorString}`);
+        throw new Error(`Ошибка от API спорта: ${errorString}`);
+    }
+
+
     const games = data.response || [];
 
     // 3. Store the result in cache with a TTL

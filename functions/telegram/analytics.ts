@@ -44,8 +44,8 @@ export function calculateAnalytics(state: UserState, period: AnalyticsPeriod = '
     const nonVoidBets = settledBets.filter(b => b.status !== BetStatus.Void);
     const winRate = nonVoidBets.length > 0 ? (wonBets.length / nonVoidBets.length) * 100 : 0;
     
-    // FIX: Refactor reduce to use generic argument for better type inference.
-    const statsBySport = settledBets.reduce<Record<string, { profit: number; staked: number; count: number }>>((acc, bet) => {
+    // FIX: Explicitly type the accumulator in reduce to ensure correct type inference.
+    const statsBySport = settledBets.reduce((acc: Record<string, { profit: number; staked: number; count: number }>, bet) => {
         if (!acc[bet.sport]) {
             acc[bet.sport] = { profit: 0, staked: 0, count: 0 };
         }
@@ -55,8 +55,8 @@ export function calculateAnalytics(state: UserState, period: AnalyticsPeriod = '
         return acc;
     }, {});
 
-    // FIX: Refactor reduce to use generic argument for better type inference.
-    const statsByBetType = settledBets.reduce<Record<string, { profit: number; staked: number; count: number }>>((acc, bet) => {
+    // FIX: Explicitly type the accumulator in reduce to ensure correct type inference.
+    const statsByBetType = settledBets.reduce((acc: Record<string, { profit: number; staked: number; count: number }>, bet) => {
         const betTypeLabel = bet.betType; // Simpler for bot
         if (!acc[betTypeLabel]) {
             acc[betTypeLabel] = { profit: 0, staked: 0, count: 0 };
@@ -76,7 +76,7 @@ export function calculateAnalytics(state: UserState, period: AnalyticsPeriod = '
         wonBetsCount: wonBets.length,
         lostBetsCount,
         turnover: totalStaked,
-        // FIX: Rewrite map function without spread to avoid potential type inference issues.
+        // FIX: The map function is correct, the issue was with the `reduce` typing above.
         profitBySport: Object.entries(statsBySport).map(([sport, data]) => ({ 
             sport, 
             profit: data.profit, 

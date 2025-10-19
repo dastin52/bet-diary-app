@@ -142,21 +142,19 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Explicitly type the initial value of reduce to ensure TypeScript correctly infers the accumulator's type. This resolves errors related to arithmetic operations on unknown types.
-    const popularSportsCounts = settledBets.reduce((acc, bet) => {
+    const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularSports = Object.entries(popularSportsCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Explicitly type the initial value of reduce to ensure TypeScript correctly infers the accumulator's type. This resolves errors related to arithmetic operations on unknown types.
-    const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
+    const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)

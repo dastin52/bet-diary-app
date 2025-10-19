@@ -6,8 +6,8 @@ export const calculateProfit = (bet: Omit<Bet, 'id' | 'createdAt' | 'event'>): n
 
   // For cashed out, profit is manually entered. Trust it if it's a valid number.
   if (bet.status === BetStatus.CashedOut) {
-      const profit = Number(bet.profit);
-      return Number.isFinite(profit) ? profit : 0;
+      // FIX: Safely handle potentially undefined profit for cashed out bets.
+      return bet.profit ?? 0;
   }
 
   // For other statuses, validate stake and odds before calculating.

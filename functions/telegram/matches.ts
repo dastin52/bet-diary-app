@@ -84,7 +84,9 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
 
     } catch (error) {
         console.error("Error in showMatchesList:", error); // Log the detailed error
-        const userFriendlyError = error instanceof Error && error.message.includes("Ошибка API")
+        
+        // Updated condition to catch both HTTP errors and logical API errors from the body
+        const userFriendlyError = error instanceof Error && (error.message.includes("Ошибка API") || error.message.includes("Ошибка от API спорта"))
             ? `🚫 Ошибка при обращении к API матчей. Пожалуйста, проверьте API-ключ и настройки.\n\nДетали: \`${error.message}\``
             : `🚫 Произошла ошибка при загрузке матчей. Попробуйте позже.`;
 
