@@ -72,7 +72,8 @@ export const useCompetitionData = (): UseCompetitionDataReturn => {
         const periodStartDate = currentPeriod === 'all_time' ? null : getPeriodStart(currentPeriod);
 
         const participantRawData = allUsers.map(user => {
-            const userBets = allUserBets.get(user.email) || [];
+            // Sanitize bets array to prevent crashes on corrupted data
+            const userBets = (allUserBets.get(user.email) || []).filter(b => b && typeof b === 'object');
             
             const periodBets = periodStartDate
                 ? userBets.filter(b => new Date(b.createdAt) >= periodStartDate)

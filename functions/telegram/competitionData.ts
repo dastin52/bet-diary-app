@@ -4,11 +4,14 @@ import { getPeriodStart } from '../utils/dateHelpers';
 import { calculateAchievements } from '../utils/achievements';
 
 function calculateParticipantStats(user: User, bets: Bet[], period: 'week' | 'month' | 'year' | 'all_time') {
+    // Sanitize the input array to prevent crashes on corrupted data (e.g., null entries)
+    const validBets = bets.filter(b => b && typeof b === 'object');
+
     const periodStartDate = period === 'all_time' ? null : getPeriodStart(period);
 
     const periodBets = periodStartDate
-        ? bets.filter(b => new Date(b.createdAt) >= periodStartDate)
-        : bets;
+        ? validBets.filter(b => new Date(b.createdAt) >= periodStartDate)
+        : validBets;
 
     const settledBets = periodBets.filter(b => b.status !== BetStatus.Pending && b.status !== BetStatus.Void);
     const totalStaked = settledBets.reduce((acc, bet) => acc + (Number.isFinite(bet.stake) ? bet.stake : 0), 0);
