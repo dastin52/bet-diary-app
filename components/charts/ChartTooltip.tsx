@@ -12,7 +12,6 @@ export const LineChartTooltip: React.FC<TooltipProps> = ({ active, payload, labe
       return (
         <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700 rounded-md text-sm shadow-lg">
           <p className="label text-gray-600 dark:text-gray-300">{`Дата : ${label}`}</p>
-          {/* FIX: Add currency symbol for clarity. */}
           <p className="intro text-indigo-600 dark:text-indigo-400">{`Баланс : ${payload[0].value.toFixed(2)} ₽`}</p>
         </div>
       );

@@ -270,7 +270,6 @@ export const useBets = (userKey: string): UseBetsReturn => {
             id: new Date().toISOString() + Math.random(),
             createdAt: new Date().toISOString(),
             currentValue: 0,
-            // FIX: Use GoalStatus enum instead of a magic string.
             status: GoalStatus.InProgress,
         };
         setGoals(prev => [newGoal, ...prev]);

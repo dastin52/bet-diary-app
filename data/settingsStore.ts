@@ -1,6 +1,5 @@
 import { UserSettings } from '../types';
 
-// FIX: Complete the defaultSettings object to match the UserSettings type.
 export const defaultSettings: UserSettings = {
   notifications: {
     betReminders: true,
@@ -12,7 +11,6 @@ export const defaultSettings: UserSettings = {
 
 const getSettingsKey = (userKey: string) => `betDiarySettings_${userKey}`;
 
-// FIX: Add loadSettings function.
 export const loadSettings = (userKey: string): UserSettings => {
   if (userKey === 'demo_user') {
     return { ...defaultSettings };
@@ -35,7 +33,6 @@ export const loadSettings = (userKey: string): UserSettings => {
   }
 };
 
-// FIX: Add saveSettings function.
 export const saveSettings = (userKey: string, settings: UserSettings): void => {
   if (userKey === 'demo_user') return;
   try {
