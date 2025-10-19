@@ -69,7 +69,7 @@ const calculateParticipantStats = (user: User, bets: Bet[], period: 'week' | 'mo
         : bets;
 
     const settledBets = periodBets.filter(b => b.status !== BetStatus.Pending && b.status !== BetStatus.Void);
-    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
+    const totalStaked = settledBets.reduce((acc, bet) => acc + (bet.stake || 0), 0);
     const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
     const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
     

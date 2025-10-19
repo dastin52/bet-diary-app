@@ -84,6 +84,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // FIX: The `reduce` accumulator was not correctly typed, leading to `unknown` values. Typing the accumulator parameter `acc` resolves this.
+    // FIX: Explicitly type accumulator to fix arithmetic operation error
     const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -94,6 +95,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .slice(0, 10);
 
     // FIX: The `reduce` accumulator was not correctly typed, leading to `unknown` values. Typing the accumulator parameter `acc` resolves this.
+    // FIX: Explicitly type accumulator to fix arithmetic operation error
     const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
