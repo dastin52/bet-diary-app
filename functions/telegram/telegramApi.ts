@@ -48,13 +48,24 @@ export async function sendMessage(chatId: number, text: string, env: Env, reply_
 }
 
 export async function editMessageText(chatId: number, messageId: number, text: string, env: Env, reply_markup?: object) {
-    return apiRequest('editMessageText', env.TELEGRAM_BOT_TOKEN, {
-        chat_id: chatId,
-        message_id: messageId,
-        text,
-        parse_mode: 'Markdown',
-        reply_markup,
-    });
+    try {
+        return await apiRequest('editMessageText', env.TELEGRAM_BOT_TOKEN, {
+            chat_id: chatId,
+            message_id: messageId,
+            text,
+            parse_mode: 'Markdown',
+            reply_markup,
+        });
+    } catch (error) {
+        // If Telegram says the message is not modified, it's not a real error for us.
+        // We can safely ignore it, as the UI is already in the desired state.
+        if (error instanceof Error && error.message.includes('message is not modified')) {
+            console.log('Ignoring "message is not modified" error.');
+            return { ok: true, result: null }; // Return a success-like object to prevent calling code from failing.
+        }
+        // For any other error, re-throw it to be handled by the global error handler.
+        throw error;
+    }
 }
 
 export async function deleteMessage(chatId: number, messageId: number, env: Env) {
