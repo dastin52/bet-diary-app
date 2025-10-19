@@ -83,8 +83,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Add type for accumulator to resolve arithmetic operation error.
-    // By casting the initial value `{}`, we ensure TypeScript correctly infers the return type of `reduce`.
+    // FIX: Explicitly type the initial value of reduce to ensure TypeScript correctly infers the accumulator's type. This resolves errors related to arithmetic operations on unknown types.
     const popularSportsCounts = settledBets.reduce((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -94,8 +93,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Add type for accumulator to resolve arithmetic operation error.
-    // By casting the initial value `{}`, we ensure TypeScript correctly infers the return type of `reduce`.
+    // FIX: Explicitly type the initial value of reduce to ensure TypeScript correctly infers the accumulator's type. This resolves errors related to arithmetic operations on unknown types.
     const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
