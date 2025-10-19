@@ -3,16 +3,25 @@ import { generateEventString } from './utils/betUtils';
 
 // A local, simplified version for pre-calculating demo profits.
 const calculateProfit = (bet: { status: BetStatus, stake: number, odds: number, profit?: number }): number => {
+    const stake = Number(bet.stake);
+    const odds = Number(bet.odds);
+
+    if (bet.status === BetStatus.CashedOut) {
+        const profit = Number(bet.profit);
+        return Number.isFinite(profit) ? profit : 0;
+    }
+
+    if (!Number.isFinite(stake) || stake <= 0 || !Number.isFinite(odds) || odds <= 1) {
+        return 0;
+    }
+
     switch (bet.status) {
       case BetStatus.Won:
-        return bet.stake * (bet.odds - 1);
+        return stake * (odds - 1);
       case BetStatus.Lost:
-        return -bet.stake;
+        return -stake;
       case BetStatus.Void:
       case BetStatus.Pending:
-        return 0;
-      case BetStatus.CashedOut:
-        return bet.profit ?? 0;
       default:
         return 0;
     }

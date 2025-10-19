@@ -2,16 +2,28 @@
 import { Bet, BetLeg, BetStatus, BetType } from '../telegram/types';
 
 export const calculateProfit = (bet: Omit<Bet, 'id' | 'createdAt' | 'event'>): number => {
+  const stake = Number(bet.stake);
+  const odds = Number(bet.odds);
+
+  // For cashed out, profit is manually entered. Trust it if it's a valid number.
+  if (bet.status === BetStatus.CashedOut) {
+      const profit = Number(bet.profit);
+      return Number.isFinite(profit) ? profit : 0;
+  }
+
+  // For other statuses, validate stake and odds before calculating.
+  if (!Number.isFinite(stake) || stake <= 0 || !Number.isFinite(odds) || odds <= 1) {
+    return 0;
+  }
+
   switch (bet.status) {
     case BetStatus.Won:
-      return bet.stake * (bet.odds - 1);
+      return stake * (odds - 1);
     case BetStatus.Lost:
-      return -bet.stake;
+      return -stake;
     case BetStatus.Void:
-      return 0;
-    case BetStatus.CashedOut:
-      return bet.profit ?? 0;
-    default: // Pending
+    case BetStatus.Pending:
+    default:
       return 0;
   }
 };
