@@ -11,16 +11,15 @@ function calculateParticipantStats(user: User, bets: Bet[], period: 'week' | 'mo
         : bets;
 
     const settledBets = periodBets.filter(b => b.status !== BetStatus.Pending && b.status !== BetStatus.Void);
-    const totalStaked = settledBets.reduce((acc, bet) => acc + (bet.stake || 0), 0);
-    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
+    const totalStaked = settledBets.reduce((acc, bet) => acc + (Number.isFinite(bet.stake) ? bet.stake : 0), 0);
+    const totalProfit = settledBets.reduce((acc, bet) => acc + (Number.isFinite(bet.profit) ? bet.profit : 0), 0);
     const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
     
     const wins = settledBets.filter(b => b.status === BetStatus.Won);
     const losses = settledBets.filter(b => b.status === BetStatus.Lost);
     
-    // FIX: Replaced Math.max(...array) with reduce to prevent "Maximum call stack size exceeded" error on large arrays.
-    const biggestWin = wins.reduce((max, bet) => Math.max(max, bet.profit ?? 0), 0);
-    const biggestLoss = losses.reduce((min, bet) => Math.min(min, bet.profit ?? 0), 0);
+    const biggestWin = wins.reduce((max, bet) => Math.max(max, (Number.isFinite(bet.profit) ? bet.profit : 0)), 0);
+    const biggestLoss = losses.reduce((min, bet) => Math.min(min, (Number.isFinite(bet.profit) ? bet.profit : 0)), 0);
     
     return {
         user: { nickname: user.nickname, email: user.email },
