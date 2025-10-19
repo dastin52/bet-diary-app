@@ -1,6 +1,8 @@
 
 
 
+
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -86,8 +88,6 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: The `reduce` accumulator was not correctly typed, leading to `unknown` values. Typing the accumulator parameter `acc` resolves this.
-    // FIX: Explicitly type accumulator to fix arithmetic operation error
     // FIX: Explicitly type the accumulator in the `reduce` function to resolve arithmetic operation errors on an unknown type.
     const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
@@ -98,9 +98,6 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: The `reduce` accumulator was not correctly typed, leading to `unknown` values. Typing the accumulator parameter `acc` resolves this.
-    // FIX: Explicitly type accumulator to fix arithmetic operation error
-    // FIX: Explicitly type the accumulator in the `reduce` function for `popularBookmakersCounts` to `Record<string, number>` to resolve arithmetic operation errors on an unknown type.
     // FIX: Explicitly type the accumulator in the `reduce` function to resolve arithmetic operation errors on an unknown type.
     const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;

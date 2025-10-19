@@ -12,7 +12,6 @@ export async function getTodaysHockeyGames(env: Env): Promise<HockeyGame[]> {
     const cacheKey = `cache:hockey:games:${today}`;
 
     // 1. Try to get from cache first
-    // FIX: The local KVNamespace type is not generic. Removed type argument and added a type cast. Changed 'json' to { type: 'json' } for consistency.
     const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' }) as HockeyGame[] | null;
     if (cachedData) {
         console.log(`[Cache HIT] Serving hockey games for ${today} from cache.`);
@@ -28,7 +27,7 @@ export async function getTodaysHockeyGames(env: Env): Promise<HockeyGame[]> {
     
     const response = await fetch(`${API_HOST}/games?date=${today}`, {
         headers: {
-            'x-rapidapi-key': env.SPORT_API_KEY,
+            'x-apisports-key': env.SPORT_API_KEY,
         },
     });
 
