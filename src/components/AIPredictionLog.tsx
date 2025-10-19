@@ -22,15 +22,13 @@ const AIPredictionLog: React.FC = () => {
         const total = settled.length;
         const accuracy = total > 0 ? (correct / total) * 100 : 0;
         
-        const bySport = aiPredictions.reduce<Record<string, { correct: number; total: number }>>((acc, p) => {
+        const bySport = settled.reduce<Record<string, { correct: number; total: number }>>((acc, p) => {
             if (!acc[p.sport]) {
                 acc[p.sport] = { correct: 0, total: 0 };
             }
-            if (p.status !== AIPredictionStatus.Pending) {
-                acc[p.sport].total++;
-                if (p.status === AIPredictionStatus.Correct) {
-                    acc[p.sport].correct++;
-                }
+            acc[p.sport].total++;
+            if (p.status === AIPredictionStatus.Correct) {
+                acc[p.sport].correct++;
             }
             return acc;
         }, {});
