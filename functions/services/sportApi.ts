@@ -10,7 +10,63 @@ const SPORT_API_CONFIG: SportApiConfig = {
 };
 
 /**
+ * Generates mock sports games for a given sport.
+ * This is used as a fallback when the SPORT_API_KEY is not available.
+ * @param sport - The key for the sport (e.g., 'hockey').
+ * @returns An array of mock SportGame objects.
+ */
+function generateMockGames(sport: string): SportGame[] {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    
+    // Helper to create a game object, simplifying mock data creation.
+    const baseGame = (id: number, home: string, away: string, league: string, time: string, status: { long: string, short: string }): SportGame => {
+        // Create a date object for today with the specified time in UTC.
+        const gameDate = new Date(`${todayStr}T${time}:00Z`);
+        const timestamp = Math.floor(gameDate.getTime() / 1000);
+
+        return {
+            id: id,
+            date: gameDate.toISOString(),
+            time: time, // Deprecated, but keeping for compatibility if used elsewhere
+            timestamp: timestamp,
+            timezone: 'UTC',
+            status: status,
+            league: { id: id * 10, name: league, country: 'World', logo: '', season: new Date().getFullYear() },
+            teams: {
+                home: { id: id * 100 + 1, name: home, logo: '' },
+                away: { id: id * 100 + 2, name: away, logo: '' },
+            },
+        };
+    };
+
+    switch (sport) {
+        case 'hockey':
+            return [
+                baseGame(101, 'CSKA Moscow', 'SKA St. Petersburg', 'KHL', '16:30', { long: 'Not Started', short: 'NS' }),
+                baseGame(102, 'Toronto Maple Leafs', 'Boston Bruins', 'NHL', '23:00', { long: 'Not Started', short: 'NS' }),
+                baseGame(103, 'Dynamo Moscow', 'Ak Bars Kazan', 'KHL', '13:00', { long: 'Finished', short: 'FT' }),
+            ];
+        case 'football':
+            return [
+                baseGame(201, 'Real Madrid', 'FC Barcelona', 'La Liga', '19:00', { long: 'Not Started', short: 'NS' }),
+                baseGame(202, 'Manchester City', 'Liverpool', 'Premier League', '15:30', { long: 'Not Started', short: 'NS' }),
+                baseGame(203, 'Bayern Munich', 'Dortmund', 'Bundesliga', '16:00', { long: 'First Half', short: '1H' }),
+            ];
+        case 'basketball':
+             return [
+                baseGame(301, 'Los Angeles Lakers', 'Boston Celtics', 'NBA', '01:30', { long: 'Not Started', short: 'NS' }),
+                baseGame(302, 'Golden State Warriors', 'Phoenix Suns', 'NBA', '03:00', { long: 'Not Started', short: 'NS' }),
+             ];
+        default:
+            return [];
+    }
+}
+
+
+/**
  * Fetches today's games for a given sport, utilizing a cache to minimize API calls.
+ * If the SPORT_API_KEY is not available, it gracefully falls back to generating mock data.
  */
 export async function getTodaysGamesBySport(sport: string, env: Env): Promise<SportGame[]> {
     const today = new Date().toISOString().split('T')[0];
@@ -23,16 +79,20 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         return cachedData;
     }
 
+    // 2. If API key is missing, use mock data. This is for environments without the key.
+    if (!env.SPORT_API_KEY) {
+        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
+        const mockGames = generateMockGames(sport);
+        await env.BOT_STATE.put(cacheKey, JSON.stringify(mockGames), { expirationTtl: CACHE_TTL_SECONDS });
+        console.log(`[Cache WRITE] Stored ${mockGames.length} mock ${sport} games for ${today}.`);
+        return mockGames;
+    }
+
+    // 3. If key exists, fetch from the real API
     console.log(`[Cache MISS] Fetching ${sport} games for ${today} from API.`);
-    
-    // 2. If not in cache, fetch from API
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
         throw new Error(`Конфигурация для спорта "${sport}" не найдена.`);
-    }
-    if (!env.SPORT_API_KEY) {
-        console.error("SPORT_API_KEY is not configured.");
-        throw new Error("API для спорта не настроена на сервере.");
     }
     
     const url = `${config.host}/${config.path}?date=${today}`;
@@ -60,7 +120,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
 
     const games = data.response || [];
 
-    // 3. Store the result in cache with a TTL
+    // 4. Store the real result in cache with a TTL
     if (games.length > 0) {
         await env.BOT_STATE.put(cacheKey, JSON.stringify(games), { expirationTtl: CACHE_TTL_SECONDS });
         console.log(`[Cache WRITE] Stored ${games.length} ${sport} games for ${today}.`);
