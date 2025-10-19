@@ -27,7 +27,7 @@ export async function getTodaysHockeyGames(env: Env): Promise<HockeyGame[]> {
     
     const response = await fetch(`${API_HOST}/games?date=${today}`, {
         headers: {
-            'x-apisports-key': env.SPORT_API_KEY,
+            'x-rapidapi-key': env.SPORT_API_KEY,
         },
     });
 
