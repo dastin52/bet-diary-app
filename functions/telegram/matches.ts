@@ -101,13 +101,19 @@ Example response format:
             },
         });
 
-        // More robust cleanup: remove markdown fences and then trim.
-        const jsonText = response.text
-            .trim()
-            .replace(/^```json\s*/, '')
-            .replace(/```\s*$/, '');
-            
-        const translationMap = JSON.parse(jsonText);
+        // Robust JSON extraction: Find the first '{' and the last '}' to isolate the JSON object.
+        const text = response.text;
+        const jsonStart = text.indexOf('{');
+        const jsonEnd = text.lastIndexOf('}');
+
+        if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+            console.warn("AI response did not contain a valid JSON object for translation. Response text:", text);
+            // Fallback to empty map to avoid crashing the app. Original names will be used.
+            return {};
+        }
+
+        const jsonString = text.substring(jsonStart, jsonEnd + 1);
+        const translationMap = JSON.parse(jsonString);
         return translationMap;
 
     } catch (error) {
