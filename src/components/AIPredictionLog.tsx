@@ -22,7 +22,7 @@ const AIPredictionLog: React.FC = () => {
         const total = settled.length;
         const accuracy = total > 0 ? (correct / total) * 100 : 0;
         
-        const bySport = settled.reduce((acc, p) => {
+        const bySport = settled.reduce<Record<string, { correct: number; total: number }>>((acc, p) => {
             if (!acc[p.sport]) {
                 acc[p.sport] = { correct: 0, total: 0 };
             }
@@ -31,7 +31,7 @@ const AIPredictionLog: React.FC = () => {
                 acc[p.sport].correct++;
             }
             return acc;
-        }, {} as Record<string, { correct: number; total: number }>);
+        }, {});
         
         const accuracyBySport = Object.entries(bySport)
             .map(([sport, data]) => ({

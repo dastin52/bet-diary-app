@@ -26,8 +26,10 @@ export async function getTodaysHockeyGames(env: Env): Promise<HockeyGame[]> {
     }
     
     const response = await fetch(`${API_HOST}/games?date=${today}`, {
+        method: 'GET',
         headers: {
-            'x-apisports-key': env.SPORT_API_KEY,
+            // This is the correct header based on the API provider's own "Live Demo" tool.
+            'x-rapidapi-key': env.SPORT_API_KEY,
         },
     });
 
@@ -42,9 +44,10 @@ export async function getTodaysHockeyGames(env: Env): Promise<HockeyGame[]> {
     const games = data.response || [];
 
     // 3. Store the result in cache with a TTL
-    await env.BOT_STATE.put(cacheKey, JSON.stringify(games), { expirationTtl: CACHE_TTL_SECONDS });
-    
-    console.log(`[Cache WRITE] Stored ${games.length} hockey games for ${today}.`);
+    if (games.length > 0) {
+        await env.BOT_STATE.put(cacheKey, JSON.stringify(games), { expirationTtl: CACHE_TTL_SECONDS });
+        console.log(`[Cache WRITE] Stored ${games.length} hockey games for ${today}.`);
+    }
 
     return games;
 }

@@ -35,11 +35,13 @@ export async function handleMatchesCallback(update: TelegramUpdate, state: UserS
 }
 
 async function showMatchesList(chatId: number, messageId: number | null, env: Env, page: number) {
+    let loadingMessageId = messageId;
     try {
-        if (messageId) {
-             await editMessageText(chatId, messageId, "🏒 Загружаю актуальные матчи...", env);
+        if (loadingMessageId) {
+             await editMessageText(chatId, loadingMessageId, "🏒 Загружаю актуальные матчи...", env);
         } else {
-             await sendMessage(chatId, "🏒 Загружаю актуальные матчи...", env);
+             const sentMessage = await sendMessage(chatId, "🏒 Загружаю актуальные матчи...", env);
+             loadingMessageId = sentMessage.result.message_id;
         }
 
         const games = await getTodaysHockeyGames(env);
@@ -47,7 +49,7 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
         if (games.length === 0) {
             const text = "На сегодня хоккейных матчей не найдено.";
             const keyboard = makeKeyboard([[{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]]);
-            if (messageId) await editMessageText(chatId, messageId, text, env, keyboard);
+            if (loadingMessageId) await editMessageText(chatId, loadingMessageId, text, env, keyboard);
             else await sendMessage(chatId, text, env, keyboard);
             return;
         }
@@ -78,12 +80,7 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
             ]
         ]);
 
-        if (messageId) {
-            await editMessageText(chatId, messageId, text, env, keyboard);
-        } else {
-            // This case should be rare, as we send a loading message first
-            await sendMessage(chatId, text, env, keyboard);
-        }
+        await editMessageText(chatId, loadingMessageId, text, env, keyboard);
 
     } catch (error) {
         console.error("Error in showMatchesList:", error); // Log the detailed error
@@ -92,7 +89,7 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
             : `🚫 Произошла ошибка при загрузке матчей. Попробуйте позже.`;
 
         const keyboard = makeKeyboard([[{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]]);
-        if (messageId) await editMessageText(chatId, messageId, userFriendlyError, env, keyboard);
+        if (loadingMessageId) await editMessageText(chatId, loadingMessageId, userFriendlyError, env, keyboard);
         else await sendMessage(chatId, userFriendlyError, env, keyboard);
     }
 }
