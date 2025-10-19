@@ -9,6 +9,7 @@ import { startManageGoals } from './goals';
 import { calculateAnalytics, formatShortReportText, formatDetailedReportText, generateAnalyticsHtml, AnalyticsPeriod } from './analytics';
 import { startAddBetDialog, startAiChatDialog } from './dialogs';
 import { CB, STATS_PREFIX } from './router';
+import { handleMatchesCommand } from './matches';
 
 
 export async function showLinkAccountInfo(chatId: number, messageId: number, env: Env) {
@@ -175,4 +176,13 @@ export async function handleAiChat(update: TelegramUpdate, state: UserState, env
     const messageId = update.callback_query ? update.callback_query.message.message_id : null;
     const chatId = messageId ? update.callback_query!.message.chat.id : update.message!.chat.id;
     await startAiChatDialog(chatId, state, env, messageId);
+}
+
+export async function handleMatches(update: TelegramUpdate, state: UserState, env: Env) {
+    if (!state.user) {
+        const chatId = update.message?.chat.id || update.callback_query?.message.chat.id;
+        if (chatId) await sendMessage(chatId, "Пожалуйста, войдите или зарегистрируйтесь.", env);
+        return;
+    }
+    await handleMatchesCommand(update, state, env);
 }

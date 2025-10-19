@@ -4,9 +4,10 @@ import { handleGoalCallback, GOAL_PREFIX } from './goals';
 import { handleCompetitionCallback, COMP_PREFIX } from './competition';
 import { manageBets, MANAGE_PREFIX } from './manageBets';
 import { showMainMenu } from './ui';
-import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu } from './commands';
+import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu, handleMatches } from './commands';
 import { answerCallbackQuery } from './telegramApi';
 import { startAddBetDialog, startScreenshotDialog, startBotRegisterDialog, startBotLoginDialog } from './dialogs';
+import { handleMatchesCallback, MATCH_PREFIX } from './matches';
 
 export const STATS_PREFIX = 'stats|';
 
@@ -27,6 +28,7 @@ export const CB = {
     COMPETITIONS: 'competitions',
     GOALS: 'goals',
     MANAGE_BETS: 'manage_bets',
+    MATCHES: 'matches',
     AI_CHAT: 'ai_chat',
     
     // stats menu is handled by STATS_PREFIX now
@@ -65,6 +67,10 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
         await handleCompetitionCallback(update, state, env);
         return;
     }
+    if (cb.data.startsWith(MATCH_PREFIX)) {
+        await handleMatchesCallback(update, state, env);
+        return;
+    }
 
     switch (cb.data) {
         // Main menu routing
@@ -88,6 +94,9 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             break;
         case CB.AI_CHAT:
             await handleAiChat(update, state, env);
+            break;
+        case CB.MATCHES:
+            await handleMatches(update, state, env);
             break;
         
         // New start menu routes

@@ -19,6 +19,9 @@ export async function showMainMenu(chatId: number, messageId: number | null, env
         ],
         [
             { text: '📈 Управление ставками', callback_data: CB.MANAGE_BETS },
+            { text: '🏒 Актуальные матчи', callback_data: CB.MATCHES }
+        ],
+        [
             { text: '🤖 AI-Аналитик', callback_data: CB.AI_CHAT }
         ]
     ]);

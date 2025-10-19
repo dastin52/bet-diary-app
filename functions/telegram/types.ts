@@ -196,6 +196,7 @@ export interface UserState {
 export interface Env {
     TELEGRAM_BOT_TOKEN: string;
     GEMINI_API_KEY: string;
+    SPORT_API_KEY: string;
     BOT_STATE: KVNamespace;
 }
 
@@ -261,4 +262,16 @@ export interface CompetitionParticipant {
         email: string;
     };
     stats: ParticipantStats;
+}
+
+// --- Hockey API Types ---
+export interface HockeyGame {
+    id: number;
+    league: { name: string; };
+    teams: { home: { name: string; }; away: { name: string; }; };
+    date: string; // ISO 8601 string
+}
+
+export interface HockeyApiResponse {
+    response: HockeyGame[];
 }
