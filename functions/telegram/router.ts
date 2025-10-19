@@ -4,7 +4,7 @@ import { handleGoalCallback, GOAL_PREFIX } from './goals';
 import { handleCompetitionCallback, COMP_PREFIX } from './competition';
 import { manageBets, MANAGE_PREFIX } from './manageBets';
 import { showMainMenu } from './ui';
-import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat } from './commands';
+import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu } from './commands';
 import { answerCallbackQuery } from './telegramApi';
 import { startAddBetDialog, startScreenshotDialog } from './dialogs';
 
@@ -17,6 +17,7 @@ export const CB = {
     START_REGISTER: 'start_register',
     START_LOGIN: 'start_login',
     SHOW_LINK_INFO: 'show_link_info',
+    START_MENU_BACK: 'start_menu_back',
 
     // main menu
     SHOW_STATS: buildStatsCb('show', 'week'),
@@ -88,9 +89,16 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             break;
         
         // Other routes
+        case CB.START_REGISTER:
+        case CB.START_LOGIN:
         case CB.SHOW_LINK_INFO:
             await showLinkAccountInfo(chatId, messageId, env);
             break;
+        
+        case CB.START_MENU_BACK:
+            await showStartMenu(chatId, env, messageId);
+            break;
+
         case CB.BACK_TO_MAIN:
             await showMainMenu(chatId, messageId, env, 'Главное меню');
             break;

@@ -12,24 +12,25 @@ import { CB, STATS_PREFIX } from './router';
 
 
 export async function showLinkAccountInfo(chatId: number, messageId: number, env: Env) {
-    const text = `*🔗 Привязка аккаунта*
+    const text = `*🔗 Регистрация и Привязка*
 
-Чтобы привязать существующий аккаунт из веб-приложения, выполните следующие шаги:
+Чтобы начать, вам нужно создать аккаунт в нашем веб-приложении, а затем привязать его к боту.
 
+*Шаги:*
 1. Откройте веб-приложение BetDiary.
-2. Перейдите в 'Настройки' 
-3. Нажмите 'Интеграция с Telegram' -> 'Сгенерировать код'.
-4. Отправьте полученный 6-значный код мне в чат.
+2. Нажмите *"Начать вести свой дневник"* и зарегистрируйтесь (или войдите, если у вас уже есть аккаунт).
+3. После входа, перейдите в *'Настройки'*.
+4. Нажмите *'Интеграция с Telegram'* -> *'Сгенерировать код'*.
+5. Отправьте полученный 6-значный код мне в этот чат.
 
-Код действителен 5 минут.`;
+Код действителен 5 минут. Это свяжет ваш аккаунт с ботом.`;
     const keyboard = makeKeyboard([
-        [{ text: '◀️ Назад', callback_data: 'start_menu_back' }] // Note: This needs a handler or to be handled by start command again
+        [{ text: '◀️ Назад', callback_data: CB.START_MENU_BACK }]
     ]);
-    // For simplicity, we just edit the message. Going back will be handled by sending /start
-    await editMessageText(chatId, messageId, text, env);
+    await editMessageText(chatId, messageId, text, env, keyboard);
 }
 
-async function showStartMenu(chatId: number, env: Env) {
+export async function showStartMenu(chatId: number, env: Env, messageIdToEdit?: number) {
     const text = "👋 Добро пожаловать в BetDiary Bot! \n\nВыберите действие, чтобы начать.";
     const keyboard = makeKeyboard([
         [
@@ -40,7 +41,11 @@ async function showStartMenu(chatId: number, env: Env) {
             { text: '🔗 Привязать аккаунт', callback_data: CB.SHOW_LINK_INFO }
         ]
     ]);
-    await sendMessage(chatId, text, env, keyboard);
+    if (messageIdToEdit) {
+        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
+    } else {
+        await sendMessage(chatId, text, env, keyboard);
+    }
 }
 
 
