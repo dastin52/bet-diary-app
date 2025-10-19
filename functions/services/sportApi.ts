@@ -27,16 +27,15 @@ export async function getTodaysHockeyGames(env: Env): Promise<HockeyGame[]> {
     
     const response = await fetch(`${API_HOST}/games?date=${today}`, {
         headers: {
-            'x-rapidapi-key': env.SPORT_API_KEY,
-            'x-rapidapi-host': 'v1.hockey.api-sports.io',
+            'x-apisports-key': env.SPORT_API_KEY,
         },
     });
 
     if (!response.ok) {
-        console.error(`Sports API error: ${response.status} ${response.statusText}`);
         const errorBody = await response.text();
-        console.error('Error Body:', errorBody);
-        throw new Error('Не удалось получить данные о матчах от провайдера.');
+        console.error(`Sports API error: ${response.status} ${response.statusText}. Body: ${errorBody}`);
+        // Pass a more specific error back to the user-facing function
+        throw new Error(`Ошибка API (${response.status}): ${errorBody}`);
     }
 
     const data: HockeyApiResponse = await response.json();

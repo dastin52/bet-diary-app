@@ -86,9 +86,13 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
         }
 
     } catch (error) {
-        const text = `🚫 Произошла ошибка при загрузке матчей. Попробуйте позже.`;
+        console.error("Error in showMatchesList:", error); // Log the detailed error
+        const userFriendlyError = error instanceof Error && error.message.includes("Ошибка API")
+            ? `🚫 Ошибка при обращении к API матчей. Пожалуйста, проверьте API-ключ и настройки.\n\nДетали: \`${error.message}\``
+            : `🚫 Произошла ошибка при загрузке матчей. Попробуйте позже.`;
+
         const keyboard = makeKeyboard([[{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]]);
-        if (messageId) await editMessageText(chatId, messageId, text, env, keyboard);
-        else await sendMessage(chatId, text, env, keyboard);
+        if (messageId) await editMessageText(chatId, messageId, userFriendlyError, env, keyboard);
+        else await sendMessage(chatId, userFriendlyError, env, keyboard);
     }
 }
