@@ -4,6 +4,7 @@ import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
 import { getTodaysGamesBySport } from '../services/sportApi';
+import { GoogleGenAI } from "@google/genai";
 
 export const MATCH_PREFIX = 'match|';
 export const MATCH_SPORT_PREFIX = 'match_sport|';
@@ -66,6 +67,51 @@ const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
     }
 };
 
+/**
+ * Translates a list of team names to Russian using the Gemini API.
+ * @param teamNames - An array of unique team names.
+ * @param env - The environment object with API keys.
+ * @returns A promise that resolves to a record mapping original names to translated names.
+ */
+async function translateTeamNames(teamNames: string[], env: Env): Promise<Record<string, string>> {
+    if (teamNames.length === 0) {
+        return {};
+    }
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+
+        const prompt = `Translate the following list of sports team names into Russian. Provide the response as a single JSON object where keys are the original English names and values are their Russian translations. If a name is already in Russian or doesn't have a common Russian equivalent, use the original name as the value.
+
+Team names:
+${teamNames.join('\n')}
+
+Example response format:
+{
+  "Manchester United": "Манчестер Юнайтед",
+  "Real Madrid": "Реал Мадрид",
+  "CSKA": "ЦСКА"
+}`;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                responseMimeType: "application/json",
+            },
+        });
+
+        const jsonText = response.text.trim();
+        const translationMap = JSON.parse(jsonText);
+        return translationMap;
+
+    } catch (error) {
+        console.error("Error translating team names with Gemini:", error);
+        // On error, return an empty map to fall back to original names.
+        return {};
+    }
+}
+
 
 export async function handleMatchesCommand(update: TelegramUpdate, state: UserState, env: Env) {
     const message = update.message || update.callback_query?.message;
@@ -127,6 +173,10 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
             return;
         }
 
+        // Translate team names
+        const uniqueTeamNames = Array.from(new Set(games.flatMap(game => [game.teams.home.name, game.teams.away.name])));
+        const translationMap = await translateTeamNames(uniqueTeamNames, env);
+
         // Group games by league
         const gamesByLeague = games.reduce((acc, game) => {
             const leagueName = game.league.name || 'Неизвестная лига';
@@ -152,7 +202,9 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
             gamesByLeague[leagueName].forEach(game => {
                 const gameTime = new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
                 const statusEmoji = getMatchStatusEmoji(game.status);
-                text += `${statusEmoji} *${gameTime}* - ${game.teams.home.name} vs ${game.teams.away.name}\n`;
+                const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
+                const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
+                text += `${statusEmoji} *${gameTime}* - ${homeTeam} vs ${awayTeam}\n`;
             });
             text += '\n';
         });

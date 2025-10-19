@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -87,7 +88,8 @@ export const useAdminData = (): UseAdminDataReturn => {
             return user;
         });
         
-        setUsers(finalUsersWithTg.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
+        // FIX: Use Number() wrapper for explicit type coercion to prevent arithmetic operation errors on Date objects in strict mode.
+        setUsers(finalUsersWithTg.sort((a, b) => Number(new Date(b.registeredAt)) - Number(new Date(a.registeredAt))));
 
         // 4. Aggregate bets from all users that have data in localStorage
         // Note: We can't get bets for bot-only users on the client. This is a limitation.
@@ -147,7 +149,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         return acc;
     }, {});
     const popularSports = Object.entries(popularSportsCounts)
-        .map(([name, count]) => ({ name, count }))
+        // FIX: Explicitly cast `count` to number to resolve type inference issues.
+        .map(([name, count]) => ({ name, count: count as number }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
@@ -156,7 +159,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         return acc;
     }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
-        .map(([name, count]) => ({ name, count }))
+        // FIX: Explicitly cast `count` to number to resolve type inference issues.
+        .map(([name, count]) => ({ name, count: count as number }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     
