@@ -101,24 +101,41 @@ Example response format:
             },
         });
 
-        // Robust JSON extraction: Find the first '{' and the last '}' to isolate the JSON object.
-        const text = response.text;
+        // --- Start of new robust JSON parsing logic ---
+        let text = response.text.trim();
+
+        // Attempt to strip markdown code fences if they exist.
+        if (text.startsWith("```json")) {
+            text = text.slice(7, -3).trim();
+        } else if (text.startsWith("```")) {
+            text = text.slice(3, -3).trim();
+        }
+
+        // Find the JSON object within the (potentially cleaned) text.
         const jsonStart = text.indexOf('{');
         const jsonEnd = text.lastIndexOf('}');
 
-        if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
-            console.warn("AI response did not contain a valid JSON object for translation. Response text:", text);
-            // Fallback to empty map to avoid crashing the app. Original names will be used.
-            return {};
+        if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+            const jsonString = text.substring(jsonStart, jsonEnd + 1);
+            try {
+                // The crucial part: parse within a try-catch.
+                const translationMap = JSON.parse(jsonString);
+                return translationMap;
+            } catch (e) {
+                console.error("Failed to parse extracted JSON string from AI response:", e);
+                console.error("Extracted string was:", jsonString);
+                // Fallback to empty map to prevent a crash.
+                return {};
+            }
         }
-
-        const jsonString = text.substring(jsonStart, jsonEnd + 1);
-        const translationMap = JSON.parse(jsonString);
-        return translationMap;
+        
+        console.warn("Could not find a valid JSON object in AI response for translation. Response text:", response.text);
+        return {};
+        // --- End of new robust JSON parsing logic ---
 
     } catch (error) {
-        console.error("Error translating team names with Gemini:", error);
-        // On error, return an empty map to fall back to original names.
+        console.error("Error during Gemini API call for translation:", error);
+        // On any API error, return an empty map to fall back to original names.
         return {};
     }
 }
