@@ -22,7 +22,6 @@ const AIPredictionLog: React.FC = () => {
         const total = settled.length;
         const accuracy = total > 0 ? (correct / total) * 100 : 0;
         
-        // FIX: Provide explicit type for the reduce accumulator to fix type inference issues.
         const bySport = aiPredictions.reduce<Record<string, { correct: number; total: number }>>((acc, p) => {
             if (!acc[p.sport]) {
                 acc[p.sport] = { correct: 0, total: 0 };
