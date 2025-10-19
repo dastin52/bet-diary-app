@@ -101,6 +101,7 @@ Example response format:
             },
         });
 
+        // More robust cleanup: remove markdown fences and then trim.
         const jsonText = response.text
             .trim()
             .replace(/^```json\s*/, '')
