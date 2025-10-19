@@ -69,29 +69,23 @@ const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
 
 /**
  * Translates a list of team names to Russian using the Gemini API.
+ * This function is designed to be extremely robust and fall back gracefully.
  * @param teamNames - An array of unique team names.
  * @param env - The environment object with API keys.
  * @returns A promise that resolves to a record mapping original names to translated names.
  */
 async function translateTeamNames(teamNames: string[], env: Env): Promise<Record<string, string>> {
-    if (teamNames.length === 0) {
+    if (!teamNames || teamNames.length === 0) {
         return {};
     }
 
     try {
         const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-        const prompt = `Translate the following list of sports team names into Russian. Provide the response as a single JSON object where keys are the original English names and values are their Russian translations. If a name is already in Russian or doesn't have a common Russian equivalent, use the original name as the value.
-
-Team names:
-${teamNames.join('\n')}
-
-Example response format:
-{
-  "Manchester United": "Манчестер Юнайтед",
-  "Real Madrid": "Реал Мадрид",
-  "CSKA": "ЦСКА"
-}`;
+        const prompt = `Return a JSON object mapping these team names to Russian.
+Input:
+${teamNames.join(', ')}
+JSON output only.`;
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -100,43 +94,36 @@ Example response format:
                 responseMimeType: "application/json",
             },
         });
-
-        // --- Start of new robust JSON parsing logic ---
-        let text = response.text.trim();
-
-        // Attempt to strip markdown code fences if they exist.
-        if (text.startsWith("```json")) {
-            text = text.slice(7, -3).trim();
-        } else if (text.startsWith("```")) {
-            text = text.slice(3, -3).trim();
+        
+        if (!response || !response.text) {
+             console.warn("AI response or response.text is missing for translation.");
+             return {};
         }
 
-        // Find the JSON object within the (potentially cleaned) text.
-        const jsonStart = text.indexOf('{');
-        const jsonEnd = text.lastIndexOf('}');
+        let responseText = response.text;
 
-        if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-            const jsonString = text.substring(jsonStart, jsonEnd + 1);
-            try {
-                // The crucial part: parse within a try-catch.
-                const translationMap = JSON.parse(jsonString);
-                return translationMap;
-            } catch (e) {
-                console.error("Failed to parse extracted JSON string from AI response:", e);
-                console.error("Extracted string was:", jsonString);
-                // Fallback to empty map to prevent a crash.
-                return {};
+        // Clean up markdown just in case the model ignores the instruction
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch && jsonMatch[0]) {
+            responseText = jsonMatch[0];
+        }
+
+        // Final attempt to parse, wrapped in its own try-catch
+        try {
+            const parsed = JSON.parse(responseText);
+            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+                return parsed;
             }
+        } catch (e) {
+            console.error("Final JSON.parse failed for translation. Raw text:", responseText, "Error:", e);
+            return {}; // Fallback on parsing error
         }
         
-        console.warn("Could not find a valid JSON object in AI response for translation. Response text:", response.text);
-        return {};
-        // --- End of new robust JSON parsing logic ---
+        return {}; // Fallback if parsed data is not an object
 
     } catch (error) {
-        console.error("Error during Gemini API call for translation:", error);
-        // On any API error, return an empty map to fall back to original names.
-        return {};
+        console.error("Gemini API call for translation failed:", error);
+        return {}; // Fallback on API error
     }
 }
 
