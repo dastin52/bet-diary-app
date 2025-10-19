@@ -9,7 +9,7 @@ export const MANAGE_PREFIX = 'm|';
 const BETS_PER_PAGE = 5;
 
 // FIX: Define actions and callback builder locally as they are not exported from router.
-export const MANAGE_ACTIONS = {
+const MANAGE_ACTIONS = {
     LIST: 'list',
     VIEW: 'view',
     PROMPT_STATUS: 'p_status',
@@ -17,7 +17,8 @@ export const MANAGE_ACTIONS = {
     PROMPT_DELETE: 'p_del',
     CONFIRM_DELETE: 'c_del',
 };
-export const buildManageCb = (action: string, ...args: (string | number)[]): string => `${MANAGE_PREFIX}${action}|${args.join('|')}`;
+const buildManageCb = (action: string, ...args: (string | number)[]): string => `${MANAGE_PREFIX}${action}|${args.join('|')}`;
+
 
 function updateBetInState(state: UserState, betId: string, updates: Partial<Bet>): UserState {
     const newState = { ...state };
