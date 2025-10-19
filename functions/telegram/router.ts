@@ -6,7 +6,7 @@ import { manageBets, MANAGE_PREFIX } from './manageBets';
 import { showMainMenu } from './ui';
 import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu } from './commands';
 import { answerCallbackQuery } from './telegramApi';
-import { startAddBetDialog, startScreenshotDialog } from './dialogs';
+import { startAddBetDialog, startScreenshotDialog, startBotRegisterDialog, startBotLoginDialog } from './dialogs';
 
 export const STATS_PREFIX = 'stats|';
 
@@ -14,10 +14,12 @@ export const buildStatsCb = (action: string, period: string) => `${STATS_PREFIX}
 
 export const CB = {
     // start
-    START_REGISTER: 'start_register',
-    START_LOGIN: 'start_login',
+    START_REGISTER: 'start_register', // DEPRECATED, now points to link info
+    START_LOGIN: 'start_login',     // DEPRECATED, now points to link info
     SHOW_LINK_INFO: 'show_link_info',
     START_MENU_BACK: 'start_menu_back',
+    BOT_REGISTER: 'bot_register',
+    BOT_LOGIN: 'bot_login',
 
     // main menu
     SHOW_STATS: buildStatsCb('show', 'week'),
@@ -88,7 +90,15 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             await handleAiChat(update, state, env);
             break;
         
-        // Other routes
+        // New start menu routes
+        case CB.BOT_REGISTER:
+            await startBotRegisterDialog(chatId, state, env, messageId);
+            break;
+        case CB.BOT_LOGIN:
+            await startBotLoginDialog(chatId, state, env, messageId);
+            break;
+
+        // Old routes now point to the same link info page for clarity
         case CB.START_REGISTER:
         case CB.START_LOGIN:
         case CB.SHOW_LINK_INFO:

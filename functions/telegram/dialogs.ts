@@ -2,7 +2,7 @@
 import { TelegramUpdate, UserState, Env, BetLeg, BetType, BetStatus, BankTransactionType, TelegramMessage, AIParsedBetData, Bet } from './types';
 import { sendMessage, editMessageText, deleteMessage, getFile, downloadFile } from './telegramApi';
 import { makeKeyboard } from './ui';
-import { updateAndSyncState, setUserState } from './state';
+import { updateAndSyncState, setUserState, findUserByEmail, isNicknameTaken, createUser, mockHash } from './state';
 import { SPORTS, MARKETS_BY_SPORT, COMMON_ODDS, BOOKMAKERS } from '../constants';
 import { generateEventString, calculateProfit } from '../utils/betUtils';
 import { showMainMenu } from './ui';
@@ -14,26 +14,34 @@ import { CB } from './router';
 const ADD_BET_DIALOG = 'add_bet';
 const ADD_GOAL_DIALOG = 'add_goal';
 const AI_CHAT_DIALOG = 'ai_chat';
+const BOT_REGISTER_DIALOG = 'bot_register';
+const BOT_LOGIN_DIALOG = 'bot_login';
 
 // A helper to cancel any ongoing dialog
 async function cancelDialog(chatId: number, state: UserState, env: Env) {
     if (state.dialog && state.dialog.messageId) {
         try {
-            await deleteMessage(chatId, state.dialog.messageId, env);
-        } catch(e) { console.warn(`Could not delete dialog message on cancel: ${e}`); }
+            // Revert to start menu instead of deleting
+            await showMainMenu(chatId, state.dialog.messageId, env, "Действие отменено.");
+        } catch(e) { 
+            console.warn(`Could not edit dialog message on cancel: ${e}`);
+            await showMainMenu(chatId, null, env, "Действие отменено.");
+        }
     }
     const newState = { ...state, dialog: null };
     await setUserState(chatId, newState, env);
-    await showMainMenu(chatId, null, env, "Действие отменено.");
 }
 
 // --- MAIN DIALOG ROUTER ---
 export async function continueDialog(update: TelegramUpdate, state: UserState, env: Env) {
     if (!state.dialog) return;
 
+    const chatId = update.message?.chat.id || update.callback_query?.message.chat.id;
+    if (!chatId) return;
+
     // Handle button presses to cancel
     if (update.callback_query?.data === 'dialog_cancel') {
-        await cancelDialog(update.callback_query.message.chat.id, state, env);
+        await cancelDialog(chatId, state, env);
         return;
     }
     
@@ -44,11 +52,158 @@ export async function continueDialog(update: TelegramUpdate, state: UserState, e
         case AI_CHAT_DIALOG:
             await handleAiChatDialog(update, state, env);
             break;
-        // Other dialog handlers would go here
+        case BOT_REGISTER_DIALOG:
+            await handleBotRegisterDialog(update, state, env);
+            break;
+        case BOT_LOGIN_DIALOG:
+            await handleBotLoginDialog(update, state, env);
+            break;
         default:
-            // Should not happen, but good to have a fallback
-            if (update.message) {
-                await cancelDialog(update.message.chat.id, state, env);
+            await cancelDialog(chatId, state, env);
+            break;
+    }
+}
+
+
+// =======================================================================
+//  BOT REGISTRATION DIALOG
+// =======================================================================
+export async function startBotRegisterDialog(chatId: number, state: UserState, env: Env, messageIdToEdit: number | null) {
+    const dialogState = {
+        name: BOT_REGISTER_DIALOG,
+        step: 'awaiting_email',
+        data: {},
+        messageId: messageIdToEdit || undefined,
+    };
+    const newState = { ...state, dialog: dialogState };
+    await setUserState(chatId, newState, env);
+
+    const text = "📝 *Регистрация*\n\nПожалуйста, введите ваш email:";
+    const keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]);
+
+    if (messageIdToEdit) {
+        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
+    } else {
+        const sentMessage = await sendMessage(chatId, text, env, keyboard);
+        newState.dialog!.messageId = sentMessage.result.message_id;
+        await setUserState(chatId, newState, env);
+    }
+}
+
+async function handleBotRegisterDialog(update: TelegramUpdate, state: UserState, env: Env) {
+    if (!update.message || !update.message.text) return;
+    const chatId = update.message.chat.id;
+    const text = update.message.text.trim();
+    const step = state.dialog?.step;
+    let newState = { ...state };
+
+    switch (step) {
+        case 'awaiting_email':
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
+                await sendMessage(chatId, "❌ Неверный формат email. Попробуйте еще раз.", env);
+                return;
+            }
+            if (await findUserByEmail(text, env)) {
+                await sendMessage(chatId, "❌ Этот email уже зарегистрирован. Попробуйте войти или использовать другой email.", env);
+                return;
+            }
+            newState.dialog!.step = 'awaiting_nickname';
+            newState.dialog!.data.email = text;
+            await setUserState(chatId, newState, env);
+            await editMessageText(chatId, newState.dialog!.messageId!, "Придумайте себе никнейм:", env, makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]));
+            break;
+
+        case 'awaiting_nickname':
+            if (text.length < 3) {
+                await sendMessage(chatId, "❌ Никнейм должен быть не менее 3 символов.", env);
+                return;
+            }
+            if (await isNicknameTaken(text, env)) {
+                await sendMessage(chatId, "❌ Этот никнейм уже занят. Придумайте другой.", env);
+                return;
+            }
+            newState.dialog!.step = 'awaiting_password';
+            newState.dialog!.data.nickname = text;
+            await setUserState(chatId, newState, env);
+            await editMessageText(chatId, newState.dialog!.messageId!, "Придумайте пароль (минимум 6 символов):", env, makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]));
+            break;
+
+        case 'awaiting_password':
+             if (text.length < 6) {
+                await sendMessage(chatId, "❌ Пароль должен быть не менее 6 символов.", env);
+                return;
+            }
+            const { email, nickname } = newState.dialog!.data;
+            await createUser(chatId, update.message.from || { username: undefined }, email, nickname, text, env);
+            
+            await deleteMessage(chatId, newState.dialog!.messageId!, env);
+            await showMainMenu(chatId, null, env, `✅ Регистрация успешна! Добро пожаловать, ${nickname}!`);
+            break;
+    }
+}
+
+
+// =======================================================================
+//  BOT LOGIN DIALOG
+// =======================================================================
+export async function startBotLoginDialog(chatId: number, state: UserState, env: Env, messageIdToEdit: number | null) {
+    const dialogState = {
+        name: BOT_LOGIN_DIALOG,
+        step: 'awaiting_email',
+        data: {},
+        messageId: messageIdToEdit || undefined,
+    };
+    const newState = { ...state, dialog: dialogState };
+    await setUserState(chatId, newState, env);
+
+    const text = "🔑 *Вход*\n\nПожалуйста, введите ваш email:";
+    const keyboard = makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]);
+
+    if (messageIdToEdit) {
+        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
+    } else {
+        const sentMessage = await sendMessage(chatId, text, env, keyboard);
+        newState.dialog!.messageId = sentMessage.result.message_id;
+        await setUserState(chatId, newState, env);
+    }
+}
+
+async function handleBotLoginDialog(update: TelegramUpdate, state: UserState, env: Env) {
+    if (!update.message || !update.message.text) return;
+    const chatId = update.message.chat.id;
+    const text = update.message.text.trim();
+    const step = state.dialog?.step;
+    let newState = { ...state };
+
+    switch (step) {
+        case 'awaiting_email':
+            const existingUser = await findUserByEmail(text, env);
+            if (!existingUser || !existingUser.user) {
+                await sendMessage(chatId, "❌ Пользователь с таким email не найден. Попробуйте еще раз или зарегистрируйтесь.", env);
+                return;
+            }
+            newState.dialog!.step = 'awaiting_password';
+            newState.dialog!.data.email = text;
+            await setUserState(chatId, newState, env);
+            await editMessageText(chatId, newState.dialog!.messageId!, `Введите пароль для ${text}:`, env, makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]));
+            break;
+
+        case 'awaiting_password':
+            const { email } = newState.dialog!.data;
+            const userStateToLogin = await findUserByEmail(email, env);
+
+            if (userStateToLogin?.user?.password_hash === mockHash(text)) {
+                const finalState = { ...userStateToLogin, dialog: null };
+                finalState.user!.telegramId = chatId;
+                if (update.message.from && update.message.from.username) {
+                    finalState.user!.telegramUsername = update.message.from.username;
+                }
+                
+                await updateAndSyncState(chatId, finalState, env);
+                await deleteMessage(chatId, newState.dialog!.messageId!, env);
+                await showMainMenu(chatId, null, env, `✅ Вход выполнен! С возвращением, ${finalState.user!.nickname}!`);
+            } else {
+                await sendMessage(chatId, "❌ Неверный пароль. Попробуйте еще раз.", env);
             }
             break;
     }
@@ -74,7 +229,7 @@ export async function startAiChatDialog(chatId: number, state: UserState, env: E
         await editMessageText(chatId, messageIdToEdit, text, env);
     } else {
         const sentMessage = await sendMessage(chatId, text, env);
-        newState.dialog.messageId = sentMessage.result.message_id;
+        newState.dialog!.messageId = sentMessage.result.message_id;
         await setUserState(chatId, newState, env);
     }
 }

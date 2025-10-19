@@ -1,6 +1,6 @@
 // functions/telegram/state.ts
-import { UserState, Env, Goal, BankTransactionType } from './types';
-import { addUserEmailToList } from '../data/userStore';
+import { UserState, Env, Goal, BankTransactionType, User } from './types';
+import { addUserEmailToList, getAllUsersWithBets } from '../data/userStore';
 
 const getStateKey = (chatId: number) => `tgstate:${chatId}`;
 const getUserKey = (email: string) => `betdata:${email}`;
@@ -67,4 +67,59 @@ export function deleteGoalFromState(state: UserState, goalId: string): UserState
         ...state,
         goals: state.goals.filter(g => g.id !== goalId),
     };
+}
+
+
+// --- USER MANAGEMENT FUNCTIONS ---
+
+export const mockHash = (password: string) => `hashed_${password}`;
+
+export async function findUserByEmail(email: string, env: Env): Promise<UserState | null> {
+    const key = getUserKey(email);
+    const data = await env.BOT_STATE.get(key, { type: 'json' });
+    if (!data) return null;
+    return normalizeState(data);
+}
+
+export async function isNicknameTaken(nickname: string, env: Env): Promise<boolean> {
+    const allUsers = await getAllUsersWithBets(env);
+    return allUsers.some(u => u.user.nickname.toLowerCase() === nickname.toLowerCase());
+}
+
+export async function createUser(chatId: number, from: { username?: string }, email: string, nickname: string, password_hash: string, env: Env): Promise<UserState> {
+    const newUser: User = {
+        email,
+        nickname,
+        password_hash: mockHash(password_hash),
+        registeredAt: new Date().toISOString(),
+        referralCode: `${nickname.toUpperCase().replace(/\s/g, '')}${Date.now().toString().slice(-4)}`,
+        buttercups: 0,
+        status: 'active',
+        telegramId: chatId,
+        telegramUsername: from.username,
+        source: 'telegram',
+    };
+
+    const initialBankroll = 10000;
+    const initialTransaction = {
+        id: new Date().toISOString() + Math.random(),
+        timestamp: new Date().toISOString(),
+        type: BankTransactionType.Deposit as BankTransactionType,
+        amount: initialBankroll,
+        previousBalance: 0,
+        newBalance: initialBankroll,
+        description: 'Начальный банк',
+    };
+
+    const newUserState: UserState = {
+        user: newUser,
+        bets: [],
+        bankroll: initialBankroll,
+        goals: [],
+        bankHistory: [initialTransaction],
+        dialog: null
+    };
+    
+    await updateAndSyncState(chatId, newUserState, env);
+    return newUserState;
 }
