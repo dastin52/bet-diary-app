@@ -142,21 +142,21 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Add type for accumulator and cast initial value to fix type inference.
+    // FIX: Add type for accumulator to resolve arithmetic operation error.
     const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularSports = Object.entries(popularSportsCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Add type for accumulator and cast initial value to fix type inference.
+    // FIX: Add type for accumulator to resolve arithmetic operation error.
     const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
