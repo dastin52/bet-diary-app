@@ -101,7 +101,11 @@ Example response format:
             },
         });
 
-        const jsonText = response.text.trim();
+        const jsonText = response.text
+            .trim()
+            .replace(/^```json\s*/, '')
+            .replace(/```\s*$/, '');
+            
         const translationMap = JSON.parse(jsonText);
         return translationMap;
 
