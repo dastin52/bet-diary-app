@@ -73,10 +73,10 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     const cacheKey = `cache:${sport}:games:${today}`;
 
     // 1. Try to get from cache first
-    const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' }) as SportGame[] | null;
-    if (cachedData) {
+    const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
+    if (Array.isArray(cachedData)) {
         console.log(`[Cache HIT] Serving ${sport} games for ${today} from cache.`);
-        return cachedData;
+        return cachedData as SportGame[];
     }
 
     // 2. If API key is missing, use mock data. This is for environments without the key.

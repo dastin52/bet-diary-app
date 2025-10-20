@@ -82,48 +82,43 @@ async function translateTeamNames(teamNames: string[], env: Env): Promise<Record
     try {
         const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-        const prompt = `Return a JSON object mapping these team names to Russian.
-Input:
-${teamNames.join(', ')}
-JSON output only.`;
+        const prompt = `Translate the following team names into Russian. Return ONLY a valid JSON object mapping the original name to the translated name. Example: {"New York Rangers": "Нью-Йорк Рейнджерс"}.
+Team names: ${teamNames.join(', ')}`;
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
-                responseMimeType: "application/json",
-            },
+            contents: prompt,
         });
+
+        if (!response || typeof response.text !== 'string' || response.text.trim() === '') {
+            console.warn("AI translation response is invalid or empty.");
+            return {};
+        }
+
+        const text = response.text;
+        // Find the JSON part of the response, being robust to surrounding text.
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+        if (!jsonMatch || !jsonMatch[0]) {
+            console.warn("No JSON object found in AI translation response. Text was:", text);
+            return {};
+        }
         
-        if (!response || !response.text) {
-             console.warn("AI response or response.text is missing for translation.");
-             return {};
-        }
-
-        let responseText = response.text;
-
-        // Clean up markdown just in case the model ignores the instruction
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch && jsonMatch[0]) {
-            responseText = jsonMatch[0];
-        }
-
-        // Final attempt to parse, wrapped in its own try-catch
         try {
-            const parsed = JSON.parse(responseText);
+            const parsed = JSON.parse(jsonMatch[0]);
             if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
                 return parsed;
             }
-        } catch (e) {
-            console.error("Final JSON.parse failed for translation. Raw text:", responseText, "Error:", e);
-            return {}; // Fallback on parsing error
+            console.warn("Parsed translation is not a valid object. Parsed value:", parsed);
+            return {};
+        } catch (parseError) {
+            console.error("Failed to parse JSON from AI translation response. Matched JSON string was:", jsonMatch[0], "Error:", parseError);
+            return {};
         }
-        
-        return {}; // Fallback if parsed data is not an object
 
-    } catch (error) {
-        console.error("Gemini API call for translation failed:", error);
-        return {}; // Fallback on API error
+    } catch (apiError) {
+        console.error("Gemini API call for translation failed:", apiError);
+        return {}; // Fallback on any API error
     }
 }
 
