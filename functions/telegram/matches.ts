@@ -23,6 +23,7 @@ const AVAILABLE_SPORTS = [
     { key: 'hockey', label: '🏒 Хоккей' },
     { key: 'football', label: '⚽️ Футбол' },
     { key: 'basketball', label: '🏀 Баскетбол' },
+    { key: 'nba', label: '🏀 NBA' },
 ];
 
 /**

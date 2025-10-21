@@ -7,6 +7,7 @@ const SPORT_API_CONFIG: SportApiConfig = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12&season=2023' },
 };
 
 /**
@@ -55,8 +56,13 @@ function generateMockGames(sport: string): SportGame[] {
             ];
         case 'basketball':
              return [
-                baseGame(301, 'Los Angeles Lakers', 'Boston Celtics', 'NBA', '01:30', { long: 'Not Started', short: 'NS' }),
-                baseGame(302, 'Golden State Warriors', 'Phoenix Suns', 'NBA', '03:00', { long: 'Not Started', short: 'NS' }),
+                baseGame(301, 'Anadolu Efes', 'Real Madrid', 'Euroleague', '18:45', { long: 'Not Started', short: 'NS' }),
+                baseGame(302, 'Olympiacos', 'FC Barcelona', 'Euroleague', '21:15', { long: 'Not Started', short: 'NS' }),
+             ];
+        case 'nba':
+             return [
+                baseGame(401, 'Los Angeles Lakers', 'Boston Celtics', 'NBA', '01:30', { long: 'Not Started', short: 'NS' }),
+                baseGame(402, 'Golden State Warriors', 'Phoenix Suns', 'NBA', '03:00', { long: 'Not Started', short: 'NS' }),
              ];
         default:
             return [];
@@ -96,7 +102,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         throw new Error(`Конфигурация для спорта "${sport}" не найдена.`);
     }
     
-    const url = `${config.host}/${config.path}?date=${today}`;
+    const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
 
     const response = await fetch(url, {
         method: 'GET',

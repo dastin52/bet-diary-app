@@ -123,7 +123,6 @@ export interface Challenge {
   period: 'weekly';
 }
 
-// FIX: Add missing AIPrediction and AIPredictionStatus types.
 export enum AIPredictionStatus {
     Pending = 'pending',
     Correct = 'correct',
@@ -283,5 +282,6 @@ export interface SportApiConfig {
         host: string;
         path: string; // e.g., 'games'
         keyName: string; // e.g., 'x-apisports-key'
+        params?: string;
     }
 }
