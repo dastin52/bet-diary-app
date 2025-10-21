@@ -135,7 +135,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             id: item.fixture.id,
             date: item.fixture.date,
             time: new Date(item.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-            timestamp: item.fixture.timestamp || Math.floor(new Date(item.fixture.date).getTime() / 1000),
+            timestamp: Math.floor(new Date(item.fixture.date).getTime() / 1000), // Always use 'date' for football for accuracy
             timezone: item.fixture.timezone,
             status: {
                 long: item.fixture.status.long,
@@ -150,14 +150,14 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             },
             teams: {
                 home: {
-                    id: item.teams.home.id,
-                    name: item.teams.home.name,
-                    logo: item.teams.home.logo,
+                    id: item.teams?.home?.id,
+                    name: item.teams?.home?.name,
+                    logo: item.teams?.home?.logo,
                 },
                 away: {
-                    id: item.teams.away.id,
-                    name: item.teams.away.name,
-                    logo: item.teams.away.logo,
+                    id: item.teams?.away?.id,
+                    name: item.teams?.away?.name,
+                    logo: item.teams?.away?.logo,
                 },
             },
         }));
