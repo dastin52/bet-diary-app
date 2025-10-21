@@ -139,7 +139,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             .map((item: any): SportGame => ({
                 id: item.fixture.id,
                 date: item.fixture.date,
-                time: new Date(item.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+                time: new Date(item.fixture.timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
                 timestamp: item.fixture.timestamp,
                 timezone: item.fixture.timezone || 'UTC',
                 status: {
