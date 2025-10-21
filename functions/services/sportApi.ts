@@ -131,39 +131,34 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     let games: SportGame[];
 
     if (sport === 'football') {
-        games = (data.response || []).map((item: any): SportGame => ({
-            id: item.fixture.id,
-            date: item.fixture.date,
-            time: new Date(item.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-            timestamp: Math.floor(new Date(item.fixture.date).getTime() / 1000), // Always use 'date' for football for accuracy
-            timezone: item.fixture.timezone,
-            status: {
-                long: item.fixture.status.long,
-                short: item.fixture.status.short,
-            },
-            league: {
-                id: item.league.id,
-                name: item.league.name,
-                country: item.league.country,
-                logo: item.league.logo,
-                season: item.league.season,
-            },
-            teams: {
-                home: {
-                    id: item.teams?.home?.id,
-                    name: item.teams?.home?.name,
-                    logo: item.teams?.home?.logo,
+        games = (data.response || [])
+            .filter((item: any) => item?.fixture && item?.teams?.home?.name && item?.teams?.away?.name)
+            .map((item: any): SportGame => ({
+                id: item.fixture.id,
+                date: item.fixture.date,
+                time: new Date(item.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+                timestamp: item.fixture.timestamp, // Use direct timestamp
+                timezone: item.fixture.timezone,
+                status: {
+                    long: item.fixture.status.long,
+                    short: item.fixture.status.short,
                 },
-                away: {
-                    id: item.teams?.away?.id,
-                    name: item.teams?.away?.name,
-                    logo: item.teams?.away?.logo,
+                league: {
+                    id: item.league.id,
+                    name: item.league.name,
+                    country: item.league.country,
+                    logo: item.league.logo,
+                    season: item.league.season,
                 },
-            },
-        }));
+                teams: {
+                    home: item.teams.home,
+                    away: item.teams.away,
+                },
+            }));
     } else {
-        // This assumes hockey/basketball/nba have the same structure which they do from api-sports
-        games = data.response || [];
+        // Apply filter for other sports too for robustness
+        games = (data.response || [])
+            .filter((game: SportGame) => game?.teams?.home?.name && game?.teams?.away?.name);
     }
 
     // 4. Store the real result in cache with a TTL

@@ -104,7 +104,7 @@ const UpcomingMatches: React.FC = () => {
                     </button>
                 ))}
             </div>
-            <div>
+            <div className="max-h-[300px] overflow-y-auto pr-2">
                 {renderContent()}
             </div>
         </Card>
