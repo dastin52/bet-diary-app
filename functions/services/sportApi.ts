@@ -133,20 +133,20 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         games = (data.response || [])
             .filter((item: any) => 
                 item?.fixture?.timestamp &&
-                item.teams?.home?.name &&
-                item.teams?.away?.name
+                item?.teams?.home?.name &&
+                item?.teams?.away?.name
             )
             .map((item: any): SportGame => ({
                 id: item.fixture.id,
                 date: item.fixture.date,
                 time: new Date(item.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
                 timestamp: item.fixture.timestamp,
-                timezone: item.fixture.timezone,
+                timezone: item.fixture.timezone || 'UTC',
                 status: {
-                    long: item.fixture.status.long,
-                    short: item.fixture.status.short,
+                    long: item.fixture.status?.long || 'Scheduled',
+                    short: item.fixture.status?.short || 'NS',
                 },
-                league: item.league,
+                league: item.league || { id: 0, name: 'Unknown League', country: '', logo: '', season: 0 },
                 teams: item.teams,
             }));
     } else {
