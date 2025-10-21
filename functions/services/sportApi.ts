@@ -124,36 +124,30 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         console.error(`Sports API returned logical error: ${errorString}`);
         // Fallback to mock data on API error to keep the bot functional
         console.log(`[FALLBACK] Falling back to mock data for ${sport} due to API error.`);
-        const mockGames = generateMockGames(sport);
-        return mockGames;
+        return generateMockGames(sport);
     }
 
     let games: SportGame[];
 
     if (sport === 'football') {
         games = (data.response || [])
-            .filter((item: any) => item?.fixture && item?.teams?.home?.name && item?.teams?.away?.name)
+            .filter((item: any) => 
+                item?.fixture?.timestamp &&
+                item.teams?.home?.name &&
+                item.teams?.away?.name
+            )
             .map((item: any): SportGame => ({
                 id: item.fixture.id,
                 date: item.fixture.date,
                 time: new Date(item.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-                timestamp: item.fixture.timestamp, // Use direct timestamp
+                timestamp: item.fixture.timestamp,
                 timezone: item.fixture.timezone,
                 status: {
                     long: item.fixture.status.long,
                     short: item.fixture.status.short,
                 },
-                league: {
-                    id: item.league.id,
-                    name: item.league.name,
-                    country: item.league.country,
-                    logo: item.league.logo,
-                    season: item.league.season,
-                },
-                teams: {
-                    home: item.teams.home,
-                    away: item.teams.away,
-                },
+                league: item.league,
+                teams: item.teams,
             }));
     } else {
         // Apply filter for other sports too for robustness
