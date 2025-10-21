@@ -75,7 +75,7 @@ const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
  * @param env - The environment object with API keys and KV store.
  * @returns A promise that resolves to a record mapping original names to translated names.
  */
-async function translateTeamNames(teamNames: string[], env: Env): Promise<Record<string, string>> {
+export async function translateTeamNames(teamNames: string[], env: Env): Promise<Record<string, string>> {
     if (!teamNames || teamNames.length === 0) {
         return {};
     }

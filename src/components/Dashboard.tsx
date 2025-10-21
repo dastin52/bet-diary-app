@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useBetContext } from '../contexts/BetContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import Card from './ui/Card';
 import AICard from './AICard';
 import KpiCard from './ui/KpiCard';
 import UpcomingMatches from './UpcomingMatches';
-import MatchDetailsModal from './MatchDetailsModal';
-import { UpcomingMatch, Goal } from '../types';
+import { Goal } from '../types';
 import { LineChartTooltip, BarChartTooltip, StackedBarChartTooltip, OddsPerformanceTooltip } from './charts/ChartTooltip';
 import { getGoalProgress } from '../utils/goalUtils';
 
@@ -71,7 +70,6 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat }) => {
   const { analytics, bankroll, goals } = useBetContext();
   const { totalProfit, roi, betCount, balanceHistory, profitBySport, profitByBetType, winLossBySport, performanceByOdds } = analytics;
-  const [selectedMatch, setSelectedMatch] = useState<UpcomingMatch | null>(null);
 
   const profitColor = totalProfit >= 0 ? 'text-green-500' : 'text-red-500';
 
@@ -88,7 +86,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat }) => {
       
       <AICard onClick={onOpenAIChat} />
 
-      <UpcomingMatches onMatchClick={setSelectedMatch} />
+      <UpcomingMatches />
 
       <Card>
         <h3 className="text-lg font-semibold mb-4">История баланса</h3>
@@ -187,7 +185,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat }) => {
         </div>
       </Card>
       
-      {selectedMatch && <MatchDetailsModal match={selectedMatch} onClose={() => setSelectedMatch(null)} />}
     </div>
   );
 };

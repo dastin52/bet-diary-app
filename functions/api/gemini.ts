@@ -43,15 +43,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         
         // Handle different endpoints the frontend might call
         switch (endpoint) {
-            case 'findMatches':
-                 // This is a mock response. A real implementation would involve more complex logic.
-                 const mockMatches = [
-                    { sport: 'Футбол', eventName: 'Лига Чемпионов', teams: 'Реал Мадрид vs. Бавария', date: new Date().toISOString().split('T')[0], time: '22:00', isHotMatch: true },
-                    { sport: 'Теннис', eventName: 'ATP Finals', teams: 'Синнер vs. Алькарас', date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: '18:00', isHotMatch: false },
-                 ];
-                responseData = { events: mockMatches };
-                break;
-                
             case 'generateContent':
             default:
                 const result = await ai.models.generateContent(payload);

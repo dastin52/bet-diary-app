@@ -7,7 +7,7 @@ const SPORT_API_CONFIG: SportApiConfig = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12&season=2023' },
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12&season=2023-2024' },
 };
 
 /**
@@ -117,7 +117,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         throw new Error(`Ошибка API (${response.status}): ${errorBody}`);
     }
 
-    const data: SportApiResponse = await response.json();
+    const data: any = await response.json();
     const hasErrors = data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0);
     if (hasErrors) {
         const errorString = JSON.stringify(data.errors);
@@ -128,7 +128,43 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         return mockGames;
     }
 
-    const games = data.response || [];
+    let games: SportGame[];
+
+    if (sport === 'football') {
+        games = (data.response || []).map((item: any): SportGame => ({
+            id: item.fixture.id,
+            date: item.fixture.date,
+            time: new Date(item.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+            timestamp: item.fixture.timestamp,
+            timezone: item.fixture.timezone,
+            status: {
+                long: item.fixture.status.long,
+                short: item.fixture.status.short,
+            },
+            league: {
+                id: item.league.id,
+                name: item.league.name,
+                country: item.league.country,
+                logo: item.league.logo,
+                season: item.league.season,
+            },
+            teams: {
+                home: {
+                    id: item.teams.home.id,
+                    name: item.teams.home.name,
+                    logo: item.teams.home.logo,
+                },
+                away: {
+                    id: item.teams.away.id,
+                    name: item.teams.away.name,
+                    logo: item.teams.away.logo,
+                },
+            },
+        }));
+    } else {
+        // This assumes hockey/basketball/nba have the same structure which they do from api-sports
+        games = data.response || [];
+    }
 
     // 4. Store the real result in cache with a TTL
     if (games.length > 0) {
