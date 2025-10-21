@@ -234,7 +234,11 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
         }
 
         // Translate team names
-        const uniqueTeamNames = Array.from(new Set(games.flatMap(game => [game.teams.home.name, game.teams.away.name])));
+        const teamNames = games.flatMap(game => [
+            game?.teams?.home?.name,
+            game?.teams?.away?.name
+        ]).filter((name): name is string => typeof name === 'string' && name.trim() !== '');
+        const uniqueTeamNames = Array.from(new Set(teamNames));
         const translationMap = await translateTeamNames(uniqueTeamNames, env);
 
         // Group games by league

@@ -45,7 +45,11 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
         }
         
         // 2. Translate team names
-        const uniqueTeamNames = Array.from(new Set(games.flatMap(game => [game.teams.home.name, game.teams.away.name])));
+        const teamNames = games.flatMap(game => [
+            game?.teams?.home?.name,
+            game?.teams?.away?.name
+        ]).filter((name): name is string => typeof name === 'string' && name.trim() !== '');
+        const uniqueTeamNames = Array.from(new Set(teamNames));
         const translationMap = await translateTeamNames(uniqueTeamNames, env);
         
         // 3. Map games to a frontend-friendly format with translated names

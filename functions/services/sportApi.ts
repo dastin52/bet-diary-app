@@ -135,7 +135,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             id: item.fixture.id,
             date: item.fixture.date,
             time: new Date(item.fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-            timestamp: item.fixture.timestamp,
+            timestamp: item.fixture.timestamp || Math.floor(new Date(item.fixture.date).getTime() / 1000),
             timezone: item.fixture.timezone,
             status: {
                 long: item.fixture.status.long,
