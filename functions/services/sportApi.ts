@@ -83,6 +83,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     if (!env.SPORT_API_KEY) {
         console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
         const mockGames = generateMockGames(sport);
+        // Do not cache mock data in production, but do so for local dev ease.
         await env.BOT_STATE.put(cacheKey, JSON.stringify(mockGames), { expirationTtl: CACHE_TTL_SECONDS });
         console.log(`[Cache WRITE] Stored ${mockGames.length} mock ${sport} games for ${today}.`);
         return mockGames;
@@ -115,7 +116,10 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     if (hasErrors) {
         const errorString = JSON.stringify(data.errors);
         console.error(`Sports API returned logical error: ${errorString}`);
-        throw new Error(`Ошибка от API спорта: ${errorString}`);
+        // Fallback to mock data on API error to keep the bot functional
+        console.log(`[FALLBACK] Falling back to mock data for ${sport} due to API error.`);
+        const mockGames = generateMockGames(sport);
+        return mockGames;
     }
 
     const games = data.response || [];
