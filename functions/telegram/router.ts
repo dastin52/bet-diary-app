@@ -6,6 +6,7 @@ import { manageBets, MANAGE_PREFIX } from './manageBets';
 import { showMainMenu } from './ui';
 import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu, handleMatches } from './commands';
 import { answerCallbackQuery } from './telegramApi';
+// FIX: Import 'startAddBetDialog' to resolve reference error.
 import { continueDialog, startAddBetDialog, startScreenshotDialog, startBotRegisterDialog, startBotLoginDialog } from './dialogs';
 import { handleMatchesCallback, handleSportSelectionCallback, MATCH_PREFIX, MATCH_SPORT_PREFIX } from './matches';
 
@@ -32,6 +33,7 @@ export const CB = {
     AI_CHAT: 'ai_chat',
     AI_CHAT_PERFORMANCE: 'ai_perf',
     AI_CHAT_MATCH: 'ai_match',
+    AI_CHAT_STRATEGY: 'ai_strat',
     
     // stats menu is handled by STATS_PREFIX now
     BACK_TO_MAIN: 'back_to_main',
@@ -101,9 +103,11 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
         case CB.AI_CHAT:
             await handleAiChat(update, state, env);
             break;
+        // AI Chat quick actions are handled inside the dialog
         case CB.AI_CHAT_PERFORMANCE:
         case CB.AI_CHAT_MATCH:
-            await continueDialog(update, state, env); // Handled by the dialog
+        case CB.AI_CHAT_STRATEGY:
+            await continueDialog(update, state, env);
             break;
         case CB.MATCHES:
             await handleMatches(update, state, env);
