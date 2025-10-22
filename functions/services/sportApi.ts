@@ -130,25 +130,39 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     let games: SportGame[];
 
     if (sport === 'football') {
-        games = (data.response || [])
-            .filter((item: any) => 
-                item?.fixture?.timestamp &&
-                item?.teams?.home?.name &&
-                item?.teams?.away?.name
-            )
-            .map((item: any): SportGame => ({
-                id: item.fixture.id,
-                date: item.fixture.date,
-                time: new Date(item.fixture.timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-                timestamp: item.fixture.timestamp,
-                timezone: item.fixture.timezone || 'UTC',
-                status: {
-                    long: item.fixture.status?.long || 'Scheduled',
-                    short: item.fixture.status?.short || 'NS',
-                },
-                league: item.league || { id: 0, name: 'Unknown League', country: '', logo: '', season: 0 },
-                teams: item.teams,
-            }));
+        games = (data.response || []).reduce((acc: SportGame[], item: any) => {
+            try {
+                // More robust check for required fields before processing
+                if (
+                    item?.fixture?.id &&
+                    (item.fixture.timestamp || item.fixture.date) &&
+                    item.teams?.home?.name &&
+                    item.teams?.away?.name &&
+                    item.league
+                ) {
+                    const timestamp = item.fixture.timestamp || Math.floor(new Date(item.fixture.date).getTime() / 1000);
+                    const game: SportGame = {
+                        id: item.fixture.id,
+                        date: item.fixture.date,
+                        time: new Date(timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+                        timestamp: timestamp,
+                        timezone: item.fixture.timezone || 'UTC',
+                        status: {
+                            long: item.fixture.status?.long || 'Scheduled',
+                            short: item.fixture.status?.short || 'NS',
+                        },
+                        league: item.league,
+                        teams: item.teams,
+                    };
+                    acc.push(game);
+                } else {
+                     console.warn(`[Football Parser] Skipping item due to missing critical data. Fixture ID: ${item?.fixture?.id || 'N/A'}`);
+                }
+            } catch (e) {
+                console.warn(`[Football Parser] Error processing a fixture item, skipping. ID: ${item?.fixture?.id || 'unknown'}. Error:`, e);
+            }
+            return acc;
+        }, []);
     } else {
         // Apply filter for other sports too for robustness
         games = (data.response || [])

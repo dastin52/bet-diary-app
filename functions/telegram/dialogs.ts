@@ -216,66 +216,89 @@ async function handleBotLoginDialog(update: TelegramUpdate, state: UserState, en
 export async function startAiChatDialog(chatId: number, state: UserState, env: Env, messageIdToEdit: number | null) {
     const dialogState = {
         name: AI_CHAT_DIALOG,
-        step: 'chatting',
-        data: { history: [] }, // history of { role, parts }
+        step: 'awaiting_choice',
+        data: { history: [] },
         messageId: messageIdToEdit || undefined,
     };
     const newState = { ...state, dialog: dialogState };
-    await setUserState(chatId, newState, env);
 
-    const text = "🤖 *AI-Аналитик*\n\nЗадайте свой вопрос. Например: 'проанализируй мою эффективность' или 'проанализируй матч реал - барселона'.\n\n_Чтобы выйти, отправьте /start._";
-    
+    const text = "🤖 *AI-Аналитик*\n\nЧем я могу вам помочь?";
+    const keyboard = makeKeyboard([
+        [{ text: '📊 Проанализировать эффективность', callback_data: CB.AI_CHAT_PERFORMANCE }],
+        [{ text: '⚽️ Проанализировать матч', callback_data: CB.AI_CHAT_MATCH }],
+        [{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]
+    ]);
+
     if (messageIdToEdit) {
-        await editMessageText(chatId, messageIdToEdit, text, env);
+        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
     } else {
-        const sentMessage = await sendMessage(chatId, text, env);
+        const sentMessage = await sendMessage(chatId, text, env, keyboard);
         newState.dialog!.messageId = sentMessage.result.message_id;
-        await setUserState(chatId, newState, env);
     }
+    await setUserState(chatId, newState, env);
 }
 
 async function handleAiChatDialog(update: TelegramUpdate, state: UserState, env: Env) {
-    if (!update.message || !update.message.text) return;
-    const chatId = update.message.chat.id;
-    const userInput = update.message.text;
+    const chatId = update.message?.chat.id || update.callback_query?.message.chat.id!;
+    const step = state.dialog?.step;
+    let newState = { ...state };
 
-    await sendMessage(chatId, "⏳ AI думает...", env);
-    
-    try {
-        const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-        const history = state.dialog?.data.history || [];
-
-        const contents = [
-            ...history,
-            { role: 'user', parts: [{ text: userInput }] }
-        ];
-
-        // Inject analytics context if it's the first user message and relevant
-        if (history.length === 0 && (userInput.toLowerCase().includes('эффективность') || userInput.toLowerCase().includes('статистику'))) {
-            const analytics = analyticsToText(calculateAnalytics(state));
-            contents[0].parts[0].text = `${analytics}\n\n${userInput}`;
+    const callAI = async (prompt: string, history: any[]) => {
+        await sendMessage(chatId, "⏳ AI думает...", env);
+        try {
+            const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+            const contents = [...history, { role: 'user', parts: [{ text: prompt }] }];
+            const result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents, tools: [{ googleSearch: {} }] });
+            const aiResponse = result.text;
+            
+            const newHistory = [...history, { role: 'user', parts: [{ text: prompt }] }, { role: 'model', parts: [{ text: aiResponse }] }];
+            newState.dialog!.data.history = newHistory;
+            await setUserState(chatId, newState, env);
+            await sendMessage(chatId, aiResponse, env);
+        } catch (error) {
+            console.error("AI Chat dialog error:", error);
+            await sendMessage(chatId, "Произошла ошибка при общении с AI.", env);
         }
-        
-        const result = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: contents,
-            tools: [{googleSearch: {}}],
-        });
-        
-        const aiResponse = result.text;
-        
-        // Update dialog history
-        const newHistory = [...history, { role: 'user', parts: [{text: userInput}]}, { role: 'model', parts: [{text: aiResponse}]}];
-        const newState = { ...state, dialog: { ...state.dialog!, data: { history: newHistory } } };
-        await setUserState(chatId, newState, env);
+    };
 
-        await sendMessage(chatId, aiResponse, env);
+    if (step === 'awaiting_choice') {
+        if (update.callback_query) {
+            const cb_data = update.callback_query.data;
+            if (cb_data === CB.AI_CHAT_PERFORMANCE) {
+                const analytics = analyticsToText(calculateAnalytics(state));
+                const prompt = `Проанализируй мою эффективность.\n\n${analytics}`;
+                newState.dialog!.step = 'chatting';
+                await setUserState(chatId, newState, env);
+                await editMessageText(chatId, state.dialog!.messageId!, "🤖 *AI-Аналитик*\n\nАнализирую вашу эффективность...", env);
+                await callAI(prompt, []);
+            } else if (cb_data === CB.AI_CHAT_MATCH) {
+                newState.dialog!.step = 'awaiting_match_name';
+                await setUserState(chatId, newState, env);
+                await editMessageText(chatId, state.dialog!.messageId!, "Пожалуйста, введите название матча (например, 'Реал Мадрид - Барселона').", env, makeKeyboard([[{ text: '❌ Отмена', callback_data: 'dialog_cancel' }]]));
+            }
+        } else if (update.message?.text) {
+            newState.dialog!.step = 'chatting';
+            await setUserState(chatId, newState, env);
+            await editMessageText(chatId, state.dialog!.messageId!, "🤖 *AI-Аналитик*\n\nЗадавайте свой вопрос.", env);
+            await callAI(update.message.text, state.dialog?.data.history || []);
+        }
+        return;
+    }
 
-    } catch (error) {
-        console.error("AI Chat dialog error:", error);
-        await sendMessage(chatId, "Произошла ошибка при общении с AI. Попробуйте еще раз.", env);
+    if (update.message?.text) {
+        const userInput = update.message.text;
+        if (step === 'awaiting_match_name') {
+            const prompt = `Проанализируй матч: ${userInput}`;
+            newState.dialog!.step = 'chatting';
+            await setUserState(chatId, newState, env);
+            await editMessageText(chatId, state.dialog!.messageId!, "🤖 *AI-Аналитик*\n\nАнализирую матч...", env);
+            await callAI(prompt, state.dialog?.data.history || []);
+        } else if (step === 'chatting') {
+            await callAI(userInput, state.dialog?.data.history || []);
+        }
     }
 }
+
 
 
 // =======================================================================
