@@ -1,5 +1,6 @@
 
 
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -86,22 +87,22 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
+    // FIX: Add explicit type to initial value of reduce to prevent `count` from being `unknown`.
     const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {});
+    }, {} as Record<string, number>);
     const popularSports = Object.entries(popularSportsCounts)
-        // FIX: Removed unnecessary cast as the accumulator type is already defined, which correctly infers 'count' as a number.
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
+    // FIX: Add explicit type to initial value of reduce to prevent `count` from being `unknown`.
     const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {});
+    }, {} as Record<string, number>);
     const popularBookmakers = Object.entries(popularBookmakersCounts)
-        // FIX: Removed unnecessary cast as the accumulator type is already defined, which correctly infers 'count' as a number.
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
