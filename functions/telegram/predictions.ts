@@ -87,6 +87,7 @@ async function showDeepAnalytics(chatId: number, messageId: number, allPredictio
         (sportFilter === 'all' || p.sport === sportFilter)
     );
 
+    // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference.
     const deepAnalyticsData = predictionsToAnalyze.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
         try {
             const data = JSON.parse(p.prediction);
@@ -102,12 +103,12 @@ async function showDeepAnalytics(chatId: number, messageId: number, allPredictio
             }
         } catch {}
         return acc;
-    }, {});
+    }, {} as Record<string, { correct: number, total: number }>);
 
     const sortedAnalytics = Object.entries(deepAnalyticsData)
         .map(([market, data]) => ({
             market,
-            accuracy: data.total > 0 ? (data.total > 0 ? (data.correct / data.total) * 100 : 0) : 0,
+            accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
             count: data.total,
         }))
         .filter(item => item.count > 0)

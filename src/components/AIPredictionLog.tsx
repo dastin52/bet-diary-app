@@ -1,10 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
 import { AIPrediction, AIPredictionStatus } from '../types';
 import Select from './ui/Select';
 import { usePredictionContext } from '../contexts/PredictionContext';
-// FIX: The useBetContext hook is exported from BetContext, not useBets.
 import { useBetContext } from '../contexts/BetContext';
 import Button from './ui/Button';
 
@@ -89,10 +88,51 @@ const resolveMarketOutcome = (market: string, scores: { home: number; away: numb
 
 
 const AIPredictionLog: React.FC = () => {
-    const { predictions: centralPredictions } = usePredictionContext();
+    const { predictions: centralPredictions, isLoading, setSport, activeSport } = usePredictionContext();
     const { aiPredictions: personalPredictions, updateAIPrediction } = useBetContext();
     const [sportFilter, setSportFilter] = useState('all');
     const [outcomeFilter, setOutcomeFilter] = useState('all');
+
+    useEffect(() => {
+        const finishedMatches = centralPredictions.filter(p => p.winner && p.scores);
+        if (finishedMatches.length === 0) return;
+
+        const pendingPersonalPredictions = personalPredictions.filter(p => p.status === AIPredictionStatus.Pending);
+        if (pendingPersonalPredictions.length === 0) return;
+
+        pendingPersonalPredictions.forEach(prediction => {
+            const finishedMatch = finishedMatches.find(m => m.teams === prediction.matchName && (SPORT_MAP[m.sport] === prediction.sport || m.sport === prediction.sport));
+            
+            if (finishedMatch && finishedMatch.scores) {
+                let recommendedOutcome: string | null = null;
+                try {
+                    const predictionData = JSON.parse(prediction.prediction);
+                    recommendedOutcome = predictionData?.recommended_outcome || null;
+                } catch (e) { return; }
+
+                if (!recommendedOutcome) return;
+
+                const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 
+                    'П1': 'home', 'X': 'draw', 'П2': 'away', 
+                    'П1 (осн. время)': 'home', 'X (осн. время)': 'draw', 'П2 (осн. время)': 'away',
+                    'П1 (с ОТ)': 'home',
+                    'П2 (с ОТ)': 'away',
+                };
+                const aiWinner = outcomeMap[recommendedOutcome];
+                if (!aiWinner) return;
+
+                const newStatus = aiWinner === finishedMatch.winner 
+                    ? AIPredictionStatus.Correct 
+                    : AIPredictionStatus.Incorrect;
+
+                updateAIPrediction(prediction.id, {
+                    status: newStatus,
+                    matchResult: { winner: finishedMatch.winner!, scores: finishedMatch.scores }
+                });
+            }
+        });
+    }, [centralPredictions, personalPredictions, updateAIPrediction]);
+
 
     const combinedPredictions = useMemo(() => {
         const centralAsAIPrediction = centralPredictions
@@ -171,7 +211,7 @@ const AIPredictionLog: React.FC = () => {
         }));
         
         const predictionsWithResults = combinedPredictions.filter(p => p.matchResult && p.matchResult.scores);
-        // FIX: Add explicit type for accumulator to prevent type inference issues.
+        // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference for `data` in the subsequent map.
         const deepAnalyticsData = predictionsWithResults.reduce((acc: Record<string, { correct: number, total: number }>, p) => {
             try {
                 const data = JSON.parse(p.prediction);
@@ -192,7 +232,7 @@ const AIPredictionLog: React.FC = () => {
                 }
             } catch {}
             return acc;
-        }, {});
+        }, {} as Record<string, { correct: number, total: number }>);
         
         const deepAnalyticsResult = Object.entries(deepAnalyticsData).map(([market, data]) => ({
             market,
@@ -219,6 +259,10 @@ const AIPredictionLog: React.FC = () => {
             return sportMatch && outcomeMatch;
         });
     }, [combinedPredictions, sportFilter, outcomeFilter]);
+    
+    const handleRefresh = () => {
+        setSport(activeSport);
+    };
 
     return (
         <div className="space-y-6">
@@ -264,7 +308,12 @@ const AIPredictionLog: React.FC = () => {
             </Card>
 
             <Card>
-                <h3 className="text-lg font-semibold mb-4">Журнал прогнозов</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">Журнал прогнозов</h3>
+                    <Button onClick={handleRefresh} disabled={isLoading} variant="secondary">
+                        {isLoading ? 'Обновление...' : '🔄 Обновить'}
+                    </Button>
+                </div>
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <Select value={sportFilter} onChange={e => setSportFilter(e.target.value)}>
                         <option value="all">Все виды спорта</option>
