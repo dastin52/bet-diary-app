@@ -8,6 +8,7 @@ import { useBetContext } from '../contexts/BetContext';
 import Button from './ui/Button';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
 import { AIPredictionAccuracyTooltip } from './charts/ChartTooltip';
+import { SPORTS } from '../constants';
 
 
 const SPORT_MAP: Record<string, string> = {
@@ -92,7 +93,7 @@ const resolveMarketOutcome = (market: string, scores: { home: number; away: numb
 type EnhancedAIPrediction = AIPrediction & { leagueName?: string };
 
 const AIPredictionLog: React.FC = () => {
-    const { predictions: centralPredictions, isLoading, setSport, activeSport } = usePredictionContext();
+    const { predictions: centralPredictions, isLoading, fetchPredictions, activeSport } = usePredictionContext();
     const { aiPredictions: personalPredictions, updateAIPrediction } = useBetContext();
     const [sportFilter, setSportFilter] = useState('all');
     const [leagueFilter, setLeagueFilter] = useState('all');
@@ -193,7 +194,7 @@ const AIPredictionLog: React.FC = () => {
         });
     }, [combinedAndEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
     
-    const { stats, deepAnalytics } = useMemo(() => {
+    const { stats, deepAnalytics, accuracyChartData } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending);
         const correctPredictions = settled.filter(p => p.status === AIPredictionStatus.Correct);
         
@@ -214,7 +215,7 @@ const AIPredictionLog: React.FC = () => {
             ? winningCoefficients.reduce((sum, coeff) => sum + coeff, 0) / winningCoefficients.length
             : 0;
         
-        // FIX: Explicitly type the accumulator with a generic to prevent `acc[outcome]` from being implicitly `any` and to ensure the final type is correct.
+        // FIX: Add an explicit type to the reduce accumulator to ensure correct type inference.
         const outcomeStats = settled.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
@@ -233,9 +234,164 @@ const AIPredictionLog: React.FC = () => {
         }));
         
         const predictionsWithResults = filteredPredictions.filter(p => p.matchResult && p.matchResult.scores);
-        // FIX: Explicitly type the accumulator with a generic to solve the `unknown` type issue on `data` in the subsequent `.map` call.
+        
+        // FIX: Add an explicit type to the reduce accumulator to ensure correct type inference.
         const deepAnalyticsData = predictionsWithResults.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (data.probabilities && p.matchResult) {
-                    for (const market in
+                    for (const market in data.probabilities) {
+                        if (!acc[market]) acc[market] = { correct: 0, total: 0 };
+                        const result = resolveMarketOutcome(market, p.matchResult.scores);
+                        if (result !== 'unknown') {
+                            acc[market].total++;
+                            if (result === 'correct') {
+                                acc[market].correct++;
+                            }
+                        }
+                    }
+                }
+            } catch {}
+            return acc;
+        }, {});
+        
+        const sortedDeepAnalytics = Object.entries(deepAnalyticsData)
+            .map(([market, data]) => ({
+                market,
+                accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+                count: data.total,
+            }))
+            .filter(item => item.count > 0)
+            .sort((a, b) => b.count - a.count);
+        
+        const chartData = [...sortedDeepAnalytics].sort((a,b) => b.count - a.count).slice(0, 10);
+
+        return {
+            stats: { total, correct: correctPredictions.length, accuracy, avgCorrectCoefficient, accuracyByOutcome },
+            deepAnalytics: sortedDeepAnalytics,
+            accuracyChartData: chartData,
+        };
+    }, [filteredPredictions]);
+
+    const TABS = [
+        { key: 'football', label: '⚽️ Футбол' },
+        { key: 'hockey', label: '🏒 Хоккей' },
+        { key: 'basketball', label: '🏀 Баскетбол' },
+        { key: 'nba', label: '🏀 NBA' },
+    ];
+
+    const handleRefresh = () => {
+        // @ts-ignore - The context type needs updating to expose fetchPredictions
+        if (fetchPredictions) fetchPredictions(activeSport, true);
+    };
+
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                 <div></div>
+                 <Button onClick={handleRefresh} variant="secondary">
+                     <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5M20 4l-4 4M4 20l4-4" /></svg>
+                    Обновить
+                </Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <KpiCard title="Всего оценено" value={String(stats.total)} />
+                <KpiCard title="Верных прогнозов" value={String(stats.correct)} />
+                <KpiCard title="Общая точность" value={`${stats.accuracy.toFixed(1)}%`} colorClass={stats.accuracy >= 50 ? 'text-green-400' : 'text-red-400'}/>
+                <KpiCard title="Средний верный коэф." value={stats.avgCorrectCoefficient.toFixed(2)} colorClass="text-amber-400" />
+            </div>
+
+             <Card>
+                <h3 className="text-lg font-semibold mb-2">Точность по основным исходам</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {stats.accuracyByOutcome.map(({ outcome, accuracy, count }) => (
+                         <div key={outcome} className="p-4 bg-gray-900/50 rounded-lg text-center">
+                            <p className="text-sm text-gray-400">{outcome}</p>
+                            <p className={`text-3xl font-bold mt-1 ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
+                            <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
+                        </div>
+                    ))}
+                </div>
+            </Card>
+
+             <Card>
+                 <h3 className="text-lg font-semibold mb-2">Визуализация точности исходов</h3>
+                 <div style={{ width: '100%', height: 300 }}>
+                    <ResponsiveContainer>
+                        <BarChart data={accuracyChartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="opacity-20" />
+                            <XAxis type="number" domain={[0, 100]} stroke="currentColor" className="text-xs text-gray-400" />
+                            <YAxis type="category" dataKey="market" stroke="currentColor" className="text-xs text-gray-400" width={120} />
+                            <Tooltip content={<AIPredictionAccuracyTooltip />} cursor={{ fill: 'rgba(136, 132, 216, 0.1)' }} />
+                            <Bar dataKey="accuracy" name="Точность (%)">
+                                {accuracyChartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.accuracy >= 50 ? '#48BB78' : '#F56565'} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                 </div>
+            </Card>
+
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Журнал прогнозов</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <Select value={sportFilter} onChange={e => setSportFilter(e.target.value)}>
+                        <option value="all">Все виды спорта</option>
+                        {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </Select>
+                     <Select value={leagueFilter} onChange={e => setLeagueFilter(e.target.value)}>
+                        <option value="all">Все лиги</option>
+                        {availableLeagues.map(l => <option key={l} value={l}>{l}</option>)}
+                    </Select>
+                     <Select value={outcomeFilter} onChange={e => setOutcomeFilter(e.target.value)}>
+                        <option value="all">Все исходы</option>
+                        {availableOutcomes.map(o => <option key={o} value={o}>{o}</option>)}
+                    </Select>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-700">
+                        <thead className="bg-gray-800">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Дата</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Матч</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Прогноз AI</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Статус</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-gray-900 divide-y divide-gray-700">
+                             {filteredPredictions.map(p => {
+                                const status = getStatusInfo(p.status);
+                                return (
+                                    <tr key={p.id}>
+                                        <td className="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString('ru-RU')}</td>
+                                        <td className="px-4 py-3">
+                                            <p className="text-sm font-medium text-white">{p.matchName}</p>
+                                            <p className="text-xs text-gray-500">{p.sport}</p>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <PredictionDetails prediction={p.prediction} />
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${status.color}`}>{status.label}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            <div className="flex justify-center gap-2">
+                                                <button onClick={() => updateAIPrediction(p.id, { status: AIPredictionStatus.Correct })} className="p-1 rounded-full text-green-400 hover:bg-green-900/50"><CheckIcon/></button>
+                                                <button onClick={() => updateAIPrediction(p.id, { status: AIPredictionStatus.Incorrect })} className="p-1 rounded-full text-red-400 hover:bg-red-900/50"><XIcon/></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+        </div>
+    );
+};
+
+export default AIPredictionLog;

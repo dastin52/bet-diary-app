@@ -7,6 +7,7 @@ interface PredictionContextType {
   error: string | null;
   activeSport: string;
   setSport: (sport: string) => void;
+  fetchPredictions: (sport: string, force?: boolean) => void;
 }
 
 const PredictionContext = createContext<PredictionContextType | undefined>(undefined);
@@ -17,11 +18,13 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
   const [activeSport, setActiveSport] = useState('football');
 
-  const fetchPredictions = useCallback(async (sport: string) => {
+  const fetchPredictions = useCallback(async (sport: string, force: boolean = false) => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetch(`/api/matches-with-predictions?sport=${sport}`);
+      // Simple cache busting, in a real app might use more sophisticated logic
+      const url = `/api/matches-with-predictions?sport=${sport}${force ? `&t=${new Date().getTime()}` : ''}`;
+      const response = await fetch(url);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Не удалось загрузить матчи.');
@@ -49,6 +52,7 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
     error,
     activeSport,
     setSport,
+    fetchPredictions,
   };
 
   return <PredictionContext.Provider value={value}>{children}</PredictionContext.Provider>;
