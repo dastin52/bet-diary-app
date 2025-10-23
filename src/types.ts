@@ -1,3 +1,5 @@
+
+
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -185,8 +187,9 @@ export interface AIPrediction {
     matchName: string;
     prediction: string; // JSON string
     status: AIPredictionStatus;
-    matchResult?: {
-        winner: 'home' | 'away' | 'draw';
-        scores: { home: number; away: number; };
-    }
+}
+
+// Новый тип для централизованной базы прогнозов
+export interface SharedPrediction extends UpcomingMatch {
+  prediction: AIPrediction | null;
 }

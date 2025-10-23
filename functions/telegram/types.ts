@@ -277,6 +277,8 @@ export interface SportGame {
       home: number | null;
       away: number | null;
     };
+    // FIX: Add the winner property to align with the data structure used for finished games.
+    winner?: 'home' | 'away' | 'draw';
 }
 export interface SportApiResponse {
     get: string;

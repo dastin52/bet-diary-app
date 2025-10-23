@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { useBetContext } from '../contexts/BetContext';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
-import { AIPrediction, AIPredictionStatus } from '../types';
-import Button from './ui/Button';
+import { AIPredictionStatus, SharedPrediction } from '../types';
 import Select from './ui/Select';
+import { usePredictionContext } from '../contexts/PredictionContext';
 
 const SPORT_MAP: Record<string, string> = {
     football: 'Футбол',
@@ -41,7 +40,7 @@ const PredictionDetails: React.FC<{ prediction: string }> = ({ prediction }) => 
                         .filter(([key]) => key !== mainOutcome)
                         .map(([key, value]) => (
                             <div key={key}>
-                                <span>{key}: {value}%</span>
+                                <span>{key}: {value as number}%</span>
                                 {coefficients && coefficients[key] && <span className="text-amber-400/70 text-xs ml-1 font-mono">~{coefficients[key].toFixed(2)}</span>}
                             </div>
                         ))}
@@ -67,7 +66,7 @@ const resolveMarketOutcome = (market: string, scores: { home: number; away: numb
         case 'Обе забьют - Да': return home > 0 && away > 0 ? 'correct' : 'incorrect';
         case 'Обе забьют - Нет': return home === 0 || away === 0 ? 'correct' : 'incorrect';
         default:
-            const totalMatch = market.match(/Тотал (Больше|Меньше) (\d+\.\d+)/);
+            const totalMatch = market.match(/Тотал (Больше|Меньше) (\d+(\.\d+)?)/);
             if (totalMatch) {
                 const type = totalMatch[1];
                 const value = parseFloat(totalMatch[2]);
@@ -80,13 +79,17 @@ const resolveMarketOutcome = (market: string, scores: { home: number; away: numb
 
 
 const AIPredictionLog: React.FC = () => {
-    const { aiPredictions, updateAIPrediction } = useBetContext();
+    const { predictions } = usePredictionContext();
     const [sportFilter, setSportFilter] = useState('all');
     const [outcomeFilter, setOutcomeFilter] = useState('all');
 
+    const allAiPredictions = useMemo(() => 
+        predictions.map(p => p.prediction).filter((p): p is NonNullable<typeof p> => p !== null), 
+    [predictions]);
+
     const availableOutcomes = useMemo(() => {
         const outcomes = new Set<string>();
-        aiPredictions.forEach(p => {
+        allAiPredictions.forEach(p => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (data.probabilities) {
@@ -95,15 +98,23 @@ const AIPredictionLog: React.FC = () => {
             } catch {}
         });
         return Array.from(outcomes).sort();
-    }, [aiPredictions]);
+    }, [allAiPredictions]);
 
     const { stats, deepAnalytics } = useMemo(() => {
-        const settled = aiPredictions.filter(p => p.status !== AIPredictionStatus.Pending);
+        const settled = allAiPredictions.filter(p => p.status !== AIPredictionStatus.Pending);
         const correct = settled.filter(p => p.status === AIPredictionStatus.Correct).length;
         const total = settled.length;
         const accuracy = total > 0 ? (correct / total) * 100 : 0;
         
-        const outcomeStats = settled.reduce<Record<string, { correct: number; total: number }>>((acc, p) => {
+        // FIX: Define the initial accumulator object outside the reduce function with a strong type
+        // to help TypeScript correctly infer the accumulator's type within the callback.
+        const initialOutcomeStats: Record<string, { correct: number; total: number }> = {
+            'П1': { correct: 0, total: 0 },
+            'X': { correct: 0, total: 0 },
+            'П2': { correct: 0, total: 0 },
+        };
+
+        const outcomeStats = settled.reduce((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 const outcome = data.recommended_outcome;
@@ -114,19 +125,21 @@ const AIPredictionLog: React.FC = () => {
                 }
             } catch {}
             return acc;
-        }, { 'П1': {correct: 0, total: 0}, 'X': {correct: 0, total: 0}, 'П2': {correct: 0, total: 0} });
+        }, initialOutcomeStats);
         
         const accuracyByOutcome = Object.entries(outcomeStats).map(([outcome, data]) => ({
             outcome, accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0, count: data.total,
         }));
+        
+        const predictionsWithResults = predictions.filter(p => p.prediction && p.scores);
 
-        const deepAnalyticsData = settled.filter(p => p.matchResult).reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
+        const deepAnalyticsData = predictionsWithResults.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
             try {
-                const data = JSON.parse(p.prediction);
-                if (data.probabilities && p.matchResult) {
+                const data = JSON.parse(p.prediction!.prediction);
+                if (data.probabilities && p.scores) {
                     for (const market in data.probabilities) {
                         if (!acc[market]) acc[market] = { correct: 0, total: 0 };
-                        const result = resolveMarketOutcome(market, p.matchResult.scores);
+                        const result = resolveMarketOutcome(market, p.scores);
                         if (result !== 'unknown') {
                             acc[market].total++;
                             if (result === 'correct') acc[market].correct++;
@@ -144,15 +157,17 @@ const AIPredictionLog: React.FC = () => {
         })).sort((a,b) => b.count - a.count);
         
         return { stats: { total, correct, accuracy, accuracyByOutcome }, deepAnalytics: deepAnalyticsResult };
-    }, [aiPredictions]);
+    }, [predictions, allAiPredictions]);
 
     const filteredPredictions = useMemo(() => {
-        return aiPredictions.filter(p => {
+        return predictions.filter(p => {
             const sportMatch = sportFilter === 'all' || p.sport === sportFilter;
+            if (!p.prediction) return false;
+
             let outcomeMatch = outcomeFilter === 'all';
             if (outcomeFilter !== 'all') {
                  try {
-                    const data = JSON.parse(p.prediction);
+                    const data = JSON.parse(p.prediction.prediction);
                     outcomeMatch = (outcomeFilter in data.probabilities) || (data.recommended_outcome === outcomeFilter);
                 } catch {
                     outcomeMatch = false;
@@ -160,7 +175,7 @@ const AIPredictionLog: React.FC = () => {
             }
             return sportMatch && outcomeMatch;
         });
-    }, [aiPredictions, sportFilter, outcomeFilter]);
+    }, [predictions, sportFilter, outcomeFilter]);
 
     return (
         <div className="space-y-6">
@@ -194,7 +209,7 @@ const AIPredictionLog: React.FC = () => {
                         {deepAnalytics.map(item => (
                             <div key={item.market} className="p-3 bg-gray-700/50 rounded-lg">
                                 <div className="flex justify-between items-baseline">
-                                    <span className="font-semibold text-sm text-white truncate">{item.market}</span>
+                                    <span className="font-semibold text-sm text-white truncate" title={item.market}>{item.market}</span>
                                     <span className="text-xs text-gray-400">{item.count}</span>
                                 </div>
                                 <p className="font-bold text-xl text-indigo-400 mt-1">{item.accuracy.toFixed(1)}%</p>
@@ -226,42 +241,34 @@ const AIPredictionLog: React.FC = () => {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Матч</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Прогноз AI</th>
                                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Статус</th>
-                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Действия</th>
                             </tr>
                         </thead>
                         <tbody className="bg-gray-900 divide-y divide-gray-700">
-                            {filteredPredictions.length > 0 ? filteredPredictions.map(p => (
-                                <tr key={p.id} className="hover:bg-gray-800/50">
-                                    <td className="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString('ru-RU')}</td>
+                            {filteredPredictions.length > 0 ? filteredPredictions.map(p => {
+                                const pred = p.prediction;
+                                if (!pred) return null;
+                                return (
+                                <tr key={pred.id} className="hover:bg-gray-800/50">
+                                    <td className="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">{new Date(pred.createdAt).toLocaleDateString('ru-RU')}</td>
                                     <td className="px-4 py-3 text-sm font-medium text-white">
-                                        {p.matchName}
+                                        {p.teams}
                                         <p className="text-xs text-gray-500">{SPORT_MAP[p.sport] || p.sport}</p>
-                                        {p.matchResult && (
-                                            <p className="text-xs font-mono bg-gray-700 px-1.5 py-0.5 rounded inline-block mt-1">{p.matchResult.scores.home} - {p.matchResult.scores.away}</p>
+                                        {p.score && (
+                                            <p className="text-xs font-mono bg-gray-700 px-1.5 py-0.5 rounded inline-block mt-1">{p.score}</p>
                                         )}
                                     </td>
                                     <td className="px-4 py-3">
-                                        <PredictionDetails prediction={p.prediction} />
+                                        <PredictionDetails prediction={pred.prediction} />
                                     </td>
                                     <td className="px-4 py-3 text-center">
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(p.status).color}`}>
-                                            {getStatusInfo(p.status).label}
+                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(pred.status).color}`}>
+                                            {getStatusInfo(pred.status).label}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-3 text-center text-sm">
-                                        {p.status === AIPredictionStatus.Pending ? (
-                                            <div className="flex justify-center gap-2">
-                                                <Button onClick={() => updateAIPrediction(p.id, { status: AIPredictionStatus.Correct })} className="!text-xs !py-1 !px-2 !bg-green-500/20 hover:!bg-green-500/40 !text-green-300">✅ Верно</Button>
-                                                <Button onClick={() => updateAIPrediction(p.id, { status: AIPredictionStatus.Incorrect })} className="!text-xs !py-1 !px-2 !bg-red-500/20 hover:!bg-red-500/40 !text-red-300">❌ Неверно</Button>
-                                            </div>
-                                        ) : (
-                                             <Button onClick={() => updateAIPrediction(p.id, { status: AIPredictionStatus.Pending, matchResult: undefined })} className="!text-xs !py-1 !px-2" variant="secondary">Сбросить</Button>
-                                        )}
-                                    </td>
                                 </tr>
-                            )) : (
+                            )}) : (
                                 <tr>
-                                    <td colSpan={5} className="text-center py-10 text-gray-500">
+                                    <td colSpan={4} className="text-center py-10 text-gray-500">
                                         Нет прогнозов, соответствующих вашим фильтрам.
                                     </td>
                                 </tr>

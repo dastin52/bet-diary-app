@@ -1,19 +1,25 @@
 // functions/api/matches-with-predictions.ts
-import { getTodaysGamesBySport } from '../services/sportApi';
-import { translateTeamNames } from '../telegram/matches';
-import { Env, SportGame, AIPrediction } from '../telegram/types';
+import { Env, SportGame, AIPrediction, AIPredictionStatus } from '../telegram/types';
 import { GoogleGenAI, Type } from "@google/genai";
+import { getTodaysGamesBySport } from '../services/sportApi';
 
 interface EventContext {
     request: Request;
     env: Env;
 }
 
+interface SharedPrediction extends SportGame {
+  prediction: AIPrediction | null;
+}
+
+// TTL for the main cache in seconds (1 hour)
+const CACHE_TTL_SECONDS = 3600;
+
 const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
     if (!status) return '⏳';
     switch (status.short) {
         case '1H': case 'HT': case '2H': case 'ET': case 'BT': case 'P': case 'LIVE': case 'INTR': return '🔴';
-        case 'FT': case 'AET': case 'PEN': case 'POST': case 'CANC': case 'ABD': case 'AWD': case 'WO': return '🏁';
+        case 'FT': case 'AET': case 'PEN': case 'Finished': return '🏁';
         default: return '⏳';
     }
 };
@@ -64,82 +70,104 @@ function getAiPayloadForSport(sport: string, matchName: string): { prompt: strin
 }
 
 export const onRequestGet = async ({ request, env }: EventContext): Promise<Response> => {
+    const url = new URL(request.url);
+    const sport = url.searchParams.get('sport');
+    if (!sport) {
+        return new Response(JSON.stringify({ error: 'Sport parameter is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const currentHour = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+    const cacheKey = `central_predictions:${sport}:${currentHour}`;
+    
+    // 1. Check cache first
+    const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
+    if (cachedData) {
+        return new Response(JSON.stringify(cachedData), { status: 200, headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' } });
+    }
+
     try {
-        const url = new URL(request.url);
-        const sport = url.searchParams.get('sport');
-
-        if (!sport) {
-            return new Response(JSON.stringify({ error: 'Sport parameter is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-        }
-
+        // 2. Cache miss: Fetch fresh data
         const games = await getTodaysGamesBySport(sport, env);
         if (games.length === 0) {
-            return new Response(JSON.stringify({ matches: [], newPredictions: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+            await env.BOT_STATE.put(cacheKey, JSON.stringify([]), { expirationTtl: CACHE_TTL_SECONDS });
+            return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
 
-        const teamNames = games.flatMap(game => [game?.teams?.home?.name, game?.teams?.away?.name]).filter((name): name is string => !!name);
-        const uniqueTeamNames = Array.from(new Set(teamNames));
-        const translationMap = await translateTeamNames(uniqueTeamNames, env);
-        
         const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-        const predictionPromises = games.map(async (game) => {
-            try {
-                if (game.status.short !== 'NS') return null;
+        
+        const processedGames: SharedPrediction[] = await Promise.all(games.map(async (game): Promise<SharedPrediction> => {
+            const matchName = `${game.teams.home.name} vs ${game.teams.away.name}`;
+            let prediction: AIPrediction | null = null;
 
-                const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
-                const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
-                const matchName = `${homeTeam} vs ${awayTeam}`;
-                
-                const { prompt, schema } = getAiPayloadForSport(sport, matchName);
-
-                const response = await ai.models.generateContent({
-                    model: "gemini-2.5-flash",
-                    contents: prompt,
-                    config: { responseMimeType: "application/json", responseSchema: schema }
-                });
-                
-                return {
-                    sport: sport,
-                    matchName: matchName,
-                    prediction: response.text,
-                };
-            } catch (error) {
-                console.error(`Failed to get AI prediction for match ID ${game.id}:`, error);
-                return null;
-            }
-        });
-
-        const newPredictions = (await Promise.all(predictionPromises)).filter((p): p is Omit<AIPrediction, 'id'|'createdAt'|'status'> => p !== null);
-
-        const translatedGames = games.map(game => {
-            const gameData: any = {
-                sport: sport,
-                eventName: game.league.name,
-                teams: `${translationMap[game.teams.home.name] || game.teams.home.name} vs ${translationMap[game.teams.away.name] || game.teams.away.name}`,
-                date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-                time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
-                isHotMatch: false, 
-                status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
-            };
-            
-            if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null && game.scores.away !== null) {
-                gameData.score = `${game.scores.home} - ${game.scores.away}`;
-                gameData.scores = { home: game.scores.home, away: game.scores.away };
-                 if (sport === 'hockey' || sport === 'basketball' || sport === 'nba') {
-                    gameData.winner = game.scores.home > game.scores.away ? 'home' : 'away';
-                } else { // Football etc.
-                    if (game.scores.home > game.scores.away) gameData.winner = 'home';
-                    else if (game.scores.away > game.scores.home) gameData.winner = 'away';
-                    else gameData.winner = 'draw';
+            if (game.status.short === 'NS') {
+                try {
+                    const { prompt, schema } = getAiPayloadForSport(sport, matchName);
+                    const response = await ai.models.generateContent({
+                        model: "gemini-2.5-flash",
+                        contents: prompt,
+                        config: { responseMimeType: "application/json", responseSchema: schema }
+                    });
+                    prediction = {
+                        id: `${game.id}-${new Date().getTime()}`,
+                        createdAt: new Date().toISOString(),
+                        sport: sport,
+                        matchName: matchName,
+                        prediction: response.text,
+                        status: AIPredictionStatus.Pending,
+                    };
+                } catch (error) {
+                    console.error(`Failed to get AI prediction for match ID ${game.id}:`, error);
                 }
             }
 
-            return gameData;
-        });
+            // Map to frontend-friendly format
+            const sharedPredictionData: any = {
+                sport: sport,
+                eventName: game.league.name,
+                teams: matchName,
+                date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
+                time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
+                isHotMatch: false, 
+                status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
+                prediction: prediction
+            };
 
-        return new Response(JSON.stringify({ matches: translatedGames, newPredictions }), {
+            if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null && game.scores.away !== null) {
+                sharedPredictionData.score = `${game.scores.home} - ${game.scores.away}`;
+                sharedPredictionData.scores = { home: game.scores.home, away: game.scores.away };
+                
+                if (game.scores.home > game.scores.away) sharedPredictionData.winner = 'home';
+                else if (game.scores.away > game.scores.home) sharedPredictionData.winner = 'away';
+                else sharedPredictionData.winner = 'draw';
+            }
+            
+            return sharedPredictionData;
+        }));
+        
+        // Resolve statuses for predictions on finished games (if any were created in a past hour's cache)
+         const resolvedGames = processedGames.map(game => {
+            if (game.prediction && game.prediction.status === AIPredictionStatus.Pending && game.winner) {
+                 try {
+                    const predictionData = JSON.parse(game.prediction.prediction);
+                    const recommended = predictionData.recommended_outcome;
+                    const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away' };
+                    if (outcomeMap[recommended] === game.winner) {
+                        game.prediction.status = AIPredictionStatus.Correct;
+                    } else {
+                         game.prediction.status = AIPredictionStatus.Incorrect;
+                    }
+                } catch(e) {/* ignore */}
+            }
+            return game;
+         });
+
+
+        // 3. Store in cache and return
+        await env.BOT_STATE.put(cacheKey, JSON.stringify(resolvedGames), { expirationTtl: CACHE_TTL_SECONDS });
+
+        return new Response(JSON.stringify(resolvedGames), {
             status: 200,
-            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' },
+            headers: { 'Content-Type': 'application/json', 'X-Cache': 'MISS' },
         });
 
     } catch (error) {

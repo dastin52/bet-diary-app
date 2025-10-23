@@ -60,36 +60,35 @@ app.post('/api/gemini', async (req, res) => {
 // Mock endpoint for fetching matches WITH AI predictions for local dev
 app.get('/api/matches-with-predictions', (req, res) => {
     const sport = req.query.sport;
-    console.log(`[LOCAL DEV] Serving mock matches with predictions for sport: ${sport}`);
+    console.log(`[LOCAL DEV] Serving mock shared predictions for sport: ${sport}`);
     
-    let mockMatches = [];
-    let mockPredictions = [];
+    let mockSharedPredictions = [];
 
     if (sport === 'football') {
-        mockMatches = [
-            { sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
-            { sport: sport, eventName: 'Mock Finals', teams: 'Команда X vs. Команда Y', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '3 - 1', scores: { home: 3, away: 1 }, winner: 'home' },
-        ];
-        mockPredictions = [
-            { sport: sport, matchName: 'Команда А vs. Команда Б', prediction: JSON.stringify({ "probabilities": { "П1": 55, "X": 25, "П2": 20 }, "coefficients": { "П1": 1.8, "X": 3.5, "П2": 4.0 }, "recommended_outcome": "П1" }) },
-            { sport: sport, matchName: 'Команда X vs. Команда Y', prediction: JSON.stringify({ "probabilities": { "П1": 60, "X": 20, "П2": 20 }, "coefficients": { "П1": 1.6, "X": 4.0, "П2": 5.0 }, "recommended_outcome": "П1" }) },
+        mockSharedPredictions = [
+            { 
+                sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' },
+                prediction: { id: 'pred1', createdAt: new Date().toISOString(), sport: sport, matchName: 'Команда А vs. Команда Б', prediction: JSON.stringify({ "probabilities": { "П1": 55, "X": 25, "П2": 20 }, "coefficients": { "П1": 1.8, "X": 3.5, "П2": 4.0 }, "recommended_outcome": "П1" }), status: 'pending' }
+            },
+            { 
+                sport: sport, eventName: 'Mock Finals', teams: 'Команда X vs. Команда Y', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '3 - 1', scores: { home: 3, away: 1 }, winner: 'home',
+                prediction: { id: 'pred2', createdAt: new Date().toISOString(), sport: sport, matchName: 'Команда X vs. Команда Y', prediction: JSON.stringify({ "probabilities": { "П1": 60, "X": 20, "П2": 20 }, "coefficients": { "П1": 1.6, "X": 4.0, "П2": 5.0 }, "recommended_outcome": "П1" }), status: 'correct' }
+            },
         ];
     } else if (sport === 'basketball' || sport === 'nba') {
-        mockMatches = [
-            { sport: sport, eventName: 'Mock NBA', teams: 'Лейкерс vs. Клипперс', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
-            { sport: sport, eventName: 'Mock Euroleague', teams: 'ЦСКА vs. Реал Мадрид', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '91 - 88', scores: { home: 91, away: 88 }, winner: 'home' },
-        ];
-        mockPredictions = [
-            { sport: sport, matchName: 'Лейкерс vs. Клипперс', prediction: JSON.stringify({ "probabilities": { "П1 (с ОТ)": 52, "П2 (с ОТ)": 48 }, "coefficients": { "П1 (с ОТ)": 1.9, "П2 (с ОТ)": 1.9 }, "recommended_outcome": "П1 (с ОТ)" }) },
-            { sport: sport, matchName: 'ЦСКА vs. Реал Мадрид', prediction: JSON.stringify({ "probabilities": { "П1 (с ОТ)": 65, "П2 (с ОТ)": 35 }, "coefficients": { "П1 (с ОТ)": 1.5, "П2 (с ОТ)": 2.5 }, "recommended_outcome": "П1 (с ОТ)" }) },
+        mockSharedPredictions = [
+             { 
+                sport: sport, eventName: 'Mock NBA', teams: 'Лейкерс vs. Клипперс', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' },
+                prediction: { id: 'pred3', createdAt: new Date().toISOString(), sport: sport, matchName: 'Лейкерс vs. Клипперс', prediction: JSON.stringify({ "probabilities": { "П1 (с ОТ)": 52, "П2 (с ОТ)": 48 }, "coefficients": { "П1 (с ОТ)": 1.9, "П2 (с ОТ)": 1.9 }, "recommended_outcome": "П1 (с ОТ)" }), status: 'pending' }
+            },
+            { 
+                sport: sport, eventName: 'Mock Euroleague', teams: 'ЦСКА vs. Реал Мадрид', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '91 - 88', scores: { home: 91, away: 88 }, winner: 'home',
+                prediction: { id: 'pred4', createdAt: new Date().toISOString(), sport: sport, matchName: 'ЦСКА vs. Реал Мадрид', prediction: JSON.stringify({ "probabilities": { "П1 (с ОТ)": 65, "П2 (с ОТ)": 35 }, "coefficients": { "П1 (с ОТ)": 1.5, "П2 (с ОТ)": 2.5 }, "recommended_outcome": "П2 (с ОТ)" }), status: 'incorrect' }
+            },
         ];
     }
 
-
-    res.json({
-        matches: mockMatches,
-        newPredictions: mockPredictions
-    });
+    res.json(mockSharedPredictions);
 });
 
 

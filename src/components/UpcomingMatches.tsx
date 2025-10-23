@@ -1,14 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Card from './ui/Card';
-import { UpcomingMatch, AIPrediction } from '../types';
-import { useBetContext } from '../contexts/BetContext';
-
-const FireIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-400" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 S`a`t` -1.898-.632l4-12a1 1 0 011.265-.633zM10 4a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
-        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm0 2a10 10 0 100-20 10 10 0 000 20z" />
-    </svg>
-);
+import { SharedPrediction } from '../types';
+import { usePredictionContext } from '../contexts/PredictionContext';
 
 const TABS = [
     { key: 'football', label: '⚽️ Футбол' },
@@ -16,7 +9,6 @@ const TABS = [
     { key: 'basketball', label: '🏀 Баскетбол' },
     { key: 'nba', label: '🏀 NBA' },
 ];
-
 
 const LoadingSkeleton: React.FC = () => (
     <div className="space-y-3">
@@ -33,43 +25,14 @@ const LoadingSkeleton: React.FC = () => (
 );
 
 const UpcomingMatches: React.FC = () => {
-    const { addMultipleAIPredictions, resolveAIPredictions } = useBetContext();
-    const [matches, setMatches] = useState<UpcomingMatch[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [activeSport, setActiveSport] = useState('football');
-
-    useEffect(() => {
-        const loadMatches = async () => {
-            try {
-                setIsLoading(true);
-                setError(null);
-                const response = await fetch(`/api/matches-with-predictions?sport=${activeSport}`);
-                if (!response.ok) {
-                     const errorData = await response.json();
-                    throw new Error(errorData.error || 'Не удалось загрузить матчи.');
-                }
-                const data: { matches: UpcomingMatch[], newPredictions: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>[] } = await response.json();
-                
-                if (data.newPredictions && data.newPredictions.length > 0) {
-                    addMultipleAIPredictions(data.newPredictions);
-                }
-                
-                const finishedMatches = (data.matches || []).filter(m => typeof m.winner !== 'undefined');
-                if (finishedMatches.length > 0) {
-                    resolveAIPredictions(finishedMatches);
-                }
-
-                const sortedMatches = (data.matches || []).sort((a, b) => (b.isHotMatch ? 1 : -1) - (a.isHotMatch ? -1 : 1));
-                setMatches(sortedMatches);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Произошла неизвестная ошибка.');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        loadMatches();
-    }, [activeSport, addMultipleAIPredictions, resolveAIPredictions]);
+    const { predictions, isLoading, error, activeSport, setSport } = usePredictionContext();
+    const [isExpanded, setIsExpanded] = useState(true);
+    
+    const ChevronIcon = ({ isOpen }: { isOpen: boolean }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 text-gray-400 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+    );
 
     const renderContent = () => {
         if (isLoading) {
@@ -78,17 +41,16 @@ const UpcomingMatches: React.FC = () => {
         if (error) {
             return <p className="text-center text-red-400 py-4">{error}</p>;
         }
-        if (matches.length === 0) {
+        if (predictions.length === 0) {
             return <p className="text-center text-gray-500 py-4">На сегодня матчей не найдено.</p>;
         }
         return (
             <div className="space-y-2">
-                {matches.map((match, index) => (
+                {predictions.map((match, index) => (
                     <div key={index} className="p-3 rounded-lg flex justify-between items-center hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors">
                         <div>
                              <p className="text-xs text-gray-500 dark:text-gray-400">{match.eventName}</p>
                             <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
-                                {match.isHotMatch && <FireIcon />}
                                 {match.teams}
                                 {match.score && <span className="ml-2 font-mono bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded text-sm">{match.score}</span>}
                             </p>
@@ -105,24 +67,29 @@ const UpcomingMatches: React.FC = () => {
 
     return (
         <Card>
-            <h3 className="text-lg font-semibold mb-4">Ближайшие Матчи</h3>
-             <div className="flex space-x-1 sm:space-x-2 border-b border-gray-200 dark:border-gray-700 mb-4 overflow-x-auto">
-                {TABS.map(tab => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setActiveSport(tab.key)}
-                        className={`px-3 sm:px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-                            activeSport === tab.key
-                                ? 'border-b-2 border-indigo-500 text-gray-900 dark:text-white'
-                                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                        }`}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
+            <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+                <h3 className="text-lg font-semibold">Ближайшие Матчи</h3>
+                <ChevronIcon isOpen={isExpanded} />
             </div>
-            <div className="max-h-[300px] overflow-y-auto pr-2">
-                {renderContent()}
+             <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                <div className="flex space-x-1 sm:space-x-2 border-b border-gray-200 dark:border-gray-700 my-4 overflow-x-auto">
+                    {TABS.map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setSport(tab.key)}
+                            className={`px-3 sm:px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                                activeSport === tab.key
+                                    ? 'border-b-2 border-indigo-500 text-gray-900 dark:text-white'
+                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+                <div className="max-h-[300px] overflow-y-auto pr-2">
+                    {renderContent()}
+                </div>
             </div>
         </Card>
     );

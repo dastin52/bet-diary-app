@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus, AIPrediction, AIPredictionStatus, UpcomingMatch } from '../types';
+// FIX: Add AIPrediction and AIPredictionStatus to imports to support AI prediction features.
+import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus, AIPrediction, AIPredictionStatus } from '../types';
 import { BET_TYPE_OPTIONS } from '../constants';
 import { generateEventString, calculateProfit } from '../utils/betUtils';
 import { loadUserData, saveUserData } from '../data/betStore';
@@ -10,6 +11,7 @@ export interface UseBetsReturn {
   bankroll: number;
   goals: Goal[];
   bankHistory: BankTransaction[];
+  // FIX: Add aiPredictions to the return type for components that need to display them.
   aiPredictions: AIPrediction[];
   addBet: (bet: Omit<Bet, 'id' | 'createdAt' | 'event'>) => void;
   addMultipleBets: (bets: Omit<Bet, 'id' | 'createdAt' | 'event'>[]) => void;
@@ -19,10 +21,9 @@ export interface UseBetsReturn {
   addGoal: (goal: Omit<Goal, 'id' | 'createdAt' | 'currentValue' | 'status'>) => void;
   updateGoal: (id: string, updatedGoal: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
+  // FIX: Add AI prediction management functions to the return type.
   addAIPrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
-  addMultipleAIPredictions: (predictions: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>[]) => void;
-  updateAIPrediction: (id: string, updates: Partial<Pick<AIPrediction, 'status' | 'matchResult'>>) => void;
-  resolveAIPredictions: (finishedMatches: UpcomingMatch[]) => void;
+  updateAIPrediction: (id: string, status: AIPredictionStatus) => void;
   analytics: {
     totalStaked: number;
     turnover: number;
@@ -47,6 +48,7 @@ export const useBets = (userKey: string): UseBetsReturn => {
   const [bankroll, setBankroll] = useState<number>(10000);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [bankHistory, setBankHistory] = useState<BankTransaction[]>([]);
+  // FIX: Add state for AI predictions.
   const [aiPredictions, setAIPredictions] = useState<AIPrediction[]>([]);
   
   useEffect(() => {
@@ -54,6 +56,7 @@ export const useBets = (userKey: string): UseBetsReturn => {
     setBets(data.bets);
     setBankroll(data.bankroll);
     setGoals(data.goals);
+    // FIX: Load AI predictions from user data.
     setAIPredictions(data.aiPredictions);
     
     if (data.bankHistory.length === 0 && data.bets.length === 0 && !isDemoMode) {
@@ -76,6 +79,7 @@ export const useBets = (userKey: string): UseBetsReturn => {
 
   useEffect(() => {
     if (isDemoMode) return;
+    // FIX: Add aiPredictions to the saveUserData call to persist them.
     saveUserData(userKey, { bets, bankroll, goals, bankHistory, aiPredictions });
   }, [bets, bankroll, goals, bankHistory, aiPredictions, userKey, isDemoMode]);
 
@@ -287,6 +291,7 @@ export const useBets = (userKey: string): UseBetsReturn => {
         setGoals(prev => prev.filter(g => g.id !== id));
     }, [isDemoMode]);
     
+    // FIX: Add function to create a new AI prediction.
     const addAIPrediction = useCallback((predictionData: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => {
         if (isDemoMode) return;
         const newPrediction: AIPrediction = {
@@ -298,73 +303,11 @@ export const useBets = (userKey: string): UseBetsReturn => {
         setAIPredictions(prev => [newPrediction, ...prev]);
     }, [isDemoMode]);
 
-    const addMultipleAIPredictions = useCallback((predictionsToAdd: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>[]) => {
+    // FIX: Add function to update the status of an AI prediction.
+    const updateAIPrediction = useCallback((id: string, status: AIPredictionStatus) => {
         if (isDemoMode) return;
-
-        setAIPredictions(prev => {
-            const existingMatchNames = new Set(prev.map(p => p.matchName));
-            const uniqueNewPredictions = predictionsToAdd.filter(p => !existingMatchNames.has(p.matchName));
-
-            if (uniqueNewPredictions.length === 0) {
-                return prev;
-            }
-
-            const newFullPredictions: AIPrediction[] = uniqueNewPredictions.map(p => ({
-                ...p,
-                id: new Date().toISOString() + Math.random(),
-                createdAt: new Date().toISOString(),
-                status: AIPredictionStatus.Pending,
-            }));
-
-            return [...newFullPredictions, ...prev];
-        });
+        setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, status } : p));
     }, [isDemoMode]);
-
-    const updateAIPrediction = useCallback((id: string, updates: Partial<Pick<AIPrediction, 'status' | 'matchResult'>>) => {
-        if (isDemoMode) return;
-        setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
-    }, [isDemoMode]);
-
-    const resolveAIPredictions = useCallback((finishedMatches: UpcomingMatch[]) => {
-        if (isDemoMode || finishedMatches.length === 0) return;
-    
-        setAIPredictions(prevPredictions => {
-            let hasChanged = false;
-            const updatedPredictions = prevPredictions.map(p => {
-                if (p.status !== AIPredictionStatus.Pending) return p;
-    
-                const match = finishedMatches.find(m => m.teams === p.matchName);
-                if (!match || typeof match.winner === 'undefined' || !match.scores) return p;
-    
-                let recommendedOutcome: string | null = null;
-                try {
-                    const predictionData = JSON.parse(p.prediction);
-                    recommendedOutcome = predictionData?.recommended_outcome || null;
-                } catch (e) {
-                    console.warn(`Could not parse prediction JSON for "${p.matchName}"`);
-                }
-                
-                if (!recommendedOutcome) return p;
-    
-                const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away' };
-                const aiWinner = outcomeMap[recommendedOutcome];
-                if (!aiWinner) return p;
-                
-                hasChanged = true;
-                const newStatus = aiWinner === match.winner ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
-    
-                return { 
-                    ...p, 
-                    status: newStatus,
-                    matchResult: { winner: match.winner, scores: match.scores }
-                };
-            });
-    
-            return hasChanged ? updatedPredictions : prevPredictions;
-        });
-    
-    }, [isDemoMode]);
-
 
   const analytics = useMemo(() => {
     const settledBets = bets.filter(b => b.status !== BetStatus.Pending);
@@ -504,5 +447,6 @@ export const useBets = (userKey: string): UseBetsReturn => {
     };
   }, [bets, bankroll, bankHistory, isDemoMode]);
 
-  return { bets, bankHistory, aiPredictions, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal, addAIPrediction, addMultipleAIPredictions, updateAIPrediction, resolveAIPredictions };
+  // FIX: Add aiPredictions and its management functions to the hook's return value.
+  return { bets, bankHistory, aiPredictions, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal, addAIPrediction, updateAIPrediction };
 };

@@ -7,6 +7,7 @@ import { SettingsProvider } from './contexts/SettingsContext';
 import WelcomeOverlay from './components/WelcomeOverlay';
 import { ThemeProvider } from './contexts/ThemeContext';
 import LoginScreen from './components/auth/LoginScreen';
+import { PredictionProvider } from './contexts/PredictionContext';
 
 const AppContent: React.FC = () => {
   const { currentUser } = useAuthContext();
@@ -60,7 +61,9 @@ const AppProviders: React.FC = () => {
     <SettingsProvider userKey={userKey}>
       <ThemeProvider>
         <BetProvider userKey={userKey}>
-          <AppContent />
+          <PredictionProvider>
+            <AppContent />
+          </PredictionProvider>
         </BetProvider>
       </ThemeProvider>
     </SettingsProvider>
