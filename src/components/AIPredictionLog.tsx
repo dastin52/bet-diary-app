@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
 import { AIPrediction, AIPredictionStatus, SharedPrediction } from '../types';
@@ -7,6 +7,8 @@ import { usePredictionContext } from '../contexts/PredictionContext';
 import { useBetContext } from '../contexts/BetContext';
 import Button from './ui/Button';
 import { SPORTS } from '../constants';
+import Modal from './ui/Modal';
+import { fetchAIPredictionAnalysis } from '../services/aiService';
 
 
 const SPORT_MAP: Record<string, string> = {
@@ -64,26 +66,40 @@ const PredictionDetails: React.FC<{ prediction: string }> = ({ prediction }) => 
     }
 }
 
-const resolveMarketOutcome = (market: string, scores: { home: number; away: number }): 'correct' | 'incorrect' | 'unknown' => {
+const resolveMarketOutcome = (market: string, scores: { home: number; away: number }, winner: 'home' | 'away' | 'draw'): 'correct' | 'incorrect' | 'unknown' => {
     const { home, away } = scores;
     const total = home + away;
 
-    switch (market) {
-        case 'П1': return home > away ? 'correct' : 'incorrect';
-        case 'X': return home === away ? 'correct' : 'incorrect';
-        case 'П2': return away > home ? 'correct' : 'incorrect';
-        case '1X': return home >= away ? 'correct' : 'incorrect';
-        case 'X2': return away >= home ? 'correct' : 'incorrect';
-        case 'Обе забьют - Да': return home > 0 && away > 0 ? 'correct' : 'incorrect';
-        case 'Обе забьют - Нет': return home === 0 || away === 0 ? 'correct' : 'incorrect';
+    switch (true) {
+        case market === 'П1':
+        case market === 'П1 (осн. время)':
+            return (home > away) ? 'correct' : 'incorrect';
+        case market === 'X':
+        case market === 'X (осн. время)':
+            return home === away ? 'correct' : 'incorrect';
+        case market === 'П2':
+        case market === 'П2 (осн. время)':
+            return (away > home) ? 'correct' : 'incorrect';
+        case market.startsWith('П1'):
+            return winner === 'home' ? 'correct' : 'incorrect';
+        case market.startsWith('П2'):
+            return winner === 'away' ? 'correct' : 'incorrect';
+        case market === '1X': return home >= away ? 'correct' : 'incorrect';
+        case market === 'X2': return away >= home ? 'correct' : 'incorrect';
+        case market === '12': return home !== away ? 'correct' : 'incorrect';
+        case market === 'Обе забьют - Да': return home > 0 && away > 0 ? 'correct' : 'incorrect';
+        case market === 'Обе забьют - Нет': return home === 0 || away === 0 ? 'correct' : 'incorrect';
+        
+        case market.includes('Тотал Больше'): {
+            const value = parseFloat(market.split(' ')[2]);
+            return !isNaN(value) && total > value ? 'correct' : 'incorrect';
+        }
+        case market.includes('Тотал Меньше'): {
+            const value = parseFloat(market.split(' ')[2]);
+            return !isNaN(value) && total < value ? 'correct' : 'incorrect';
+        }
+        
         default:
-            const totalMatch = market.match(/Тотал (Больше|Меньше) (\d+(\.\d+)?)/);
-            if (totalMatch) {
-                const type = totalMatch[1];
-                const value = parseFloat(totalMatch[2]);
-                if (type === 'Больше') return total > value ? 'correct' : 'incorrect';
-                if (type === 'Меньше') return total < value ? 'correct' : 'incorrect';
-            }
             return 'unknown';
     }
 };
@@ -97,6 +113,11 @@ const AIPredictionLog: React.FC = () => {
     const [leagueFilter, setLeagueFilter] = useState('all');
     const [outcomeFilter, setOutcomeFilter] = useState('all');
 
+    const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
+    const [analysisText, setAnalysisText] = useState('');
+    const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+
+
     useEffect(() => {
         const finishedMatches = centralPredictions.filter(p => p.winner && p.scores);
         if (finishedMatches.length === 0) return;
@@ -107,7 +128,7 @@ const AIPredictionLog: React.FC = () => {
         pendingPersonalPredictions.forEach(prediction => {
             const finishedMatch = finishedMatches.find(m => m.teams === prediction.matchName && (SPORT_MAP[m.sport] === prediction.sport || m.sport === prediction.sport));
             
-            if (finishedMatch && finishedMatch.scores) {
+            if (finishedMatch && finishedMatch.scores && finishedMatch.winner) {
                 let recommendedOutcome: string | null = null;
                 try {
                     const predictionData = JSON.parse(prediction.prediction);
@@ -116,13 +137,13 @@ const AIPredictionLog: React.FC = () => {
 
                 if (!recommendedOutcome) return;
                 
-                const result = resolveMarketOutcome(recommendedOutcome, finishedMatch.scores);
+                const result = resolveMarketOutcome(recommendedOutcome, finishedMatch.scores, finishedMatch.winner);
 
                 if (result !== 'unknown') {
                     const newStatus = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
                      updateAIPrediction(prediction.id, {
                         status: newStatus,
-                        matchResult: { winner: finishedMatch.winner!, scores: finishedMatch.scores }
+                        matchResult: { winner: finishedMatch.winner, scores: finishedMatch.scores }
                     });
                 }
             }
@@ -131,24 +152,15 @@ const AIPredictionLog: React.FC = () => {
 
     const combinedAndEnhancedPredictions = useMemo(() => {
         const predictionsMap = new Map<string, EnhancedAIPrediction>();
-
-        // First, add central predictions, which have league info
         centralPredictions.forEach(p => {
             if (p.prediction) {
                 predictionsMap.set(p.teams, { ...p.prediction, leagueName: p.eventName });
             }
         });
-
-        // Then, add or update with personal predictions
         personalPredictions.forEach(p => {
             const existing = predictionsMap.get(p.matchName);
-            if (existing) {
-                predictionsMap.set(p.matchName, { ...p, leagueName: existing.leagueName });
-            } else {
-                predictionsMap.set(p.matchName, { ...p, leagueName: 'Личные' });
-            }
+            predictionsMap.set(p.matchName, { ...p, leagueName: existing?.leagueName || 'Личные' });
         });
-
         return Array.from(predictionsMap.values())
             .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [centralPredictions, personalPredictions]);
@@ -160,9 +172,7 @@ const AIPredictionLog: React.FC = () => {
             if (p.leagueName) leagues.add(p.leagueName);
             try {
                 const data = JSON.parse(p.prediction);
-                if (data.probabilities) {
-                    Object.keys(data.probabilities).forEach(key => outcomes.add(key));
-                }
+                if (data.recommended_outcome) outcomes.add(data.recommended_outcome);
             } catch {}
         });
         return { 
@@ -180,7 +190,7 @@ const AIPredictionLog: React.FC = () => {
             if (outcomeFilter !== 'all') {
                  try {
                     const data = JSON.parse(p.prediction);
-                    outcomeMatch = (outcomeFilter in data.probabilities) || (data.recommended_outcome === outcomeFilter);
+                    outcomeMatch = (data.recommended_outcome === outcomeFilter);
                 } catch {
                     outcomeMatch = false;
                 }
@@ -189,14 +199,14 @@ const AIPredictionLog: React.FC = () => {
         });
     }, [combinedAndEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
     
-    const { stats, deepAnalytics } = useMemo(() => {
+    const { generalStats, mainOutcomeStats, deepOutcomeStats } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending);
-        const correctPredictions = settled.filter(p => p.status === AIPredictionStatus.Correct);
+        const correct = settled.filter(p => p.status === AIPredictionStatus.Correct);
         
         const total = settled.length;
-        const accuracy = total > 0 ? (correctPredictions.length / total) * 100 : 0;
+        const accuracy = total > 0 ? (correct.length / total) * 100 : 0;
         
-        const winningCoefficients = correctPredictions.reduce<number[]>((acc, p) => {
+        const winningCoefficients = correct.reduce<number[]>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 const outcome = data.recommended_outcome;
@@ -210,67 +220,50 @@ const AIPredictionLog: React.FC = () => {
             ? winningCoefficients.reduce((sum, coeff) => sum + coeff, 0) / winningCoefficients.length
             : 0;
         
-        // FIX: Explicitly type the initial value for the reduce accumulator to ensure correct type inference.
-        const initialOutcomeStats: Record<string, { correct: number, total: number }> = { 
-            'П1': { correct: 0, total: 0 }, 
-            'X': { correct: 0, total: 0 }, 
-            'П2': { correct: 0, total: 0 } 
-        };
-        const outcomeStats = settled.reduce((acc, p) => {
+// FIX: Explicitly type the initial value for `reduce` to prevent properties being inferred as 'unknown'.
+        const statsByRecommendedOutcome = settled.reduce<Record<string, { correct: number, total: number, oddsSum: number }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 const outcome = data.recommended_outcome;
-                if (outcome && ['П1', 'X', 'П2'].includes(outcome)) {
-                    if (!acc[outcome]) acc[outcome] = { correct: 0, total: 0 };
+// FIX: Add a type guard to ensure `outcome` is a string before using it as a key.
+                if (outcome && typeof outcome === 'string') {
+                    if (!acc[outcome]) acc[outcome] = { correct: 0, total: 0, oddsSum: 0 };
                     acc[outcome].total++;
                     if (p.status === AIPredictionStatus.Correct) {
                         acc[outcome].correct++;
+                        const coeff = data.coefficients?.[outcome];
+                        if (typeof coeff === 'number') acc[outcome].oddsSum += coeff;
                     }
                 }
             } catch {}
             return acc;
-        }, initialOutcomeStats);
-        
-        const accuracyByOutcome = Object.entries(outcomeStats).map(([outcome, data]) => ({
-            outcome, 
-            accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0, 
-            count: data.total,
-        }));
-        
-        const predictionsWithResults = filteredPredictions.filter(p => p.matchResult && p.matchResult.scores);
-        
-        // FIX: Explicitly type the initial value for the reduce accumulator to ensure correct type inference.
-        const deepAnalyticsData = predictionsWithResults.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
-            try {
-                const data = JSON.parse(p.prediction);
-                if (data.probabilities && p.matchResult) {
-                    for (const market in data.probabilities) {
-                        if (!acc[market]) acc[market] = { correct: 0, total: 0 };
-                        const result = resolveMarketOutcome(market, p.matchResult.scores);
-                        if (result !== 'unknown') {
-                            acc[market].total++;
-                            if (result === 'correct') {
-                                acc[market].correct++;
-                            }
-                        }
-                    }
-                }
-            } catch {}
-            return acc;
-        }, {});
-        
-        const sortedDeepAnalytics = Object.entries(deepAnalyticsData)
+        }, {} as Record<string, { correct: number, total: number, oddsSum: number }>);
+
+        const mainOutcomes = ['П1', 'X', 'П2'];
+        const mainOutcomeStats = mainOutcomes.map(outcome => {
+            const data = statsByRecommendedOutcome[outcome] || { correct: 0, total: 0, oddsSum: 0 };
+            return {
+                outcome,
+                accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+                avgCoeff: data.correct > 0 ? data.oddsSum / data.correct : 0,
+                count: data.total,
+            };
+        });
+
+        const deepOutcomeStats = Object.entries(statsByRecommendedOutcome)
             .map(([market, data]) => ({
                 market,
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+                avgCoeff: data.correct > 0 ? data.oddsSum / data.correct : 0,
                 count: data.total,
             }))
             .filter(item => item.count > 0)
             .sort((a, b) => b.count - a.count);
 
         return {
-            stats: { total, correct: correctPredictions.length, accuracy, avgCorrectCoefficient, accuracyByOutcome },
-            deepAnalytics: sortedDeepAnalytics,
+            generalStats: { total, correct: correct.length, accuracy, avgCorrectCoefficient },
+            mainOutcomeStats,
+            deepOutcomeStats,
         };
     }, [filteredPredictions]);
 
@@ -278,30 +271,59 @@ const AIPredictionLog: React.FC = () => {
         fetchPredictions(activeSport, true);
     };
 
+    const handleGetAIAnalysis = useCallback(async () => {
+        setIsAnalysisLoading(true);
+        setAnalysisText('');
+        setIsAnalysisModalOpen(true);
+
+        const analyticsText = `
+Общая статистика (с учетом фильтров):
+- Всего оценено: ${generalStats.total}
+- Верно: ${generalStats.correct}
+- Точность: ${generalStats.accuracy.toFixed(1)}%
+
+Точность по типам рекомендованных исходов:
+${deepOutcomeStats.map(item => 
+`- ${item.market}: ${item.accuracy.toFixed(1)}% (${item.correct}/${item.total})`
+).join('\n')}
+`;
+        try {
+            const result = await fetchAIPredictionAnalysis(analyticsText);
+            setAnalysisText(result);
+        } catch (error) {
+            setAnalysisText(error instanceof Error ? error.message : "Произошла ошибка при анализе.");
+        } finally {
+            setIsAnalysisLoading(false);
+        }
+    }, [generalStats, deepOutcomeStats]);
+
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                 <div></div>
+            <div className="flex justify-between items-center flex-wrap gap-4">
+                 <Button onClick={handleGetAIAnalysis} variant="secondary">
+                     🤖 Получить выводы от AI
+                 </Button>
                  <Button onClick={handleRefresh} variant="secondary">
                      <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5M20 4l-4 4M4 20l4-4" /></svg>
                     Обновить
                 </Button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <KpiCard title="Всего оценено" value={String(stats.total)} />
-                <KpiCard title="Верных прогнозов" value={String(stats.correct)} />
-                <KpiCard title="Общая точность" value={`${stats.accuracy.toFixed(1)}%`} colorClass={stats.accuracy >= 50 ? 'text-green-400' : 'text-red-400'}/>
-                <KpiCard title="Средний верный коэф." value={stats.avgCorrectCoefficient.toFixed(2)} colorClass="text-amber-400" />
+                <KpiCard title="Всего оценено" value={String(generalStats.total)} />
+                <KpiCard title="Верных прогнозов" value={String(generalStats.correct)} />
+                <KpiCard title="Общая точность" value={`${generalStats.accuracy.toFixed(1)}%`} colorClass={generalStats.accuracy >= 50 ? 'text-green-400' : 'text-red-400'}/>
+                <KpiCard title="Средний верный коэф." value={generalStats.avgCorrectCoefficient.toFixed(2)} colorClass="text-amber-400" />
             </div>
 
              <Card>
                 <h3 className="text-lg font-semibold mb-2">Точность по основным исходам</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {stats.accuracyByOutcome.map(({ outcome, accuracy, count }) => (
+                    {mainOutcomeStats.map(({ outcome, accuracy, avgCoeff, count }) => (
                          <div key={outcome} className="p-4 bg-gray-900/50 rounded-lg text-center">
                             <p className="text-sm text-gray-400">{outcome}</p>
                             <div className="flex items-baseline justify-center gap-2 mt-1">
                                 <p className={`text-3xl font-bold ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
+                                {avgCoeff > 0 && <span className="text-sm text-amber-400 font-mono" title="Средний коэф.">{avgCoeff.toFixed(2)}</span>}
                             </div>
                             <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
                         </div>
@@ -311,12 +333,14 @@ const AIPredictionLog: React.FC = () => {
 
             <Card>
                 <h3 className="text-lg font-semibold mb-2">Глубокая аналитика по исходам</h3>
+                 <p className="text-xs text-gray-500 mb-4">Статистика по всем рекомендованным AI исходам, отсортировано по количеству.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {deepAnalytics.map(({ market, accuracy, count }) => (
+                    {deepOutcomeStats.map(({ market, accuracy, avgCoeff, count }) => (
                          <div key={market} className="p-3 bg-gray-900/50 rounded-lg text-center">
                             <p className="text-sm text-gray-400 truncate" title={market}>{market}</p>
-                             <div className="flex items-baseline justify-center gap-2 mt-1">
+                             <div className="flex items-baseline justify-center gap-1 mt-1">
                                 <p className={`text-2xl font-bold ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
+                                {avgCoeff > 0 && <span className="text-xs text-amber-400 font-mono" title="Средний коэф.">{avgCoeff.toFixed(2)}</span>}
                             </div>
                             <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
                         </div>
@@ -380,6 +404,20 @@ const AIPredictionLog: React.FC = () => {
                     </table>
                 </div>
             </Card>
+
+            {isAnalysisModalOpen && (
+                <Modal title="Анализ производительности AI" onClose={() => setIsAnalysisModalOpen(false)}>
+                    {isAnalysisLoading ? (
+                        <div className="flex justify-center items-center h-40">
+                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-400"></div>
+                        </div>
+                    ) : (
+                        <div className="prose prose-invert prose-sm sm:prose-base max-w-none whitespace-pre-wrap leading-relaxed text-gray-300">
+                            {analysisText}
+                        </div>
+                    )}
+                </Modal>
+            )}
         </div>
     );
 };
