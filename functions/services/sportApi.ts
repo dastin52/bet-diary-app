@@ -130,39 +130,45 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     let games: SportGame[];
 
     if (sport === 'football') {
-        games = (data.response || []).reduce((acc: SportGame[], item: any) => {
-            try {
-                // More robust check for required fields before processing
-                if (
-                    item?.fixture?.id &&
-                    (item.fixture.timestamp || item.fixture.date) &&
-                    item.teams?.home?.name &&
-                    item.teams?.away?.name &&
-                    item.league
-                ) {
-                    const timestamp = item.fixture.timestamp || Math.floor(new Date(item.fixture.date).getTime() / 1000);
-                    const game: SportGame = {
-                        id: item.fixture.id,
-                        date: item.fixture.date,
-                        time: new Date(timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-                        timestamp: timestamp,
-                        timezone: item.fixture.timezone || 'UTC',
-                        status: {
-                            long: item.fixture.status?.long || 'Scheduled',
-                            short: item.fixture.status?.short || 'NS',
-                        },
-                        league: item.league,
-                        teams: item.teams,
-                    };
-                    acc.push(game);
-                } else {
-                     console.warn(`[Football Parser] Skipping item due to missing critical data. Fixture ID: ${item?.fixture?.id || 'N/A'}`);
+        games = (data.response || [])
+            .map((item: any): SportGame | null => {
+                try {
+                    const { fixture, league, teams } = item || {};
+                    if (
+                        fixture?.id &&
+                        (fixture.timestamp || fixture.date) &&
+                        teams?.home?.name &&
+                        teams?.away?.name &&
+                        league
+                    ) {
+                        const timestamp = fixture.timestamp || Math.floor(new Date(fixture.date).getTime() / 1000);
+
+                        if (isNaN(timestamp)) {
+                            console.warn(`[Football Parser] Skipping item due to invalid date. Fixture ID: ${fixture.id}`);
+                            return null;
+                        }
+
+                        return {
+                            id: fixture.id,
+                            date: fixture.date,
+                            time: new Date(timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+                            timestamp: timestamp,
+                            timezone: fixture.timezone || 'UTC',
+                            status: {
+                                long: fixture.status?.long || 'Scheduled',
+                                short: fixture.status?.short || 'NS',
+                            },
+                            league: league,
+                            teams: teams,
+                        };
+                    }
+                    return null; // Skip invalid items
+                } catch (e) {
+                    console.warn(`[Football Parser] Error processing a fixture item, skipping. ID: ${item?.fixture?.id || 'unknown'}. Error:`, e);
+                    return null;
                 }
-            } catch (e) {
-                console.warn(`[Football Parser] Error processing a fixture item, skipping. ID: ${item?.fixture?.id || 'unknown'}. Error:`, e);
-            }
-            return acc;
-        }, []);
+            })
+            .filter((game): game is SportGame => game !== null);
     } else {
         // Apply filter for other sports too for robustness
         games = (data.response || [])
