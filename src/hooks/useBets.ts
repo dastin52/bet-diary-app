@@ -331,33 +331,24 @@ export const useBets = (userKey: string): UseBetsReturn => {
         setAIPredictions(prevPredictions => {
             let hasChanged = false;
             const updatedPredictions = prevPredictions.map(p => {
-                if (p.status !== AIPredictionStatus.Pending) {
-                    return p;
-                }
+                if (p.status !== AIPredictionStatus.Pending) return p;
     
                 const match = finishedMatches.find(m => m.teams === p.matchName);
-                if (!match || typeof match.winner === 'undefined') {
-                    return p;
-                }
+                if (!match || typeof match.winner === 'undefined') return p;
     
-                const predictionString = p.prediction;
-                const parts = predictionString.split(',').map(part => part.trim());
-                let maxPercent = -1;
-                let predictedOutcome = ''; // 'П1', 'X', or 'П2'
-    
-                parts.forEach(part => {
-                    const match = part.match(/(П1|X|П2)\s*-\s*(\d+(\.\d+)?)%/i);
-                    if (match) {
-                        const outcome = match[1].toUpperCase();
-                        const percent = parseFloat(match[2]);
-                        if (percent > maxPercent) {
-                            maxPercent = percent;
-                            predictedOutcome = outcome;
-                        }
+                let recommendedOutcome: string | null = null;
+                try {
+                    const predictionData = JSON.parse(p.prediction);
+                    recommendedOutcome = predictionData?.recommended_outcome || null;
+                } catch (e) {
+                    // Fallback for old string format
+                    const matchOld = p.prediction.match(/(П1|X|П2)\s*-\s*(\d+(\.\d+)?)%/i);
+                    if (matchOld) {
+                         recommendedOutcome = matchOld[1].toUpperCase();
                     }
-                });
-    
-                if (!predictedOutcome) return p; // Could not parse
+                }
+                
+                if (!recommendedOutcome) return p;
     
                 const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = {
                     'П1': 'home',
@@ -365,7 +356,7 @@ export const useBets = (userKey: string): UseBetsReturn => {
                     'П2': 'away',
                 };
     
-                const aiWinner = outcomeMap[predictedOutcome];
+                const aiWinner = outcomeMap[recommendedOutcome];
                 if (!aiWinner) return p;
                 
                 hasChanged = true;

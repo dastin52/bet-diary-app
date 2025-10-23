@@ -1,5 +1,5 @@
 // functions/telegram/state.ts
-import { UserState, Env, Goal, BankTransactionType, User } from './types';
+import { UserState, Env, Goal, BankTransactionType, User, AIPrediction } from './types';
 import { addUserEmailToList, getAllUsersWithBets } from '../data/userStore';
 
 const getStateKey = (chatId: number) => `tgstate:${chatId}`;
@@ -11,6 +11,7 @@ const defaultState: UserState = {
     bankroll: 10000,
     goals: [],
     bankHistory: [],
+    aiPredictions: [],
     dialog: null,
 };
 
@@ -25,6 +26,7 @@ export function normalizeState(data: any): UserState {
         bankroll: typeof data.bankroll === 'number' ? data.bankroll : 10000,
         goals: Array.isArray(data.goals) ? data.goals : [],
         bankHistory: Array.isArray(data.bankHistory) ? data.bankHistory : [],
+        aiPredictions: Array.isArray(data.aiPredictions) ? data.aiPredictions : [],
         dialog: data.dialog || null,
     };
 }
@@ -55,6 +57,7 @@ export async function updateAndSyncState(chatId: number, newState: UserState, en
             bankroll: newState.bankroll,
             goals: newState.goals,
             bankHistory: newState.bankHistory,
+            aiPredictions: newState.aiPredictions,
             // We do NOT store the `dialog` state in the shared record.
         };
         await env.BOT_STATE.put(getUserKey(newState.user.email), JSON.stringify(sharedUserData));
@@ -117,6 +120,7 @@ export async function createUser(chatId: number, from: { username?: string }, em
         bankroll: initialBankroll,
         goals: [],
         bankHistory: [initialTransaction],
+        aiPredictions: [],
         dialog: null
     };
     

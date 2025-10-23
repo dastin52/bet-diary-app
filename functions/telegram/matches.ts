@@ -268,7 +268,10 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
                 const statusEmoji = getMatchStatusEmoji(game.status);
                 const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
                 const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
-                text += `${statusEmoji} *${gameTime}* - ${homeTeam} vs ${awayTeam}\n`;
+                const scoreText = (game.scores && game.scores.home !== null && game.scores.away !== null) 
+                    ? ` *[${game.scores.home}:${game.scores.away}]*` 
+                    : '';
+                text += `${statusEmoji} *${gameTime}* - ${homeTeam} vs ${awayTeam}${scoreText}\n`;
             });
             text += '\n';
         });

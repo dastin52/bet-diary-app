@@ -4,11 +4,12 @@ import { handleGoalCallback, GOAL_PREFIX } from './goals';
 import { handleCompetitionCallback, COMP_PREFIX } from './competition';
 import { manageBets, MANAGE_PREFIX } from './manageBets';
 import { showMainMenu } from './ui';
-import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu, handleMatches } from './commands';
+import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu, handleMatches, handlePredictions } from './commands';
 import { answerCallbackQuery } from './telegramApi';
 // FIX: Import 'startAddBetDialog' to resolve reference error.
 import { continueDialog, startAddBetDialog, startScreenshotDialog, startBotRegisterDialog, startBotLoginDialog } from './dialogs';
 import { handleMatchesCallback, handleSportSelectionCallback, MATCH_PREFIX, MATCH_SPORT_PREFIX } from './matches';
+import { handlePredictionCallback, PRED_PREFIX } from './predictions';
 
 export const STATS_PREFIX = 'stats|';
 
@@ -31,6 +32,7 @@ export const CB = {
     MANAGE_BETS: 'manage_bets',
     MATCHES: 'matches',
     AI_CHAT: 'ai_chat',
+    AI_PREDICTIONS: 'ai_preds',
     AI_CHAT_PERFORMANCE: 'ai_perf',
     AI_CHAT_MATCH: 'ai_match',
     AI_CHAT_STRATEGY: 'ai_strat',
@@ -79,6 +81,10 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
         await handleMatchesCallback(update, state, env);
         return;
     }
+    if (cb.data.startsWith(PRED_PREFIX)) {
+        await handlePredictionCallback(update, state, env);
+        return;
+    }
 
     switch (cb.data) {
         // Main menu routing
@@ -102,6 +108,9 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             break;
         case CB.AI_CHAT:
             await handleAiChat(update, state, env);
+            break;
+        case CB.AI_PREDICTIONS:
+            await handlePredictions(update, state, env);
             break;
         // AI Chat quick actions are handled inside the dialog
         case CB.AI_CHAT_PERFORMANCE:

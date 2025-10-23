@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useBetContext } from '../contexts/BetContext';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
 import { AIPrediction, AIPredictionStatus } from '../types';
 import Button from './ui/Button';
+import { SPORTS } from '../constants';
+import Select from './ui/Select';
 
 const getStatusInfo = (status: AIPredictionStatus): { label: string; color: string } => {
     switch (status) {
@@ -13,8 +15,38 @@ const getStatusInfo = (status: AIPredictionStatus): { label: string; color: stri
     }
 };
 
+const PredictionDetails: React.FC<{ prediction: string }> = ({ prediction }) => {
+    try {
+        const data = JSON.parse(prediction);
+        if (!data.probabilities) return <span className="text-gray-400 text-xs">{prediction}</span>;
+
+        const mainOutcome = data.recommended_outcome;
+
+        return (
+            <div className="text-xs space-y-1">
+                <p>
+                    <span className="font-bold text-white">Рекомендация: {mainOutcome}</span>
+                    <span className="text-gray-300"> ({data.probabilities[mainOutcome]}%)</span>
+                </p>
+                <p className="text-gray-400">
+                    {Object.entries(data.probabilities)
+                        .filter(([key]) => key !== mainOutcome)
+                        .map(([key, value]) => `${key}: ${value}%`)
+                        .join(' | ')}
+                </p>
+            </div>
+        )
+
+    } catch (e) {
+        // Fallback for old string format
+        return <span className="text-gray-300 whitespace-pre-wrap text-xs">{prediction.replace(/\*/g, '').trim()}</span>;
+    }
+}
+
 const AIPredictionLog: React.FC = () => {
     const { aiPredictions, updateAIPrediction } = useBetContext();
+    const [sportFilter, setSportFilter] = useState('all');
+    const [outcomeFilter, setOutcomeFilter] = useState('all');
 
     const stats = useMemo(() => {
         const settled = aiPredictions.filter(p => p.status !== AIPredictionStatus.Pending);
@@ -22,33 +54,45 @@ const AIPredictionLog: React.FC = () => {
         const total = settled.length;
         const accuracy = total > 0 ? (correct / total) * 100 : 0;
         
-        const bySport = settled.reduce<Record<string, { correct: number; total: number }>>((acc, p) => {
-            if (!acc[p.sport]) {
-                acc[p.sport] = { correct: 0, total: 0 };
-            }
-            acc[p.sport].total++;
-            if (p.status === AIPredictionStatus.Correct) {
-                acc[p.sport].correct++;
-            }
+        const outcomeStats = settled.reduce<Record<string, { correct: number; total: number }>>((acc, p) => {
+            try {
+                const data = JSON.parse(p.prediction);
+                const outcome = data.recommended_outcome;
+                if (outcome && ['П1', 'X', 'П2'].includes(outcome)) {
+                    if (!acc[outcome]) acc[outcome] = { correct: 0, total: 0 };
+                    acc[outcome].total++;
+                    if (p.status === AIPredictionStatus.Correct) {
+                        acc[outcome].correct++;
+                    }
+                }
+            } catch {}
             return acc;
-        }, {});
-        
-        const accuracyBySport = Object.entries(bySport)
-            .map(([sport, data]) => ({
-                sport,
-                accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
-                count: data.total,
-            }))
-            .filter(s => s.count > 0)
-            .sort((a, b) => b.count - a.count);
+        }, { 'П1': {correct: 0, total: 0}, 'X': {correct: 0, total: 0}, 'П2': {correct: 0, total: 0} });
 
-        return {
-            total,
-            correct,
-            accuracy,
-            accuracyBySport
-        };
+        const accuracyByOutcome = Object.entries(outcomeStats).map(([outcome, data]) => ({
+            outcome,
+            accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+            count: data.total,
+        }));
+        
+        return { total, correct, accuracy, accuracyByOutcome };
     }, [aiPredictions]);
+
+    const filteredPredictions = useMemo(() => {
+        return aiPredictions.filter(p => {
+            const sportMatch = sportFilter === 'all' || p.sport === sportFilter;
+            let outcomeMatch = outcomeFilter === 'all';
+            if (outcomeFilter !== 'all') {
+                try {
+                    const data = JSON.parse(p.prediction);
+                    outcomeMatch = data.recommended_outcome === outcomeFilter;
+                } catch {
+                    outcomeMatch = false;
+                }
+            }
+            return sportMatch && outcomeMatch;
+        });
+    }, [aiPredictions, sportFilter, outcomeFilter]);
 
     return (
         <div className="space-y-6">
@@ -61,28 +105,34 @@ const AIPredictionLog: React.FC = () => {
             </div>
 
             <Card>
-                <h3 className="text-lg font-semibold mb-4">Точность по видам спорта</h3>
-                {stats.accuracyBySport.length > 0 ? (
-                    <div className="space-y-4">
-                        {stats.accuracyBySport.map(item => (
-                            <div key={item.sport}>
-                                <div className="flex justify-between items-center text-sm mb-1">
-                                    <span className="font-medium">{item.sport} ({item.count} оценок)</span>
-                                    <span className="font-semibold">{item.accuracy.toFixed(1)}%</span>
-                                </div>
-                                <div className="w-full bg-gray-700 rounded-full h-2.5">
-                                    <div className="bg-indigo-500 h-2.5 rounded-full" style={{ width: `${item.accuracy}%` }}></div>
-                                </div>
+                <h3 className="text-lg font-semibold mb-4">Точность по исходам</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {stats.accuracyByOutcome.map(item => (
+                         <div key={item.outcome} className="p-3 bg-gray-700/50 rounded-lg">
+                            <div className="flex justify-between items-baseline">
+                                <span className="font-bold text-lg text-white">{item.outcome}</span>
+                                <span className="text-xs text-gray-400">{item.count} оценок</span>
                             </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p className="text-center text-gray-500 py-4">Нет данных для анализа.</p>
-                )}
+                            <p className="font-bold text-2xl text-indigo-400 mt-1">{item.accuracy.toFixed(1)}%</p>
+                        </div>
+                    ))}
+                </div>
             </Card>
 
             <Card>
                 <h3 className="text-lg font-semibold mb-4">Журнал прогнозов</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <Select value={sportFilter} onChange={e => setSportFilter(e.target.value)}>
+                        <option value="all">Все виды спорта</option>
+                        {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </Select>
+                     <Select value={outcomeFilter} onChange={e => setOutcomeFilter(e.target.value)}>
+                        <option value="all">Все исходы</option>
+                        <option value="П1">П1</option>
+                        <option value="X">X</option>
+                        <option value="П2">П2</option>
+                    </Select>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-800">
@@ -95,14 +145,16 @@ const AIPredictionLog: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-gray-900 divide-y divide-gray-700">
-                            {aiPredictions.length > 0 ? aiPredictions.map(p => (
+                            {filteredPredictions.length > 0 ? filteredPredictions.map(p => (
                                 <tr key={p.id} className="hover:bg-gray-800/50">
                                     <td className="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString('ru-RU')}</td>
                                     <td className="px-4 py-3 text-sm font-medium text-white">
                                         {p.matchName}
                                         <p className="text-xs text-gray-500">{p.sport}</p>
                                     </td>
-                                    <td className="px-4 py-3 text-sm text-gray-300 whitespace-pre-wrap">{p.prediction.replace(/\*/g, '').trim()}</td>
+                                    <td className="px-4 py-3">
+                                        <PredictionDetails prediction={p.prediction} />
+                                    </td>
                                     <td className="px-4 py-3 text-center">
                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(p.status).color}`}>
                                             {getStatusInfo(p.status).label}
@@ -122,7 +174,7 @@ const AIPredictionLog: React.FC = () => {
                             )) : (
                                 <tr>
                                     <td colSpan={5} className="text-center py-10 text-gray-500">
-                                        Нет сохраненных прогнозов.
+                                        Нет прогнозов, соответствующих вашим фильтрам.
                                     </td>
                                 </tr>
                             )}

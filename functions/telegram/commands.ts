@@ -10,6 +10,7 @@ import { calculateAnalytics, formatShortReportText, formatDetailedReportText, ge
 import { startAddBetDialog, startAiChatDialog } from './dialogs';
 import { CB, STATS_PREFIX } from './router';
 import { handleMatchesCommand as handleMatches } from './matches';
+import { startPredictionLog } from './predictions';
 
 
 export async function showLinkAccountInfo(chatId: number, messageId: number, env: Env) {
@@ -64,13 +65,14 @@ export async function handleHelp(message: TelegramMessage, env: Env) {
 /competitions - Таблицы лидеров
 /goals - Управление целями
 /ai - Чат с AI-аналитиком
+/aipredictions - База прогнозов AI
 /reset - Сброс вашего состояния (если что-то пошло не так)
 /help - Показать это сообщение`;
     await sendMessage(message.chat.id, text, env);
 }
 
 export async function handleReset(message: TelegramMessage, env: Env) {
-    await setUserState(message.chat.id, { user: null, bets: [], bankroll: 10000, goals: [], bankHistory: [], dialog: null }, env);
+    await setUserState(message.chat.id, { user: null, bets: [], bankroll: 10000, goals: [], bankHistory: [], dialog: null, aiPredictions: [] }, env);
     await sendMessage(message.chat.id, "Ваше состояние сброшено. Отправьте /start для начала.", env);
 }
 
@@ -176,6 +178,15 @@ export async function handleAiChat(update: TelegramUpdate, state: UserState, env
     const messageId = update.callback_query ? update.callback_query.message.message_id : null;
     const chatId = messageId ? update.callback_query!.message.chat.id : update.message!.chat.id;
     await startAiChatDialog(chatId, state, env, messageId);
+}
+
+export async function handlePredictions(update: TelegramUpdate, state: UserState, env: Env) {
+    if (!state.user) {
+        const chatId = update.message?.chat.id || update.callback_query?.message.chat.id;
+        if (chatId) await sendMessage(chatId, "Пожалуйста, войдите или зарегистрируйтесь.", env);
+        return;
+    }
+    await startPredictionLog(update, state, env);
 }
 
 // This now correctly points to the new entry point for the matches feature

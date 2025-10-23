@@ -208,6 +208,8 @@ export interface UserState {
   goals: Goal[];
   bankHistory: BankTransaction[];
   dialog: DialogState | null;
+  // FIX: Add missing 'aiPredictions' property to match its usage in state management.
+  aiPredictions: AIPrediction[];
 }
 
 export interface CompetitionParticipant {

@@ -22,7 +22,8 @@ export async function showMainMenu(chatId: number, messageId: number | null, env
             { text: '🏒 Актуальные матчи', callback_data: CB.MATCHES }
         ],
         [
-            { text: '🤖 AI-Аналитик', callback_data: CB.AI_CHAT }
+            { text: '🤖 AI-Аналитик', callback_data: CB.AI_CHAT },
+            { text: '🔮 База прогнозов AI', callback_data: CB.AI_PREDICTIONS }
         ]
     ]);
     if (messageId) {

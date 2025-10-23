@@ -2,7 +2,7 @@
 import { getTodaysGamesBySport } from '../services/sportApi';
 import { translateTeamNames } from '../telegram/matches';
 import { Env, SportGame, AIPrediction } from '../telegram/types';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 interface EventContext {
     request: Request;
@@ -17,6 +17,8 @@ const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
         default: return '⏳';
     }
 };
+
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN'];
 
 export const onRequestGet = async ({ request, env }: EventContext): Promise<Response> => {
     try {
@@ -39,29 +41,43 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
         const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
         const predictionPromises = games.map(async (game) => {
             try {
-                // Generate prediction only for matches that have not started
-                if (game.status.short !== 'NS') {
-                    return null;
-                }
+                if (game.status.short !== 'NS') return null;
 
                 const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
                 const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
                 const matchName = `${homeTeam} vs ${awayTeam}`;
 
-                const prompt = `Дай краткий прогноз проходимости в процентах для матча по виду спорта "${sport}": ${matchName}. Формат ответа должен быть только таким: "П1 - X%, X - Y%, П2 - Z%". Не добавляй никаких других слов или объяснений.`;
+                const prompt = `Проанализируй матч по виду спорта "${sport}": ${matchName}. Дай прогноз на вероятность прохода для следующих исходов: П1, X, П2, 1X, X2, "Тотал Больше 2.5", "Тотал Меньше 2.5", "Обе забьют - Да". Предоставь ответ ТОЛЬКО в формате JSON. JSON должен содержать два ключа: "probabilities" и "recommended_outcome".
+- "probabilities" должен быть объектом, где ключи - это названия исходов, а значения - их вероятности в процентах (число от 0 до 100).
+- "recommended_outcome" должен быть строкой, содержащей ОДИН наиболее вероятный исход из списка ['П1', 'X', 'П2'].`;
                 
-                const result = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
-                
-                const predictionText = result.text.trim();
-                 if (!/П1\s*-\s*\d+%\s*,\s*X\s*-\s*\d+%\s*,\s*П2\s*-\s*\d+%/i.test(predictionText)) {
-                    console.warn(`AI returned malformed prediction for "${matchName}": ${predictionText}`);
-                    return null; // Skip malformed predictions
-                }
+                 const schema = {
+                    type: Type.OBJECT,
+                    properties: {
+                        probabilities: {
+                        type: Type.OBJECT,
+                        properties: {
+                            "П1": { type: Type.NUMBER }, "X": { type: Type.NUMBER }, "П2": { type: Type.NUMBER },
+                            "1X": { type: Type.NUMBER }, "X2": { type: Type.NUMBER },
+                            "Тотал Больше 2.5": { type: Type.NUMBER }, "Тотал Меньше 2.5": { type: Type.NUMBER },
+                            "Обе забьют - Да": { type: Type.NUMBER },
+                        }
+                        },
+                        recommended_outcome: { type: Type.STRING, enum: ["П1", "X", "П2"] }
+                    },
+                    required: ["probabilities", "recommended_outcome"]
+                };
 
+                const response = await ai.models.generateContent({
+                    model: "gemini-2.5-flash",
+                    contents: prompt,
+                    config: { responseMimeType: "application/json", responseSchema: schema }
+                });
+                
                 return {
                     sport: sport,
                     matchName: matchName,
-                    prediction: predictionText,
+                    prediction: response.text,
                 };
             } catch (error) {
                 console.error(`Failed to get AI prediction for match ID ${game.id}:`, error);
@@ -82,8 +98,7 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
                 status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
             };
             
-            // Check for scores and determine winner if the match is finished
-            if (game.status.short === 'FT' && game.scores && game.scores.home !== null && game.scores.away !== null) {
+            if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null && game.scores.away !== null) {
                 gameData.score = `${game.scores.home} - ${game.scores.away}`;
                 if (game.scores.home > game.scores.away) {
                     gameData.winner = 'home';
