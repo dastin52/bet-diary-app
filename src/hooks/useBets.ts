@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-// FIX: Add AIPrediction and AIPredictionStatus to imports to support AI prediction features.
-import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus, AIPrediction, AIPredictionStatus } from '../types';
+import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus } from '../types';
 import { BET_TYPE_OPTIONS } from '../constants';
 import { generateEventString, calculateProfit } from '../utils/betUtils';
 import { loadUserData, saveUserData } from '../data/betStore';
@@ -11,8 +10,6 @@ export interface UseBetsReturn {
   bankroll: number;
   goals: Goal[];
   bankHistory: BankTransaction[];
-  // FIX: Add aiPredictions to the return type for components that need to display them.
-  aiPredictions: AIPrediction[];
   addBet: (bet: Omit<Bet, 'id' | 'createdAt' | 'event'>) => void;
   addMultipleBets: (bets: Omit<Bet, 'id' | 'createdAt' | 'event'>[]) => void;
   updateBet: (id: string, updatedBet: Partial<Omit<Bet, 'id' | 'createdAt' | 'event'>>) => void;
@@ -21,9 +18,6 @@ export interface UseBetsReturn {
   addGoal: (goal: Omit<Goal, 'id' | 'createdAt' | 'currentValue' | 'status'>) => void;
   updateGoal: (id: string, updatedGoal: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
-  // FIX: Add AI prediction management functions to the return type.
-  addAIPrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
-  updateAIPrediction: (id: string, status: AIPredictionStatus) => void;
   analytics: {
     totalStaked: number;
     turnover: number;
@@ -48,16 +42,12 @@ export const useBets = (userKey: string): UseBetsReturn => {
   const [bankroll, setBankroll] = useState<number>(10000);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [bankHistory, setBankHistory] = useState<BankTransaction[]>([]);
-  // FIX: Add state for AI predictions.
-  const [aiPredictions, setAIPredictions] = useState<AIPrediction[]>([]);
   
   useEffect(() => {
     const data = loadUserData(userKey);
     setBets(data.bets);
     setBankroll(data.bankroll);
     setGoals(data.goals);
-    // FIX: Load AI predictions from user data.
-    setAIPredictions(data.aiPredictions);
     
     if (data.bankHistory.length === 0 && data.bets.length === 0 && !isDemoMode) {
       // New user: create initial bank deposit transaction
@@ -79,9 +69,8 @@ export const useBets = (userKey: string): UseBetsReturn => {
 
   useEffect(() => {
     if (isDemoMode) return;
-    // FIX: Add aiPredictions to the saveUserData call to persist them.
-    saveUserData(userKey, { bets, bankroll, goals, bankHistory, aiPredictions });
-  }, [bets, bankroll, goals, bankHistory, aiPredictions, userKey, isDemoMode]);
+    saveUserData(userKey, { bets, bankroll, goals, bankHistory });
+  }, [bets, bankroll, goals, bankHistory, userKey, isDemoMode]);
 
   // Effect for updating goal progress safely
   useEffect(() => {
@@ -290,24 +279,6 @@ export const useBets = (userKey: string): UseBetsReturn => {
         if(isDemoMode) return;
         setGoals(prev => prev.filter(g => g.id !== id));
     }, [isDemoMode]);
-    
-    // FIX: Add function to create a new AI prediction.
-    const addAIPrediction = useCallback((predictionData: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => {
-        if (isDemoMode) return;
-        const newPrediction: AIPrediction = {
-            ...predictionData,
-            id: new Date().toISOString() + Math.random(),
-            createdAt: new Date().toISOString(),
-            status: AIPredictionStatus.Pending,
-        };
-        setAIPredictions(prev => [newPrediction, ...prev]);
-    }, [isDemoMode]);
-
-    // FIX: Add function to update the status of an AI prediction.
-    const updateAIPrediction = useCallback((id: string, status: AIPredictionStatus) => {
-        if (isDemoMode) return;
-        setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, status } : p));
-    }, [isDemoMode]);
 
   const analytics = useMemo(() => {
     const settledBets = bets.filter(b => b.status !== BetStatus.Pending);
@@ -447,6 +418,5 @@ export const useBets = (userKey: string): UseBetsReturn => {
     };
   }, [bets, bankroll, bankHistory, isDemoMode]);
 
-  // FIX: Add aiPredictions and its management functions to the hook's return value.
-  return { bets, bankHistory, aiPredictions, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal, addAIPrediction, updateAIPrediction };
+  return { bets, bankHistory, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal };
 };

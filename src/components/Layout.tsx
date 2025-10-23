@@ -29,7 +29,7 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
-  const { analytics, addAIPrediction } = useBetContext();
+  const { analytics } = useBetContext();
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
   const [betToEdit, setBetToEdit] = useState<Bet | null>(null);
@@ -140,7 +140,7 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
         </div>
         
         {isAddEditModalOpen && <AddBetModal onClose={() => { setIsAddEditModalOpen(false); setBetToEdit(null); }} betToEdit={betToEdit} />}
-        {isChatModalOpen && <AIChatModal bet={chatBet} analytics={analytics} onClose={() => { setIsChatModalOpen(false); setChatBet(null); }} onSavePrediction={addAIPrediction} />}
+        {isChatModalOpen && <AIChatModal bet={chatBet} analytics={analytics} onClose={() => { setIsChatModalOpen(false); setChatBet(null); }} />}
         {isCashOutModalOpen && <CashOutModal onClose={() => setIsCashOutModalOpen(false)} />}
         {isUpdateBankrollModalOpen && <UpdateBankrollModal onClose={() => setIsUpdateBankrollModalOpen(false)} />}
         {isImportModalOpen && <ImportBetsModal onClose={() => setIsImportModalOpen(false)} />}

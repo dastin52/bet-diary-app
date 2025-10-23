@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bet, Message, GroundingSource, AIPrediction } from '../types';
+import { Bet, Message, GroundingSource } from '../types';
 import { UseBetsReturn } from '../hooks/useBets';
 import { getAIChatResponse } from '../services/aiService';
 import Modal from './ui/Modal';
@@ -10,7 +10,6 @@ interface AIChatModalProps {
   bet: Bet | null;
   analytics: UseBetsReturn['analytics'];
   onClose: () => void;
-  onSavePrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
 }
 
 const LoadingSpinner = () => (
@@ -37,50 +36,12 @@ const ModelIcon = () => (
     </div>
 );
 
-const isMatchPrediction = (text: string) => /прогноз проходимости/i.test(text);
-
-const parsePrediction = (userMessage: Message, modelMessage: Message): Omit<AIPrediction, 'id' | 'createdAt' | 'status'> | null => {
-    try {
-        let matchNameMatch = userMessage.text.match(/Анализ матча:\s*(.+)/i);
-        let sport = 'Футбол'; 
-
-        if (!matchNameMatch) {
-            const directMatch = userMessage.text.match(/(?:проанализируй|анализ)\s+матч[а:]?\s*(.+)/i);
-            if (directMatch && directMatch[1]) {
-                 matchNameMatch = directMatch;
-            }
-        }
-
-        const predictionMatch = modelMessage.text.match(/Прогноз проходимости:([\s\S]*)/i);
-
-        if (matchNameMatch && matchNameMatch[1] && predictionMatch && predictionMatch[1]) {
-            let matchName = matchNameMatch[1].trim();
-            
-            if (matchName.toLowerCase().includes('футбол')) sport = 'Футбол';
-            if (matchName.toLowerCase().includes('баскетбол')) sport = 'Баскетбол';
-            if (matchName.toLowerCase().includes('теннис')) sport = 'Теннис';
-            if (matchName.toLowerCase().includes('хоккей')) sport = 'Хоккей';
-
-            return {
-                sport: sport,
-                matchName: matchName,
-                prediction: predictionMatch[1].trim(),
-            };
-        }
-        return null;
-    } catch {
-        return null;
-    }
-};
-
-
-const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSavePrediction }) => {
+const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatState, setChatState] = useState<'idle' | 'awaiting_match_name' | 'awaiting_sport'>('idle');
   const [tempMatchData, setTempMatchData] = useState<{ sport?: string, matchName?: string }>({});
-  const [savedPredictions, setSavedPredictions] = useState<Set<string>>(new Set());
   const chatBodyRef = useRef<HTMLDivElement>(null);
   const isComponentMounted = useRef(true);
 
@@ -168,15 +129,6 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
       }
   };
 
-  const handleSavePrediction = (userMsg: Message, modelMsg: Message) => {
-      const predictionData = parsePrediction(userMsg, modelMsg);
-      if (predictionData) {
-          onSavePrediction(predictionData);
-          setSavedPredictions(prev => new Set(prev).add(modelMsg.text));
-      }
-  };
-
-
   const modalTitle = bet ? "AI-Анализ Ставки" : "AI-Аналитик";
   const inputPlaceholder = chatState === 'awaiting_match_name' 
     ? "Введите название матча..." 
@@ -198,9 +150,6 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
             </div>
           )}
           {messages.map((msg, index) => {
-            const isPrediction = msg.role === 'model' && isMatchPrediction(msg.text);
-            const userMessageForPrediction = isPrediction ? messages[index - 1] : null;
-
             return (
             <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row' : 'flex-row'}`}>
               {msg.role === 'user' ? <UserIcon /> : <ModelIcon />}
@@ -208,19 +157,6 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose, onSa
                 <div className={`px-4 py-2 rounded-lg max-w-md break-words ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tl-none' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tr-none'}`}>
                   <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                 </div>
-                
-                {isPrediction && userMessageForPrediction && (
-                    <div className="mt-2">
-                        <Button
-                            variant="secondary"
-                            className="text-xs !py-1 !px-2"
-                            onClick={() => handleSavePrediction(userMessageForPrediction, msg)}
-                            disabled={savedPredictions.has(msg.text)}
-                        >
-                            {savedPredictions.has(msg.text) ? '✅ Сохранено' : '💾 Сохранить прогноз'}
-                        </Button>
-                    </div>
-                )}
 
                 {msg.sources && msg.sources.length > 0 && (
                   <div className="mt-2 text-xs text-gray-400">

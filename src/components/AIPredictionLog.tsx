@@ -106,15 +106,14 @@ const AIPredictionLog: React.FC = () => {
         const total = settled.length;
         const accuracy = total > 0 ? (correct / total) * 100 : 0;
         
-        // FIX: Define the initial accumulator object outside the reduce function with a strong type
-        // to help TypeScript correctly infer the accumulator's type within the callback.
         const initialOutcomeStats: Record<string, { correct: number; total: number }> = {
             'П1': { correct: 0, total: 0 },
             'X': { correct: 0, total: 0 },
             'П2': { correct: 0, total: 0 },
         };
 
-        const outcomeStats = settled.reduce((acc, p) => {
+        // FIX: Explicitly typing the accumulator `acc` in the reduce callback helps TypeScript correctly infer its type.
+        const outcomeStats = settled.reduce((acc: Record<string, { correct: number; total: number }>, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 const outcome = data.recommended_outcome;
