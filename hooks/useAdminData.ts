@@ -3,6 +3,8 @@
 
 
 
+
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -39,7 +41,6 @@ export const useAdminData = (): UseAdminDataReturn => {
       // 1. Get all registered users
       const allUsers = getUsers();
       // FIX: Use Number() wrapper for explicit type coercion to prevent arithmetic operation errors on Date objects in strict mode.
-      // @ts-ignore
       setUsers(allUsers.sort((a, b) => Number(new Date(b.registeredAt)) - Number(new Date(a.registeredAt))));
 
       // 2. Aggregate bets from all users

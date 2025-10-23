@@ -146,11 +146,8 @@ const AIPredictionLog: React.FC = () => {
         personalPredictions.forEach(p => {
             const existing = predictionsMap.get(p.matchName);
             if (existing) {
-                // If a personal prediction exists for a central one, update it
-                // but keep the league name from the central one.
                 predictionsMap.set(p.matchName, { ...p, leagueName: existing.leagueName });
             } else {
-                // If it's a unique personal prediction, add it with a default league.
                 predictionsMap.set(p.matchName, { ...p, leagueName: 'Личные' });
             }
         });
@@ -216,38 +213,55 @@ const AIPredictionLog: React.FC = () => {
             ? winningCoefficients.reduce((sum, coeff) => sum + coeff, 0) / winningCoefficients.length
             : 0;
         
-        // FIX: Add an explicit type to the reduce accumulator to ensure correct type inference.
-        const outcomeStats = settled.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
+        const initialOutcomeStats: Record<string, { correct: number, total: number, correctCoeffSum: number }> = { 
+            'П1': { correct: 0, total: 0, correctCoeffSum: 0 }, 
+            'X': { correct: 0, total: 0, correctCoeffSum: 0 }, 
+            'П2': { correct: 0, total: 0, correctCoeffSum: 0 } 
+        };
+        const outcomeStats = settled.reduce<typeof initialOutcomeStats>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 const outcome = data.recommended_outcome;
                 if (outcome && ['П1', 'X', 'П2'].includes(outcome)) {
-                    if (!acc[outcome]) acc[outcome] = { correct: 0, total: 0 };
+                    if (!acc[outcome]) acc[outcome] = { correct: 0, total: 0, correctCoeffSum: 0 };
                     acc[outcome].total++;
-                    if (p.status === AIPredictionStatus.Correct) acc[outcome].correct++;
+                    if (p.status === AIPredictionStatus.Correct) {
+                        acc[outcome].correct++;
+                        const coeff = data.coefficients?.[outcome];
+                        if (typeof coeff === 'number') {
+                            acc[outcome].correctCoeffSum += coeff;
+                        }
+                    }
                 }
             } catch {}
             return acc;
-        }, { 'П1': { correct: 0, total: 0 }, 'X': { correct: 0, total: 0 }, 'П2': { correct: 0, total: 0 } });
+        }, initialOutcomeStats);
         
         const accuracyByOutcome = Object.entries(outcomeStats).map(([outcome, data]) => ({
-            outcome, accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0, count: data.total,
+            outcome, 
+            accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0, 
+            count: data.total,
+            avgCoeff: data.correct > 0 ? data.correctCoeffSum / data.correct : 0,
         }));
         
         const predictionsWithResults = filteredPredictions.filter(p => p.matchResult && p.matchResult.scores);
         
-        // FIX: Add an explicit type to the reduce accumulator to ensure correct type inference.
-        const deepAnalyticsData = predictionsWithResults.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
+        // FIX: Explicitly type the accumulator to prevent properties being inferred as 'unknown'.
+        const deepAnalyticsData = predictionsWithResults.reduce<Record<string, { correct: number, total: number, correctCoeffSum: number }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (data.probabilities && p.matchResult) {
                     for (const market in data.probabilities) {
-                        if (!acc[market]) acc[market] = { correct: 0, total: 0 };
+                        if (!acc[market]) acc[market] = { correct: 0, total: 0, correctCoeffSum: 0 };
                         const result = resolveMarketOutcome(market, p.matchResult.scores);
                         if (result !== 'unknown') {
                             acc[market].total++;
                             if (result === 'correct') {
                                 acc[market].correct++;
+                                const coeff = data.coefficients?.[market];
+                                if (typeof coeff === 'number') {
+                                    acc[market].correctCoeffSum += coeff;
+                                }
                             }
                         }
                     }
@@ -261,6 +275,7 @@ const AIPredictionLog: React.FC = () => {
                 market,
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
                 count: data.total,
+                avgCoeff: data.correct > 0 ? data.correctCoeffSum / data.correct : 0,
             }))
             .filter(item => item.count > 0)
             .sort((a, b) => b.count - a.count);
@@ -303,10 +318,13 @@ const AIPredictionLog: React.FC = () => {
              <Card>
                 <h3 className="text-lg font-semibold mb-2">Точность по основным исходам</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {stats.accuracyByOutcome.map(({ outcome, accuracy, count }) => (
+                    {stats.accuracyByOutcome.map(({ outcome, accuracy, count, avgCoeff }) => (
                          <div key={outcome} className="p-4 bg-gray-900/50 rounded-lg text-center">
                             <p className="text-sm text-gray-400">{outcome}</p>
-                            <p className={`text-3xl font-bold mt-1 ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
+                            <div className="flex items-baseline justify-center gap-2 mt-1">
+                                <p className={`text-3xl font-bold ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
+                                {avgCoeff > 0 && <span className="text-sm font-mono text-amber-400" title="Средний верный коэф.">{avgCoeff.toFixed(2)}</span>}
+                            </div>
                             <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
                         </div>
                     ))}
@@ -316,10 +334,13 @@ const AIPredictionLog: React.FC = () => {
             <Card>
                 <h3 className="text-lg font-semibold mb-2">Глубокая аналитика по исходам</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {deepAnalytics.map(({ market, accuracy, count }) => (
+                    {deepAnalytics.map(({ market, accuracy, count, avgCoeff }) => (
                          <div key={market} className="p-3 bg-gray-900/50 rounded-lg text-center">
                             <p className="text-sm text-gray-400 truncate" title={market}>{market}</p>
-                            <p className={`text-2xl font-bold mt-1 ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
+                             <div className="flex items-baseline justify-center gap-2 mt-1">
+                                <p className={`text-2xl font-bold ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
+                                {avgCoeff > 0 && <span className="text-xs font-mono text-amber-400" title="Средний верный коэф.">{avgCoeff.toFixed(2)}</span>}
+                            </div>
                             <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
                         </div>
                     ))}

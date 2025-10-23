@@ -10,8 +10,6 @@ interface EventContext {
     env: Env;
 }
 
-// FIX: Removed local definition of SharedPrediction as it's now imported.
-
 // TTL for the main cache in seconds (1 hour)
 const CACHE_TTL_SECONDS = 3600;
 
@@ -34,6 +32,53 @@ const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
 
+const resolveMarketOutcome = (market: string, scores: { home: number; away: number }, winner: 'home' | 'away' | 'draw'): 'correct' | 'incorrect' | 'unknown' => {
+    const { home, away } = scores;
+    const total = home + away;
+
+    switch (true) {
+        // Winner markets (main time)
+        case market === 'П1':
+        case market === 'П1 (осн. время)':
+            return (home > away) ? 'correct' : 'incorrect';
+        case market === 'X':
+        case market === 'X (осн. время)':
+            return home === away ? 'correct' : 'incorrect';
+        case market === 'П2':
+        case market === 'П2 (осн. время)':
+            return (away > home) ? 'correct' : 'incorrect';
+        
+        // Winner markets (including OT/SO)
+        case market.startsWith('П1'):
+            return winner === 'home' ? 'correct' : 'incorrect';
+        case market.startsWith('П2'):
+            return winner === 'away' ? 'correct' : 'incorrect';
+
+        // Double chance
+        case market === '1X': return home >= away ? 'correct' : 'incorrect';
+        case market === 'X2': return away >= home ? 'correct' : 'incorrect';
+        case market === '12': return home !== away ? 'correct' : 'incorrect';
+
+        // Both teams to score
+        case market === 'Обе забьют - Да': return home > 0 && away > 0 ? 'correct' : 'incorrect';
+        case market === 'Обе забьют - Нет': return home === 0 || away === 0 ? 'correct' : 'incorrect';
+        
+        // Totals
+        case market.includes('Тотал Больше'): {
+            const value = parseFloat(market.split(' ')[2]);
+            return !isNaN(value) && total > value ? 'correct' : 'incorrect';
+        }
+        case market.includes('Тотал Меньше'): {
+            const value = parseFloat(market.split(' ')[2]);
+            return !isNaN(value) && total < value ? 'correct' : 'incorrect';
+        }
+        
+        default:
+            return 'unknown';
+    }
+};
+
+
 function getAiPayloadForSport(sport: string, matchName: string): { prompt: string; schema: any } {
     let outcomes: any;
     let promptOutcomes: string;
@@ -45,8 +90,8 @@ function getAiPayloadForSport(sport: string, matchName: string): { prompt: strin
             outcomes = { "П1 (с ОТ)": { type: Type.NUMBER }, "П2 (с ОТ)": { type: Type.NUMBER }, "Тотал Больше 215.5": { type: Type.NUMBER }, "Тотал Меньше 215.5": { type: Type.NUMBER }, "Тотал Больше 225.5": { type: Type.NUMBER }, "Тотал Меньше 225.5": { type: Type.NUMBER }};
             break;
         case 'hockey':
-            promptOutcomes = 'П1 (осн. время), X (осн. время), П2 (осн. время), П1 (с ОТ), П2 (с ОТ), Тотал Больше 5.5, Тотал Меньше 5.5';
-            outcomes = { "П1 (осн. время)": { type: Type.NUMBER }, "X (осн. время)": { type: Type.NUMBER }, "П2 (осн. время)": { type: Type.NUMBER }, "П1 (с ОТ)": { type: Type.NUMBER }, "П2 (с ОТ)": { type: Type.NUMBER }, "Тотал Больше 5.5": { type: Type.NUMBER }, "Тотал Меньше 5.5": { type: Type.NUMBER } };
+            promptOutcomes = 'П1 (осн. время), X (осн. время), П2 (осн. время), П1 (вкл. ОТ и буллиты), П2 (вкл. ОТ и буллиты), Тотал Больше 5.5, Тотал Меньше 5.5';
+            outcomes = { "П1 (осн. время)": { type: Type.NUMBER }, "X (осн. время)": { type: Type.NUMBER }, "П2 (осн. время)": { type: Type.NUMBER }, "П1 (вкл. ОТ и буллиты)": { type: Type.NUMBER }, "П2 (вкл. ОТ и буллиты)": { type: Type.NUMBER }, "Тотал Больше 5.5": { type: Type.NUMBER }, "Тотал Меньше 5.5": { type: Type.NUMBER } };
             break;
         case 'football':
         default:
@@ -128,7 +173,6 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
 
                     const predictionData = JSON.parse(response.text);
 
-                    // Check if the essential `probabilities` key exists before proceeding.
                     if (predictionData && predictionData.probabilities) {
                         let bestOutcome = '';
                         let maxValue = -Infinity;
@@ -143,7 +187,6 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
                                     const coefficient = parseFloat(coefficients[outcome]);
 
                                     if (!isNaN(probability) && !isNaN(coefficient) && coefficient > 1) {
-                                        // Value = (Probability * Odds) - 1
                                         const value = (probability / 100) * coefficient - 1;
                                         if (value > maxValue) {
                                             maxValue = value;
@@ -172,9 +215,8 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
                 }
             }
 
-            // Map to frontend-friendly format
             const sharedPredictionData: any = {
-                ...game, // Spread the original game object
+                ...game, 
                 sport: sport,
                 eventName: game.league.name,
                 teams: matchName,
@@ -196,19 +238,18 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
             return sharedPredictionData;
         }));
         
-        // Resolve statuses for predictions on finished games
-         const resolvedGames = processedGames.map(game => {
-            if (game.prediction && game.prediction.status === AIPredictionStatus.Pending && game.winner) {
+        const resolvedGames = processedGames.map(game => {
+            if (game.prediction && game.prediction.status === AIPredictionStatus.Pending && game.winner && game.scores) {
                  try {
                     const predictionData = JSON.parse(game.prediction.prediction);
                     const recommended = predictionData.recommended_outcome;
-                    const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away', 'П1 (осн. время)': 'home', 'X (осн. время)': 'draw', 'П2 (осн. время)': 'away' };
-                    if (outcomeMap[recommended] === game.winner) {
-                        game.prediction.status = AIPredictionStatus.Correct;
-                    } else {
-                         game.prediction.status = AIPredictionStatus.Incorrect;
+                    
+                    const result = resolveMarketOutcome(recommended, game.scores, game.winner);
+
+                    if (result !== 'unknown') {
+                        game.prediction.status = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
+                        game.prediction.matchResult = { winner: game.winner, scores: game.scores };
                     }
-                    game.prediction.matchResult = { winner: game.winner, scores: game.scores! };
                 } catch(e) {/* ignore */}
             }
             return game;
