@@ -18,6 +18,15 @@ const generalSystemInstruction = (currentDate: string) => `Вы — экспер
 
 Всегда поощряйте ответственную игру. Не давайте прямых финансовых советов. Отвечайте на русском языке.`;
 
+const predictionAnalysisSystemInstruction = `Вы — ML-инженер, специализирующийся на моделях для прогнозирования спортивных событий. Вам предоставили статистику производительности текущей модели прогнозов AI.
+
+Ваша задача:
+1.  **Проанализировать сильные и слабые стороны модели** на основе предоставленных данных (общая точность, точность по видам спорта, по типам исходов).
+2.  **Дать конкретные рекомендации пользователю**, как использовать эту модель. Например: "Модель показывает хорошую точность в футболе на исход 'Тотал Больше 2.5', этим прогнозам можно доверять больше. Однако, она часто ошибается в прогнозах на ничью (X), поэтому такие ставки лучше пропускать или анализировать дополнительно".
+3.  **Предложить гипотезы для улучшения модели**. Например: "Для улучшения прогнозов на хоккей, модели стоит уделить больше внимания статистике последних 5 игр, а не всему сезону".
+
+Ответ должен быть структурированным, ясным и полезным для конечного пользователя, который хочет понять, каким прогнозам AI стоит доверять. Отвечайте на русском языке.`;
+
 
 function legsToText(legs: BetLeg[], sport: string): string {
     if (!legs || legs.length === 0) return "События не указаны.";
@@ -94,6 +103,22 @@ export const fetchAIStrategy = async (analytics: UseBetsReturn['analytics']): Pr
         throw new Error("Не удалось получить стратегический анализ от AI.");
     }
 };
+
+export const fetchAIPredictionAnalysis = async (analyticsText: string): Promise<string> => {
+    const prompt = `Вот статистика производительности нашей модели. Проанализируй её и дай рекомендации.\n\n${analyticsText}`;
+    try {
+        const response = await callApiProxy('generateContent', {
+            model: "gemini-2.5-flash",
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: { systemInstruction: predictionAnalysisSystemInstruction },
+        });
+        return response.text;
+    } catch (error) {
+        console.error("Ошибка при запросе анализа прогнозов AI:", error);
+        throw new Error("Не удалось получить анализ прогнозов от AI.");
+    }
+};
+
 
 export const fetchMatchAnalysis = async (match: UpcomingMatch): Promise<{ text: string; sources: GroundingSource[] | undefined }> => {
     const currentDate = new Date().toLocaleDateString('ru-RU', dateOptions);

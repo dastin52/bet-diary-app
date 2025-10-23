@@ -5,6 +5,8 @@
 
 
 
+
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -94,8 +96,8 @@ export const useAdminData = (): UseAdminDataReturn => {
             return user;
         });
         
-        // FIX: Use Number() wrapper for explicit type coercion to prevent arithmetic operation errors on Date objects in strict mode.
-        setUsers(finalUsersWithTg.sort((a, b) => Number(new Date(b.registeredAt)) - Number(new Date(a.registeredAt))));
+        // FIX: Use .getTime() for explicit type coercion to prevent arithmetic operation errors on Date objects in strict mode.
+        setUsers(finalUsersWithTg.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
         // 4. Aggregate bets from all users that have data in localStorage
         // Note: We can't get bets for bot-only users on the client. This is a limitation.
