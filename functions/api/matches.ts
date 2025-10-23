@@ -67,7 +67,9 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
             },
             score: (game.scores && game.scores.home !== null && game.scores.away !== null) 
                     ? `${game.scores.home} - ${game.scores.away}` 
-                    : undefined
+                    : undefined,
+            scores: (game.scores && game.scores.home !== null && game.scores.away !== null) ? game.scores : undefined,
+            winner: (game.scores && game.scores.home !== null && game.scores.away !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : undefined,
         }));
 
         return new Response(JSON.stringify(translatedGames), {

@@ -211,7 +211,7 @@ const AIPredictionLog: React.FC = () => {
         }));
         
         const predictionsWithResults = combinedPredictions.filter(p => p.matchResult && p.matchResult.scores);
-        // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference for `data` in the subsequent map.
+        // FIX: Added an explicit type annotation to the 'acc' parameter in the reduce function to ensure correct type inference.
         const deepAnalyticsData = predictionsWithResults.reduce((acc: Record<string, { correct: number, total: number }>, p) => {
             try {
                 const data = JSON.parse(p.prediction);

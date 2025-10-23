@@ -36,7 +36,6 @@ const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
 
 function getAiPayloadForSport(sport: string, matchName: string): { prompt: string; schema: any } {
     let outcomes: any;
-    let recommendedEnum: string[];
     let promptOutcomes: string;
 
     switch (sport) {
@@ -44,34 +43,29 @@ function getAiPayloadForSport(sport: string, matchName: string): { prompt: strin
         case 'nba':
             promptOutcomes = 'П1 (с ОТ), П2 (с ОТ), Тотал Больше 215.5, Тотал Меньше 215.5, Тотал Больше 225.5, Тотал Меньше 225.5';
             outcomes = { "П1 (с ОТ)": { type: Type.NUMBER }, "П2 (с ОТ)": { type: Type.NUMBER }, "Тотал Больше 215.5": { type: Type.NUMBER }, "Тотал Меньше 215.5": { type: Type.NUMBER }, "Тотал Больше 225.5": { type: Type.NUMBER }, "Тотал Меньше 225.5": { type: Type.NUMBER }};
-            recommendedEnum = ["П1 (с ОТ)", "П2 (с ОТ)"];
             break;
         case 'hockey':
             promptOutcomes = 'П1 (осн. время), X (осн. время), П2 (осн. время), П1 (с ОТ), П2 (с ОТ), Тотал Больше 5.5, Тотал Меньше 5.5';
             outcomes = { "П1 (осн. время)": { type: Type.NUMBER }, "X (осн. время)": { type: Type.NUMBER }, "П2 (осн. время)": { type: Type.NUMBER }, "П1 (с ОТ)": { type: Type.NUMBER }, "П2 (с ОТ)": { type: Type.NUMBER }, "Тотал Больше 5.5": { type: Type.NUMBER }, "Тотал Меньше 5.5": { type: Type.NUMBER } };
-            recommendedEnum = ["П1 (осн. время)", "X (осн. время)", "П2 (осн. время)"];
             break;
         case 'football':
         default:
             promptOutcomes = 'П1, X, П2, 1X, X2, "Тотал Больше 2.5", "Тотал Меньше 2.5", "Обе забьют - Да"';
             outcomes = { "П1": { type: Type.NUMBER }, "X": { type: Type.NUMBER }, "П2": { type: Type.NUMBER }, "1X": { type: Type.NUMBER }, "X2": { type: Type.NUMBER }, "Тотал Больше 2.5": { type: Type.NUMBER }, "Тотал Меньше 2.5": { type: Type.NUMBER }, "Обе забьют - Да": { type: Type.NUMBER } };
-            recommendedEnum = ["П1", "X", "П2"];
             break;
     }
 
-    const prompt = `Проанализируй матч по виду спорта "${sport}": ${matchName}. Дай прогноз на вероятность прохода и ПРИМЕРНЫЙ коэффициент для следующих исходов: ${promptOutcomes}. Предоставь ответ ТОЛЬКО в формате JSON. JSON должен содержать три ключа: "probabilities", "coefficients" и "recommended_outcome".
+    const prompt = `Проанализируй матч по виду спорта "${sport}": ${matchName}. Дай прогноз на вероятность прохода и ПРИМЕРНЫЙ коэффициент для следующих исходов: ${promptOutcomes}. Предоставь ответ ТОЛЬКО в формате JSON. JSON должен содержать два ключа: "probabilities" и "coefficients".
 - "probabilities" должен быть объектом, где ключи - это названия исходов, а значения - их вероятности в процентах (число от 0 до 100).
-- "coefficients" должен быть объектом, где ключи - это названия исходов, а значения - ПРИМЕРНЫЙ коэффициент для этого исхода (число, например 1.85).
-- "recommended_outcome" должен быть строкой, содержащей ОДИН наиболее вероятный исход из списка [${recommendedEnum.map(e => `"${e}"`).join(', ')}].`;
+- "coefficients" должен быть объектом, где ключи - это названия исходов, а значения - ПРИМЕРНЫЙ коэффициент для этого исхода (число, например 1.85).`;
 
     const schema = {
         type: Type.OBJECT,
         properties: {
             probabilities: { type: Type.OBJECT, properties: outcomes, description: "Вероятности исходов в процентах." },
             coefficients: { type: Type.OBJECT, properties: outcomes, description: "Примерные коэффициенты для исходов." },
-            recommended_outcome: { type: Type.STRING, enum: recommendedEnum, description: "Самый вероятный исход из П1/X/П2." }
         },
-        required: ["probabilities", "recommended_outcome", "coefficients"]
+        required: ["probabilities", "coefficients"]
     };
 
     return { prompt, schema };
@@ -131,12 +125,41 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
                         contents: prompt,
                         config: { responseMimeType: "application/json", responseSchema: schema }
                     });
+
+                    const predictionData = JSON.parse(response.text);
+
+                    let bestOutcome = '';
+                    let maxValue = -Infinity;
+
+                    const probabilities = predictionData.probabilities;
+                    const coefficients = predictionData.coefficients;
+
+                    if (probabilities && coefficients) {
+                        for (const outcome in probabilities) {
+                            if (Object.prototype.hasOwnProperty.call(probabilities, outcome) && Object.prototype.hasOwnProperty.call(coefficients, outcome)) {
+                                const probability = parseFloat(probabilities[outcome]);
+                                const coefficient = parseFloat(coefficients[outcome]);
+
+                                if (!isNaN(probability) && !isNaN(coefficient) && coefficient > 1) {
+                                    // Value = (Probability * Odds) - 1
+                                    const value = (probability / 100) * coefficient - 1;
+                                    if (value > maxValue) {
+                                        maxValue = value;
+                                        bestOutcome = outcome;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    predictionData.recommended_outcome = bestOutcome || 'Нет выгодной ставки';
+
                     prediction = {
                         id: `${game.id}-${new Date().getTime()}`,
                         createdAt: new Date().toISOString(),
                         sport: sport,
                         matchName: matchName,
-                        prediction: response.text,
+                        prediction: JSON.stringify(predictionData),
                         status: AIPredictionStatus.Pending,
                     };
                 } catch (error) {

@@ -8,7 +8,7 @@ import { calculateProfit } from '../utils/betUtils';
 export const MANAGE_PREFIX = 'm|';
 const BETS_PER_PAGE = 5;
 
-// FIX: Define actions and callback builder locally as they are not exported from router.
+// FIX: Define actions and callback builder locally to avoid circular dependency with router.ts.
 const MANAGE_ACTIONS = {
     LIST: 'list',
     VIEW: 'view',
@@ -231,7 +231,7 @@ ${profitText}
         default: {
             const totalBets = state.bets.length;
             if (totalBets === 0) {
-                // FIX: Removed circular dependency on router.ts by using string literal.
+                // FIX: Removed circular dependency on router.ts by using string literal for callback data.
                 await editMessageText(chatId, messageId, "У вас пока нет ставок для управления.", env, makeKeyboard([[{text: '◀️ Главное меню', callback_data: 'back_to_main'}]]));
                 return;
             }
@@ -258,7 +258,7 @@ ${profitText}
 
             const keyboard = makeKeyboard([
                 ...betButtons,
-                // FIX: Removed circular dependency on router.ts by using string literal.
+                // FIX: Removed circular dependency on router.ts by using string literal for callback data.
                 [{ text: '◀️ Главное меню', callback_data: 'back_to_main' }]
             ]);
             

@@ -6,7 +6,7 @@ import { manageBets, MANAGE_PREFIX } from './manageBets';
 import { showMainMenu } from './ui';
 import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu, handleMatches, handlePredictions } from './commands';
 import { answerCallbackQuery } from './telegramApi';
-// FIX: Import 'startAddBetDialog' to resolve reference error.
+// FIX: Import 'startAddBetDialog' and other dialog starters to resolve reference errors.
 import { continueDialog, startAddBetDialog, startScreenshotDialog, startBotRegisterDialog, startBotLoginDialog } from './dialogs';
 import { handleMatchesCallback, handleSportSelectionCallback, MATCH_PREFIX, MATCH_SPORT_PREFIX } from './matches';
 import { handlePredictionCallback, PRED_PREFIX } from './predictions';

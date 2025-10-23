@@ -296,8 +296,9 @@ export interface SportApiConfig {
         params?: string;
     }
 }
-// FIX: Added missing SharedPrediction type definition.
-export interface SharedPrediction extends SportGame {
+// FIX: Corrected SharedPrediction type. It should not directly extend SportGame because the `teams` property is changed from an object to a string. Using Omit preserves other properties while allowing `teams` to be redefined.
+export interface SharedPrediction extends Omit<SportGame, 'teams'> {
+  teams: string; // The translated "Team A vs Team B" string
   prediction: AIPrediction | null;
   timestamp: number;
 }

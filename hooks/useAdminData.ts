@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -90,8 +91,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         return acc;
     }, {});
     const popularSports = Object.entries(popularSportsCounts)
-        // FIX: Explicitly cast `count` to number to resolve type inference issues.
-        .map(([name, count]) => ({ name, count: count as number }))
+        // FIX: Removed unnecessary cast as the accumulator type is already defined, which correctly infers 'count' as a number.
+        .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
@@ -100,8 +101,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         return acc;
     }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
-        // FIX: Explicitly cast `count` to number to resolve type inference issues.
-        .map(([name, count]) => ({ name, count: count as number }))
+        // FIX: Removed unnecessary cast as the accumulator type is already defined, which correctly infers 'count' as a number.
+        .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     

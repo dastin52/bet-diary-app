@@ -1,6 +1,5 @@
 import { Bet, BankTransaction, Goal, GoalMetric, GoalStatus, AIPrediction } from '../telegram/types';
 // FIX: Removed import of DEMO_STATE as it's client-side data and not available here.
-// import { DEMO_STATE } from '../demoData';
 
 const getKeys = (userKey: string) => ({
   betsKey: `sportsBets_${userKey}`,
@@ -19,7 +18,7 @@ export interface UserBetData {
 }
 
 
-// FIX: Add a normalization function to ensure data integrity when loading from localStorage.
+// FIX: Add a normalization function to ensure data integrity when loading from a data source.
 // Function to sanitize and provide defaults for user data
 const normalizeUserData = (data: Partial<UserBetData>): UserBetData => {
     const bets = Array.isArray(data.bets) ? data.bets : [];
@@ -55,9 +54,6 @@ const normalizeUserData = (data: Partial<UserBetData>): UserBetData => {
 
 export const loadUserData = (userKey: string): UserBetData => {
   // FIX: Removed demo_user logic as it's client-side specific.
-  // if (userKey === 'demo_user') {
-  //   return normalizeUserData(DEMO_STATE);
-  // }
 
   // This function would use a KV store in a real serverless environment.
   // The use of localStorage here is a placeholder for local development.
