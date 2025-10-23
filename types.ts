@@ -1,4 +1,5 @@
 
+
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -81,6 +82,8 @@ export interface User {
   status: 'active' | 'blocked';
   telegramId?: number;
   telegramUsername?: string;
+  // FIX: Add 'source' property to track user origin (web or telegram).
+  source?: 'web' | 'telegram';
 }
 
 export interface ChatMessage {

@@ -268,6 +268,10 @@ export interface SportGame {
         home: SportTeam;
         away: SportTeam;
     };
+    scores?: {
+      home: number | null;
+      away: number | null;
+    };
 }
 export interface SportApiResponse {
     get: string;

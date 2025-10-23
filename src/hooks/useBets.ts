@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus, AIPrediction, AIPredictionStatus } from '../types';
+import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus, AIPrediction, AIPredictionStatus, UpcomingMatch } from '../types';
 import { BET_TYPE_OPTIONS } from '../constants';
 import { generateEventString, calculateProfit } from '../utils/betUtils';
 import { loadUserData, saveUserData } from '../data/betStore';
@@ -22,6 +22,7 @@ export interface UseBetsReturn {
   addAIPrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
   addMultipleAIPredictions: (predictions: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>[]) => void;
   updateAIPrediction: (id: string, status: AIPredictionStatus) => void;
+  resolveAIPredictions: (finishedMatches: UpcomingMatch[]) => void;
   analytics: {
     totalStaked: number;
     turnover: number;
@@ -324,6 +325,60 @@ export const useBets = (userKey: string): UseBetsReturn => {
         setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, status } : p));
     }, [isDemoMode]);
 
+    const resolveAIPredictions = useCallback((finishedMatches: UpcomingMatch[]) => {
+        if (isDemoMode || finishedMatches.length === 0) return;
+    
+        setAIPredictions(prevPredictions => {
+            let hasChanged = false;
+            const updatedPredictions = prevPredictions.map(p => {
+                if (p.status !== AIPredictionStatus.Pending) {
+                    return p;
+                }
+    
+                const match = finishedMatches.find(m => m.teams === p.matchName);
+                if (!match || typeof match.winner === 'undefined') {
+                    return p;
+                }
+    
+                const predictionString = p.prediction;
+                const parts = predictionString.split(',').map(part => part.trim());
+                let maxPercent = -1;
+                let predictedOutcome = ''; // 'П1', 'X', or 'П2'
+    
+                parts.forEach(part => {
+                    const match = part.match(/(П1|X|П2)\s*-\s*(\d+(\.\d+)?)%/i);
+                    if (match) {
+                        const outcome = match[1].toUpperCase();
+                        const percent = parseFloat(match[2]);
+                        if (percent > maxPercent) {
+                            maxPercent = percent;
+                            predictedOutcome = outcome;
+                        }
+                    }
+                });
+    
+                if (!predictedOutcome) return p; // Could not parse
+    
+                const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = {
+                    'П1': 'home',
+                    'X': 'draw',
+                    'П2': 'away',
+                };
+    
+                const aiWinner = outcomeMap[predictedOutcome];
+                if (!aiWinner) return p;
+                
+                hasChanged = true;
+                const newStatus = aiWinner === match.winner ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
+    
+                return { ...p, status: newStatus };
+            });
+    
+            return hasChanged ? updatedPredictions : prevPredictions;
+        });
+    
+    }, [isDemoMode]);
+
 
   const analytics = useMemo(() => {
     const settledBets = bets.filter(b => b.status !== BetStatus.Pending);
@@ -463,5 +518,5 @@ export const useBets = (userKey: string): UseBetsReturn => {
     };
   }, [bets, bankroll, bankHistory, isDemoMode]);
 
-  return { bets, bankHistory, aiPredictions, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal, addAIPrediction, addMultipleAIPredictions, updateAIPrediction };
+  return { bets, bankHistory, aiPredictions, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal, addAIPrediction, addMultipleAIPredictions, updateAIPrediction, resolveAIPredictions };
 };

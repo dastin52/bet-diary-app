@@ -39,6 +39,11 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
         const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
         const predictionPromises = games.map(async (game) => {
             try {
+                // Generate prediction only for matches that have not started
+                if (game.status.short !== 'NS') {
+                    return null;
+                }
+
                 const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
                 const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
                 const matchName = `${homeTeam} vs ${awayTeam}`;
@@ -66,15 +71,31 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
 
         const newPredictions = (await Promise.all(predictionPromises)).filter((p): p is Omit<AIPrediction, 'id'|'createdAt'|'status'> => p !== null);
 
-        const translatedGames = games.map(game => ({
-            sport: sport,
-            eventName: game.league.name,
-            teams: `${translationMap[game.teams.home.name] || game.teams.home.name} vs ${translationMap[game.teams.away.name] || game.teams.away.name}`,
-            date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-            time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
-            isHotMatch: false, 
-            status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
-        }));
+        const translatedGames = games.map(game => {
+            const gameData: any = {
+                sport: sport,
+                eventName: game.league.name,
+                teams: `${translationMap[game.teams.home.name] || game.teams.home.name} vs ${translationMap[game.teams.away.name] || game.teams.away.name}`,
+                date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
+                isHotMatch: false, 
+                status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
+            };
+            
+            // Check for scores and determine winner if the match is finished
+            if (game.status.short === 'FT' && game.scores && game.scores.home !== null && game.scores.away !== null) {
+                gameData.score = `${game.scores.home} - ${game.scores.away}`;
+                if (game.scores.home > game.scores.away) {
+                    gameData.winner = 'home';
+                } else if (game.scores.away > game.scores.home) {
+                    gameData.winner = 'away';
+                } else {
+                    gameData.winner = 'draw';
+                }
+            }
+
+            return gameData;
+        });
 
         return new Response(JSON.stringify({ matches: translatedGames, newPredictions }), {
             status: 200,

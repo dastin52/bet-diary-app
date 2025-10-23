@@ -5,7 +5,7 @@ import { useBetContext } from '../contexts/BetContext';
 
 const FireIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-400" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM10 4a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
+        <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 S`a`t` -1.898-.632l4-12a1 1 0 011.265-.633zM10 4a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
         <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm0 2a10 10 0 100-20 10 10 0 000 20z" />
     </svg>
 );
@@ -33,7 +33,7 @@ const LoadingSkeleton: React.FC = () => (
 );
 
 const UpcomingMatches: React.FC = () => {
-    const { addMultipleAIPredictions } = useBetContext();
+    const { addMultipleAIPredictions, resolveAIPredictions } = useBetContext();
     const [matches, setMatches] = useState<UpcomingMatch[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -44,7 +44,6 @@ const UpcomingMatches: React.FC = () => {
             try {
                 setIsLoading(true);
                 setError(null);
-                // Call the new endpoint that includes AI predictions
                 const response = await fetch(`/api/matches-with-predictions?sport=${activeSport}`);
                 if (!response.ok) {
                      const errorData = await response.json();
@@ -52,9 +51,13 @@ const UpcomingMatches: React.FC = () => {
                 }
                 const data: { matches: UpcomingMatch[], newPredictions: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>[] } = await response.json();
                 
-                // Save new predictions to the global state
                 if (data.newPredictions && data.newPredictions.length > 0) {
                     addMultipleAIPredictions(data.newPredictions);
+                }
+                
+                const finishedMatches = (data.matches || []).filter(m => typeof m.winner !== 'undefined');
+                if (finishedMatches.length > 0) {
+                    resolveAIPredictions(finishedMatches);
                 }
 
                 const sortedMatches = (data.matches || []).sort((a, b) => (b.isHotMatch ? 1 : -1) - (a.isHotMatch ? -1 : 1));
@@ -66,7 +69,7 @@ const UpcomingMatches: React.FC = () => {
             }
         };
         loadMatches();
-    }, [activeSport, addMultipleAIPredictions]);
+    }, [activeSport, addMultipleAIPredictions, resolveAIPredictions]);
 
     const renderContent = () => {
         if (isLoading) {
@@ -87,13 +90,12 @@ const UpcomingMatches: React.FC = () => {
                             <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                                 {match.isHotMatch && <FireIcon />}
                                 {match.teams}
+                                {match.score && <span className="ml-2 font-mono bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded text-sm">{match.score}</span>}
                             </p>
                             <p className="text-sm text-indigo-500 dark:text-indigo-400">{match.time} <span className="text-xs text-gray-400">(МСК)</span></p>
                         </div>
-                        {/* @ts-ignore */}
-                        <div className="text-2xl" title={match.status?.long}>
-                           {/* @ts-ignore */}
-                           {match.status?.emoji}
+                        <div className="text-2xl" title={match.status.long}>
+                           {match.status.emoji}
                         </div>
                     </div>
                 ))}

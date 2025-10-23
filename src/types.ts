@@ -1,3 +1,5 @@
+
+
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -80,6 +82,7 @@ export interface User {
   status: 'active' | 'blocked';
   telegramId?: number;
   telegramUsername?: string;
+  // FIX: Add 'source' property to track user origin (web or telegram).
   source?: 'web' | 'telegram';
 }
 
@@ -143,6 +146,13 @@ export interface UpcomingMatch {
   date: string;
   time: string;
   isHotMatch: boolean;
+  status: {
+    long: string;
+    short: string;
+    emoji: string;
+  };
+  score?: string; // e.g. "2 - 1"
+  winner?: 'home' | 'away' | 'draw';
 }
 
 export interface TeamStats {

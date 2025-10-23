@@ -1,5 +1,3 @@
-
-
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -78,11 +76,13 @@ app.get('/api/matches-with-predictions', (req, res) => {
     const mockMatches = [
         { sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
         { sport: sport, eventName: 'Mock Cup', teams: 'Команда В vs. Команда Г', date: '2024-07-28', time: '21:00', isHotMatch: false, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
+        { sport: sport, eventName: 'Mock Finals', teams: 'Команда X vs. Команда Y', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '3 - 1', winner: 'home' },
     ];
 
     const mockPredictions = [
         { sport: sport, matchName: 'Команда А vs. Команда Б', prediction: 'П1 - 55%, X - 25%, П2 - 20%' },
         { sport: sport, matchName: 'Команда В vs. Команда Г', prediction: 'П1 - 30%, X - 30%, П2 - 40%' },
+        { sport: sport, matchName: 'Команда X vs. Команда Y', prediction: 'П1 - 60%, X - 20%, П2 - 20%' }, // This one should resolve to 'Correct'
     ];
 
     res.json({
