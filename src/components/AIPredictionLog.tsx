@@ -98,6 +98,7 @@ const AIPredictionLog: React.FC = () => {
     const [sportFilter, setSportFilter] = useState('all');
     const [leagueFilter, setLeagueFilter] = useState('all');
     const [outcomeFilter, setOutcomeFilter] = useState('all');
+    const [isChartExpanded, setIsChartExpanded] = useState(true);
 
     useEffect(() => {
         const finishedMatches = centralPredictions.filter(p => p.winner && p.scores);
@@ -273,18 +274,15 @@ const AIPredictionLog: React.FC = () => {
         };
     }, [filteredPredictions]);
 
-    const TABS = [
-        { key: 'football', label: '⚽️ Футбол' },
-        { key: 'hockey', label: '🏒 Хоккей' },
-        { key: 'basketball', label: '🏀 Баскетбол' },
-        { key: 'nba', label: '🏀 NBA' },
-    ];
-
     const handleRefresh = () => {
-        // @ts-ignore - The context type needs updating to expose fetchPredictions
-        if (fetchPredictions) fetchPredictions(activeSport, true);
+        fetchPredictions(activeSport, true);
     };
 
+    const ChevronIcon = ({ isOpen }: { isOpen: boolean }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 text-gray-400 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+    );
 
     return (
         <div className="space-y-6">
@@ -315,23 +313,41 @@ const AIPredictionLog: React.FC = () => {
                 </div>
             </Card>
 
+            <Card>
+                <h3 className="text-lg font-semibold mb-2">Глубокая аналитика по исходам</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {deepAnalytics.map(({ market, accuracy, count }) => (
+                         <div key={market} className="p-3 bg-gray-900/50 rounded-lg text-center">
+                            <p className="text-sm text-gray-400 truncate" title={market}>{market}</p>
+                            <p className={`text-2xl font-bold mt-1 ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
+                            <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
+                        </div>
+                    ))}
+                </div>
+            </Card>
+
              <Card>
-                 <h3 className="text-lg font-semibold mb-2">Визуализация точности исходов</h3>
-                 <div style={{ width: '100%', height: 300 }}>
-                    <ResponsiveContainer>
-                        <BarChart data={accuracyChartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="opacity-20" />
-                            <XAxis type="number" domain={[0, 100]} stroke="currentColor" className="text-xs text-gray-400" />
-                            <YAxis type="category" dataKey="market" stroke="currentColor" className="text-xs text-gray-400" width={120} />
-                            <Tooltip content={<AIPredictionAccuracyTooltip />} cursor={{ fill: 'rgba(136, 132, 216, 0.1)' }} />
-                            <Bar dataKey="accuracy" name="Точность (%)">
-                                {accuracyChartData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.accuracy >= 50 ? '#48BB78' : '#F56565'} />
-                                ))}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                 </div>
+                <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsChartExpanded(!isChartExpanded)}>
+                    <h3 className="text-lg font-semibold">Визуальный анализ точности</h3>
+                    <ChevronIcon isOpen={isChartExpanded} />
+                </div>
+                 <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isChartExpanded ? 'max-h-[500px] opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
+                    <div style={{ width: '100%', height: 300 }}>
+                        <ResponsiveContainer>
+                            <BarChart data={accuracyChartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="opacity-20" />
+                                <XAxis type="number" domain={[0, 100]} stroke="currentColor" className="text-xs text-gray-400" />
+                                <YAxis type="category" dataKey="market" stroke="currentColor" className="text-xs text-gray-400" width={120} />
+                                <Tooltip content={<AIPredictionAccuracyTooltip />} cursor={{ fill: 'rgba(136, 132, 216, 0.1)' }} />
+                                <Bar dataKey="accuracy" name="Точность (%)">
+                                    {accuracyChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.accuracy >= 50 ? '#48BB78' : '#F56565'} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             </Card>
 
             <Card>

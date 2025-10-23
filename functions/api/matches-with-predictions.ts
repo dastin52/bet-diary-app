@@ -128,40 +128,45 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
 
                     const predictionData = JSON.parse(response.text);
 
-                    let bestOutcome = '';
-                    let maxValue = -Infinity;
+                    // Check if the essential `probabilities` key exists before proceeding.
+                    if (predictionData && predictionData.probabilities) {
+                        let bestOutcome = '';
+                        let maxValue = -Infinity;
 
-                    const probabilities = predictionData.probabilities;
-                    const coefficients = predictionData.coefficients;
+                        const probabilities = predictionData.probabilities;
+                        const coefficients = predictionData.coefficients;
 
-                    if (probabilities && coefficients) {
-                        for (const outcome in probabilities) {
-                            if (Object.prototype.hasOwnProperty.call(probabilities, outcome) && Object.prototype.hasOwnProperty.call(coefficients, outcome)) {
-                                const probability = parseFloat(probabilities[outcome]);
-                                const coefficient = parseFloat(coefficients[outcome]);
+                        if (probabilities && coefficients) {
+                            for (const outcome in probabilities) {
+                                if (Object.prototype.hasOwnProperty.call(probabilities, outcome) && Object.prototype.hasOwnProperty.call(coefficients, outcome)) {
+                                    const probability = parseFloat(probabilities[outcome]);
+                                    const coefficient = parseFloat(coefficients[outcome]);
 
-                                if (!isNaN(probability) && !isNaN(coefficient) && coefficient > 1) {
-                                    // Value = (Probability * Odds) - 1
-                                    const value = (probability / 100) * coefficient - 1;
-                                    if (value > maxValue) {
-                                        maxValue = value;
-                                        bestOutcome = outcome;
+                                    if (!isNaN(probability) && !isNaN(coefficient) && coefficient > 1) {
+                                        // Value = (Probability * Odds) - 1
+                                        const value = (probability / 100) * coefficient - 1;
+                                        if (value > maxValue) {
+                                            maxValue = value;
+                                            bestOutcome = outcome;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    
-                    predictionData.recommended_outcome = bestOutcome || 'Нет выгодной ставки';
+                        
+                        predictionData.recommended_outcome = bestOutcome || 'Нет выгодной ставки';
 
-                    prediction = {
-                        id: `${game.id}-${new Date().getTime()}`,
-                        createdAt: new Date().toISOString(),
-                        sport: sport,
-                        matchName: matchName,
-                        prediction: JSON.stringify(predictionData),
-                        status: AIPredictionStatus.Pending,
-                    };
+                        prediction = {
+                            id: `${game.id}-${new Date().getTime()}`,
+                            createdAt: new Date().toISOString(),
+                            sport: sport,
+                            matchName: matchName,
+                            prediction: JSON.stringify(predictionData),
+                            status: AIPredictionStatus.Pending,
+                        };
+                    } else {
+                        console.warn(`AI did not return 'probabilities' for match ID ${game.id}. Skipping prediction.`);
+                    }
                 } catch (error) {
                     console.error(`Failed to get AI prediction for match ID ${game.id}:`, error);
                 }
