@@ -3,6 +3,11 @@ import { User, UserState } from '../telegram/types';
 import { Env } from '../telegram/types';
 import { normalizeState } from '../telegram/state';
 
+// In-memory cache for the combined user data to reduce multiple KV reads for competitions
+type AllUsersData = { user: User, bets: UserState['bets'] }[];
+let allUsersCache: { data: AllUsersData; timestamp: number } | null = null;
+const ALL_USERS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
 const USERS_LIST_KEY = 'tgusers:list';
 const getBetDataKey = (email: string) => `betdata:${email}`;
 
@@ -18,7 +23,11 @@ async function saveUserEmailList(emails: string[], env: Env): Promise<void> {
 }
 
 // Get all users with their full bet data
-export async function getAllUsersWithBets(env: Env): Promise<{ user: User, bets: UserState['bets'] }[]> {
+export async function getAllUsersWithBets(env: Env): Promise<AllUsersData> {
+    if (allUsersCache && (Date.now() - allUsersCache.timestamp < ALL_USERS_CACHE_TTL_MS)) {
+        return allUsersCache.data;
+    }
+
     const userEmails = await getUserEmailList(env);
     if (userEmails.length === 0) return [];
 
@@ -33,7 +42,11 @@ export async function getAllUsersWithBets(env: Env): Promise<{ user: User, bets:
     });
 
     const results = await Promise.all(promises);
-    return results.filter((r): r is { user: User, bets: UserState['bets'] } => r !== null);
+    const filteredResults = results.filter((r): r is { user: User, bets: UserState['bets'] } => r !== null);
+    
+    allUsersCache = { data: filteredResults, timestamp: Date.now() };
+
+    return filteredResults;
 }
 
 // Add a new user (just their email to the list)

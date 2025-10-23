@@ -2,6 +2,10 @@
 import { UserState, Env, Goal, BankTransactionType, User, AIPrediction } from './types';
 import { addUserEmailToList, getAllUsersWithBets } from '../data/userStore';
 
+// In-memory cache for user states to reduce KV reads
+const userStateCache = new Map<number, { state: UserState; timestamp: number }>();
+const CACHE_TTL_MS = 60 * 1000; // 1 minute
+
 const getStateKey = (chatId: number) => `tgstate:${chatId}`;
 const getUserKey = (email: string) => `betdata:${email}`;
 
@@ -32,11 +36,26 @@ export function normalizeState(data: any): UserState {
 }
 
 export async function getUserState(chatId: number, env: Env): Promise<UserState> {
+    const cached = userStateCache.get(chatId);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        // Cache hit and it's fresh
+        return cached.state;
+    }
+    
+    // Cache miss or stale
     const stateJson = await env.BOT_STATE.get(getStateKey(chatId), { type: 'json' });
-    return normalizeState(stateJson);
+    const state = normalizeState(stateJson);
+    
+    // Update cache
+    userStateCache.set(chatId, { state, timestamp: Date.now() });
+
+    return state;
 }
 
 export async function setUserState(chatId: number, state: UserState, env: Env): Promise<void> {
+    // Update cache immediately to keep it fresh
+    userStateCache.set(chatId, { state, timestamp: Date.now() });
+    // Write to KV in the background
     await env.BOT_STATE.put(getStateKey(chatId), JSON.stringify(state));
 }
 

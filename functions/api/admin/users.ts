@@ -5,6 +5,10 @@
 
 import { User, UserState, KVNamespace } from '../../telegram/types';
 
+// In-memory cache for the admin user list to reduce expensive 'list' operations
+let adminUsersCache: { users: User[]; timestamp: number } | null = null;
+const ADMIN_CACHE_TTL_MS = 5 * 60 * 1000; // Cache for 5 minutes
+
 interface Env {
     BOT_STATE: KVNamespace;
 }
@@ -49,6 +53,14 @@ async function listAllKeys(kv: KVNamespace, prefix: string): Promise<{ name: str
 
 
 export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
+    // Check cache first
+    if (adminUsersCache && (Date.now() - adminUsersCache.timestamp < ADMIN_CACHE_TTL_MS)) {
+        return new Response(JSON.stringify({ users: adminUsersCache.users }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' },
+        });
+    }
+
     try {
         if (!env.BOT_STATE) {
             return new Response(JSON.stringify({ error: 'Storage service is not configured.' }), {
@@ -121,10 +133,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
         }
         
         const uniqueUsers = Array.from(userMap.values());
+        
+        // Cache the result before returning
+        adminUsersCache = { users: uniqueUsers, timestamp: Date.now() };
 
         return new Response(JSON.stringify({ users: uniqueUsers }), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Cache': 'MISS' },
         });
 
     } catch (error) {
