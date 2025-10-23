@@ -1,5 +1,7 @@
 
 
+
+
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -146,14 +148,25 @@ export interface UpcomingMatch {
   date: string;
   time: string;
   isHotMatch: boolean;
+}
+
+// FIX: Add SharedPrediction type to be used by the prediction context and components.
+export interface SharedPrediction {
+  sport: string;
+  eventName: string;
+  teams: string;
+  date: string;
+  time: string;
+  isHotMatch: boolean;
   status: {
     long: string;
     short: string;
     emoji: string;
   };
-  score?: string; // e.g. "2 - 1"
-  scores?: { home: number; away: number; }; // e.g. { home: 2, away: 1 }
+  score?: string;
+  scores?: { home: number; away: number; };
   winner?: 'home' | 'away' | 'draw';
+  prediction: AIPrediction | null;
 }
 
 export interface TeamStats {
@@ -185,16 +198,10 @@ export interface AIPrediction {
     createdAt: string;
     sport: string;
     matchName: string;
-    prediction: string; // JSON string
+    prediction: string;
     status: AIPredictionStatus;
     matchResult?: {
         winner: 'home' | 'away' | 'draw';
         scores: { home: number; away: number; };
     }
-}
-
-// Новый тип для централизованной базы прогнозов
-export interface SharedPrediction extends UpcomingMatch {
-  prediction: AIPrediction | null;
-  timestamp: number;
 }

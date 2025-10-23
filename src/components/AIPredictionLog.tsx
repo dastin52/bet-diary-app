@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
-import { AIPrediction, AIPredictionStatus, SharedPrediction } from '../types';
+import { AIPrediction, AIPredictionStatus } from '../types';
 import Select from './ui/Select';
 import { usePredictionContext } from '../contexts/PredictionContext';
 import { useBetContext } from '../contexts/BetContext';
@@ -28,10 +28,6 @@ const getStatusInfo = (status: AIPredictionStatus): { label: string; color: stri
         default: return { label: 'В ожидании', color: 'bg-yellow-500/20 text-yellow-400' };
     }
 };
-
-const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>;
-const XIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>;
-
 
 const PredictionDetails: React.FC<{ prediction: string }> = ({ prediction }) => {
     try {
@@ -80,9 +76,9 @@ const resolveMarketOutcome = (market: string, scores: { home: number; away: numb
         case market === 'П2':
         case market === 'П2 (осн. время)':
             return (away > home) ? 'correct' : 'incorrect';
-        case market.startsWith('П1'):
+        case market.startsWith('П1'): // Catches "П1 (с ОТ)" etc.
             return winner === 'home' ? 'correct' : 'incorrect';
-        case market.startsWith('П2'):
+        case market.startsWith('П2'): // Catches "П2 (с ОТ)" etc.
             return winner === 'away' ? 'correct' : 'incorrect';
         case market === '1X': return home >= away ? 'correct' : 'incorrect';
         case market === 'X2': return away >= home ? 'correct' : 'incorrect';
@@ -91,17 +87,34 @@ const resolveMarketOutcome = (market: string, scores: { home: number; away: numb
         case market === 'Обе забьют - Нет': return home === 0 || away === 0 ? 'correct' : 'incorrect';
         
         case market.includes('Тотал Больше'): {
-            const value = parseFloat(market.split(' ')[2]);
+            const value = parseFloat(market.split(' ')[2].replace(',', '.'));
             return !isNaN(value) && total > value ? 'correct' : 'incorrect';
         }
         case market.includes('Тотал Меньше'): {
-            const value = parseFloat(market.split(' ')[2]);
+            const value = parseFloat(market.split(' ')[2].replace(',', '.'));
             return !isNaN(value) && total < value ? 'correct' : 'incorrect';
         }
         
         default:
             return 'unknown';
     }
+};
+
+const calculateMode = (numbers: number[]): number => {
+    if (numbers.length === 0) return 0;
+    const frequency: Record<string, number> = {};
+    let maxFreq = 0;
+    let mode = numbers[0];
+
+    for (const num of numbers) {
+        const fixedNum = num.toFixed(2); // Group similar floats
+        frequency[fixedNum] = (frequency[fixedNum] || 0) + 1;
+        if (frequency[fixedNum] > maxFreq) {
+            maxFreq = frequency[fixedNum];
+            mode = num;
+        }
+    }
+    return mode;
 };
 
 type EnhancedAIPrediction = AIPrediction & { leagueName?: string };
@@ -117,38 +130,50 @@ const AIPredictionLog: React.FC = () => {
     const [analysisText, setAnalysisText] = useState('');
     const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
 
-
+    // Effect for auto-resolving pending predictions
     useEffect(() => {
-        const finishedMatches = centralPredictions.filter(p => p.winner && p.scores);
-        if (finishedMatches.length === 0) return;
+        const pendingPersonal = personalPredictions.filter(p => p.status === AIPredictionStatus.Pending);
+        if (pendingPersonal.length === 0 || centralPredictions.length === 0) return;
 
-        const pendingPersonalPredictions = personalPredictions.filter(p => p.status === AIPredictionStatus.Pending);
-        if (pendingPersonalPredictions.length === 0) return;
+        const finishedCentral = centralPredictions.filter(p => p.winner && p.scores);
+        if (finishedCentral.length === 0) return;
 
-        pendingPersonalPredictions.forEach(prediction => {
-            const finishedMatch = finishedMatches.find(m => m.teams === prediction.matchName && (SPORT_MAP[m.sport] === prediction.sport || m.sport === prediction.sport));
-            
-            if (finishedMatch && finishedMatch.scores && finishedMatch.winner) {
-                let recommendedOutcome: string | null = null;
-                try {
-                    const predictionData = JSON.parse(prediction.prediction);
-                    recommendedOutcome = predictionData?.recommended_outcome || null;
-                } catch (e) { return; }
+        pendingPersonal.forEach(personalPred => {
+            const matchingFinishedMatch = finishedCentral.find(centralPred => centralPred.teams === personalPred.matchName);
 
-                if (!recommendedOutcome) return;
-                
-                const result = resolveMarketOutcome(recommendedOutcome, finishedMatch.scores, finishedMatch.winner);
-
-                if (result !== 'unknown') {
-                    const newStatus = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
-                     updateAIPrediction(prediction.id, {
-                        status: newStatus,
-                        matchResult: { winner: finishedMatch.winner, scores: { home: finishedMatch.scores.home, away: finishedMatch.scores.away } }
-                    });
-                }
+            if (matchingFinishedMatch) {
+                updateAIPrediction(personalPred.id, {
+                    matchResult: {
+                        scores: matchingFinishedMatch.scores!,
+                        winner: matchingFinishedMatch.winner!,
+                    }
+                });
             }
         });
     }, [centralPredictions, personalPredictions, updateAIPrediction]);
+
+    // This effect runs when a matchResult is added to a prediction
+    useEffect(() => {
+        const predictionsToUpdate = personalPredictions.filter(p => p.matchResult && p.status === AIPredictionStatus.Pending);
+
+        predictionsToUpdate.forEach(prediction => {
+            let recommendedOutcome: string | null = null;
+            try {
+                const predictionData = JSON.parse(prediction.prediction);
+                recommendedOutcome = predictionData?.recommended_outcome || null;
+            } catch (e) { return; }
+
+            if (!recommendedOutcome || !prediction.matchResult) return;
+
+            const result = resolveMarketOutcome(recommendedOutcome, prediction.matchResult.scores, prediction.matchResult.winner);
+
+            if (result !== 'unknown') {
+                const newStatus = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
+                updateAIPrediction(prediction.id, { status: newStatus });
+            }
+        });
+    }, [personalPredictions, updateAIPrediction]);
+
 
     const combinedAndEnhancedPredictions = useMemo(() => {
         const predictionsMap = new Map<string, EnhancedAIPrediction>();
@@ -159,6 +184,7 @@ const AIPredictionLog: React.FC = () => {
         });
         personalPredictions.forEach(p => {
             const existing = predictionsMap.get(p.matchName);
+            // Overwrite central with personal if exists, preserving league name
             predictionsMap.set(p.matchName, { ...p, leagueName: existing?.leagueName || 'Личные' });
         });
         return Array.from(predictionsMap.values())
@@ -206,7 +232,7 @@ const AIPredictionLog: React.FC = () => {
         const total = settled.length;
         const accuracy = total > 0 ? (correct.length / total) * 100 : 0;
         
-        const winningCoefficients = correct.reduce<number[]>((acc, p) => {
+        const correctCoefficients = correct.reduce<number[]>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 const outcome = data.recommended_outcome;
@@ -216,27 +242,20 @@ const AIPredictionLog: React.FC = () => {
             return acc;
         }, []);
         
-        const avgCorrectCoefficient = winningCoefficients.length > 0
-            ? winningCoefficients.reduce((sum, coeff) => sum + coeff, 0) / winningCoefficients.length
-            : 0;
+        const modalCorrectCoefficient = calculateMode(correctCoefficients);
         
-        // FIX: Added explicit generic type to the reduce accumulator to ensure correct type inference.
-        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, oddsSum: number }>>((acc, p) => {
+        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, allCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (data.probabilities && p.matchResult) {
                     for (const market in data.probabilities) {
-                        if (!acc[market]) acc[market] = { correct: 0, total: 0, oddsSum: 0 };
-
+                        if (!acc[market]) acc[market] = { correct: 0, total: 0, allCoefficients: [] };
                         const result = resolveMarketOutcome(market, p.matchResult.scores, p.matchResult.winner);
-
                         if (result !== 'unknown') {
                             acc[market].total++;
-                            if (result === 'correct') {
-                                acc[market].correct++;
-                                const coeff = data.coefficients?.[market];
-                                if (typeof coeff === 'number') acc[market].oddsSum += coeff;
-                            }
+                            if (result === 'correct') acc[market].correct++;
+                            const coeff = data.coefficients?.[market];
+                            if (typeof coeff === 'number') acc[market].allCoefficients.push(coeff);
                         }
                     }
                 }
@@ -246,28 +265,32 @@ const AIPredictionLog: React.FC = () => {
         
         const mainOutcomes = ['П1', 'X', 'П2'];
         const mainOutcomeStats = mainOutcomes.map(outcome => {
-            const data = statsByAllOutcomes[outcome] || { correct: 0, total: 0, oddsSum: 0 };
+            const data = statsByAllOutcomes[outcome] || { correct: 0, total: 0, allCoefficients: [] };
             return {
                 outcome,
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
-                avgCoeff: data.correct > 0 ? data.oddsSum / data.correct : 0,
+                modalCoeff: calculateMode(data.allCoefficients),
                 count: data.total,
             };
         });
 
         const deepOutcomeStats = Object.entries(statsByAllOutcomes)
-            .map(([market, data]) => ({
-                market,
-                accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
-                avgCoeff: data.correct > 0 ? data.oddsSum / data.correct : 0,
-                count: data.total,
-                correct: data.correct,
-            }))
+            .map(([market, data]) => {
+                // Fix: Add a type assertion to inform TypeScript about the shape of `data`.
+                const typedData = data as { correct: number; total: number; allCoefficients: number[] };
+                return {
+                    market,
+                    accuracy: typedData.total > 0 ? (typedData.correct / typedData.total) * 100 : 0,
+                    modalCoeff: calculateMode(typedData.allCoefficients),
+                    count: typedData.total,
+                    correct: typedData.correct,
+                };
+            })
             .filter(item => item.count > 0)
             .sort((a, b) => b.count - a.count);
 
         return {
-            generalStats: { total, correct: correct.length, accuracy, avgCorrectCoefficient },
+            generalStats: { total, correct: correct.length, accuracy, modalCorrectCoefficient },
             mainOutcomeStats,
             deepOutcomeStats,
         };
@@ -278,6 +301,12 @@ const AIPredictionLog: React.FC = () => {
     };
 
     const handleGetAIAnalysis = useCallback(async () => {
+        if (generalStats.total === 0) {
+            setIsAnalysisModalOpen(true);
+            setAnalysisText("Недостаточно данных для анализа. Необходимо больше рассчитанных прогнозов.");
+            return;
+        }
+
         setIsAnalysisLoading(true);
         setAnalysisText('');
         setIsAnalysisModalOpen(true);
@@ -319,18 +348,18 @@ ${deepOutcomeStats.map(item =>
                 <KpiCard title="Всего оценено" value={String(generalStats.total)} />
                 <KpiCard title="Верных прогнозов" value={String(generalStats.correct)} />
                 <KpiCard title="Общая точность" value={`${generalStats.accuracy.toFixed(1)}%`} colorClass={generalStats.accuracy >= 50 ? 'text-green-400' : 'text-red-400'}/>
-                <KpiCard title="Средний верный коэф." value={generalStats.avgCorrectCoefficient.toFixed(2)} colorClass="text-amber-400" />
+                <KpiCard title="Частый верный коэф." value={generalStats.modalCorrectCoefficient.toFixed(2)} colorClass="text-amber-400" />
             </div>
 
              <Card>
                 <h3 className="text-lg font-semibold mb-2">Точность по основным исходам</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {mainOutcomeStats.map(({ outcome, accuracy, avgCoeff, count }) => (
+                    {mainOutcomeStats.map(({ outcome, accuracy, modalCoeff, count }) => (
                          <div key={outcome} className="p-4 bg-gray-900/50 rounded-lg text-center">
                             <p className="text-sm text-gray-400">{outcome}</p>
                             <div className="flex items-baseline justify-center gap-2 mt-1">
                                 <p className={`text-3xl font-bold ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
-                                {avgCoeff > 0 && <span className="text-sm text-amber-400 font-mono" title="Средний коэф.">{avgCoeff.toFixed(2)}</span>}
+                                {modalCoeff > 0 && <span className="text-sm text-amber-400 font-mono" title="Самый частый коэф.">{modalCoeff.toFixed(2)}</span>}
                             </div>
                             <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
                         </div>
@@ -342,12 +371,12 @@ ${deepOutcomeStats.map(item =>
                 <h3 className="text-lg font-semibold mb-2">Глубокая аналитика по исходам</h3>
                  <p className="text-xs text-gray-500 mb-4">Статистика по всем возможным исходам, отсортировано по количеству.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {deepOutcomeStats.map(({ market, accuracy, avgCoeff, count }) => (
+                    {deepOutcomeStats.map(({ market, accuracy, modalCoeff, count }) => (
                          <div key={market} className="p-3 bg-gray-900/50 rounded-lg text-center">
                             <p className="text-sm text-gray-400 truncate" title={market}>{market}</p>
                              <div className="flex items-baseline justify-center gap-1 mt-1">
                                 <p className={`text-2xl font-bold ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
-                                {avgCoeff > 0 && <span className="text-xs text-amber-400 font-mono" title="Средний коэф.">{avgCoeff.toFixed(2)}</span>}
+                                {modalCoeff > 0 && <span className="text-xs text-amber-400 font-mono" title="Самый частый коэф.">{modalCoeff.toFixed(2)}</span>}
                             </div>
                             <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
                         </div>
@@ -375,11 +404,10 @@ ${deepOutcomeStats.map(item =>
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-800">
                             <tr>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Дата</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Дата/Время</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Матч</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Прогноз AI</th>
                                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Статус</th>
-                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Действия</th>
                             </tr>
                         </thead>
                         <tbody className="bg-gray-900 divide-y divide-gray-700">
@@ -387,7 +415,7 @@ ${deepOutcomeStats.map(item =>
                                 const status = getStatusInfo(p.status);
                                 return (
                                     <tr key={p.id}>
-                                        <td className="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString('ru-RU')}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">{new Date(p.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                                         <td className="px-4 py-3">
                                             <p className="text-sm font-medium text-white">{p.matchName}</p>
                                             <p className="text-xs text-gray-500">{p.sport}</p>
@@ -397,12 +425,6 @@ ${deepOutcomeStats.map(item =>
                                         </td>
                                         <td className="px-4 py-3 text-center">
                                              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${status.color}`}>{status.label}</span>
-                                        </td>
-                                        <td className="px-4 py-3 text-center">
-                                            <div className="flex justify-center gap-2">
-                                                <button onClick={() => updateAIPrediction(p.id, { status: AIPredictionStatus.Correct })} className="p-1 rounded-full text-green-400 hover:bg-green-900/50"><CheckIcon/></button>
-                                                <button onClick={() => updateAIPrediction(p.id, { status: AIPredictionStatus.Incorrect })} className="p-1 rounded-full text-red-400 hover:bg-red-900/50"><XIcon/></button>
-                                            </div>
                                         </td>
                                     </tr>
                                 )
