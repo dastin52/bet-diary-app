@@ -20,6 +20,7 @@ export interface UseBetsReturn {
   updateGoal: (id: string, updatedGoal: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
   addAIPrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
+  addMultipleAIPredictions: (predictions: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>[]) => void;
   updateAIPrediction: (id: string, status: AIPredictionStatus) => void;
   analytics: {
     totalStaked: number;
@@ -296,6 +297,28 @@ export const useBets = (userKey: string): UseBetsReturn => {
         setAIPredictions(prev => [newPrediction, ...prev]);
     }, [isDemoMode]);
 
+    const addMultipleAIPredictions = useCallback((predictionsToAdd: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>[]) => {
+        if (isDemoMode) return;
+
+        setAIPredictions(prev => {
+            const existingMatchNames = new Set(prev.map(p => p.matchName));
+            const uniqueNewPredictions = predictionsToAdd.filter(p => !existingMatchNames.has(p.matchName));
+
+            if (uniqueNewPredictions.length === 0) {
+                return prev;
+            }
+
+            const newFullPredictions: AIPrediction[] = uniqueNewPredictions.map(p => ({
+                ...p,
+                id: new Date().toISOString() + Math.random(),
+                createdAt: new Date().toISOString(),
+                status: AIPredictionStatus.Pending,
+            }));
+
+            return [...newFullPredictions, ...prev];
+        });
+    }, [isDemoMode]);
+
     const updateAIPrediction = useCallback((id: string, status: AIPredictionStatus) => {
         if (isDemoMode) return;
         setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, status } : p));
@@ -440,5 +463,5 @@ export const useBets = (userKey: string): UseBetsReturn => {
     };
   }, [bets, bankroll, bankHistory, isDemoMode]);
 
-  return { bets, bankHistory, aiPredictions, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal, addAIPrediction, updateAIPrediction };
+  return { bets, bankHistory, aiPredictions, addBet, addMultipleBets, updateBet, deleteBet, analytics, bankroll, updateBankroll, goals, addGoal, updateGoal, deleteGoal, addAIPrediction, addMultipleAIPredictions, updateAIPrediction };
 };

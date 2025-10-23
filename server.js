@@ -1,4 +1,5 @@
 
+
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -56,6 +57,40 @@ app.post('/api/gemini', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch from Gemini API on the server.' });
   }
 });
+
+// Mock endpoint for fetching matches for local development
+app.get('/api/matches', (req, res) => {
+    const sport = req.query.sport;
+    console.log(`[LOCAL DEV] Serving mock matches for sport: ${sport}`);
+    // This can be expanded with more complex mock data generation if needed
+    const mockData = [
+        { sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
+        { sport: sport, eventName: 'Mock Cup', teams: 'Команда В vs. Команда Г', date: '2024-07-28', time: '21:00', status: { long: 'First Half', short: '1H', emoji: '🔴' } },
+    ];
+    res.json(mockData);
+});
+
+// Mock endpoint for fetching matches WITH AI predictions for local dev
+app.get('/api/matches-with-predictions', (req, res) => {
+    const sport = req.query.sport;
+    console.log(`[LOCAL DEV] Serving mock matches with predictions for sport: ${sport}`);
+    
+    const mockMatches = [
+        { sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
+        { sport: sport, eventName: 'Mock Cup', teams: 'Команда В vs. Команда Г', date: '2024-07-28', time: '21:00', isHotMatch: false, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
+    ];
+
+    const mockPredictions = [
+        { sport: sport, matchName: 'Команда А vs. Команда Б', prediction: 'П1 - 55%, X - 25%, П2 - 20%' },
+        { sport: sport, matchName: 'Команда В vs. Команда Г', prediction: 'П1 - 30%, X - 30%, П2 - 40%' },
+    ];
+
+    res.json({
+        matches: mockMatches,
+        newPredictions: mockPredictions
+    });
+});
+
 
 // Mock endpoint for fetching bot users during local development
 app.get('/api/admin/users', (req, res) => {
