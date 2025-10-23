@@ -18,7 +18,50 @@ const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
     }
 };
 
-const FINISHED_STATUSES = ['FT', 'AET', 'PEN'];
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
+
+function getAiPayloadForSport(sport: string, matchName: string): { prompt: string; schema: any } {
+    let outcomes: any;
+    let recommendedEnum: string[];
+    let promptOutcomes: string;
+
+    switch (sport) {
+        case 'basketball':
+        case 'nba':
+            promptOutcomes = 'П1 (с ОТ), П2 (с ОТ), Тотал Больше 215.5, Тотал Меньше 215.5, Тотал Больше 225.5, Тотал Меньше 225.5';
+            outcomes = { "П1 (с ОТ)": { type: Type.NUMBER }, "П2 (с ОТ)": { type: Type.NUMBER }, "Тотал Больше 215.5": { type: Type.NUMBER }, "Тотал Меньше 215.5": { type: Type.NUMBER }, "Тотал Больше 225.5": { type: Type.NUMBER }, "Тотал Меньше 225.5": { type: Type.NUMBER }};
+            recommendedEnum = ["П1 (с ОТ)", "П2 (с ОТ)"];
+            break;
+        case 'hockey':
+            promptOutcomes = 'П1 (осн. время), X (осн. время), П2 (осн. время), П1 (с ОТ), П2 (с ОТ), Тотал Больше 5.5, Тотал Меньше 5.5';
+            outcomes = { "П1 (осн. время)": { type: Type.NUMBER }, "X (осн. время)": { type: Type.NUMBER }, "П2 (осн. время)": { type: Type.NUMBER }, "П1 (с ОТ)": { type: Type.NUMBER }, "П2 (с ОТ)": { type: Type.NUMBER }, "Тотал Больше 5.5": { type: Type.NUMBER }, "Тотал Меньше 5.5": { type: Type.NUMBER } };
+            recommendedEnum = ["П1 (осн. время)", "X (осн. время)", "П2 (осн. время)"];
+            break;
+        case 'football':
+        default:
+            promptOutcomes = 'П1, X, П2, 1X, X2, "Тотал Больше 2.5", "Тотал Меньше 2.5", "Обе забьют - Да"';
+            outcomes = { "П1": { type: Type.NUMBER }, "X": { type: Type.NUMBER }, "П2": { type: Type.NUMBER }, "1X": { type: Type.NUMBER }, "X2": { type: Type.NUMBER }, "Тотал Больше 2.5": { type: Type.NUMBER }, "Тотал Меньше 2.5": { type: Type.NUMBER }, "Обе забьют - Да": { type: Type.NUMBER } };
+            recommendedEnum = ["П1", "X", "П2"];
+            break;
+    }
+
+    const prompt = `Проанализируй матч по виду спорта "${sport}": ${matchName}. Дай прогноз на вероятность прохода и ПРИМЕРНЫЙ коэффициент для следующих исходов: ${promptOutcomes}. Предоставь ответ ТОЛЬКО в формате JSON. JSON должен содержать три ключа: "probabilities", "coefficients" и "recommended_outcome".
+- "probabilities" должен быть объектом, где ключи - это названия исходов, а значения - их вероятности в процентах (число от 0 до 100).
+- "coefficients" должен быть объектом, где ключи - это названия исходов, а значения - ПРИМЕРНЫЙ коэффициент для этого исхода (число, например 1.85).
+- "recommended_outcome" должен быть строкой, содержащей ОДИН наиболее вероятный исход из списка [${recommendedEnum.map(e => `"${e}"`).join(', ')}].`;
+
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            probabilities: { type: Type.OBJECT, properties: outcomes, description: "Вероятности исходов в процентах." },
+            coefficients: { type: Type.OBJECT, properties: outcomes, description: "Примерные коэффициенты для исходов." },
+            recommended_outcome: { type: Type.STRING, enum: recommendedEnum, description: "Самый вероятный исход из П1/X/П2." }
+        },
+        required: ["probabilities", "recommended_outcome", "coefficients"]
+    };
+
+    return { prompt, schema };
+}
 
 export const onRequestGet = async ({ request, env }: EventContext): Promise<Response> => {
     try {
@@ -46,27 +89,8 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
                 const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
                 const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
                 const matchName = `${homeTeam} vs ${awayTeam}`;
-
-                const prompt = `Проанализируй матч по виду спорта "${sport}": ${matchName}. Дай прогноз на вероятность прохода для следующих исходов: П1, X, П2, 1X, X2, "Тотал Больше 2.5", "Тотал Меньше 2.5", "Обе забьют - Да". Предоставь ответ ТОЛЬКО в формате JSON. JSON должен содержать два ключа: "probabilities" и "recommended_outcome".
-- "probabilities" должен быть объектом, где ключи - это названия исходов, а значения - их вероятности в процентах (число от 0 до 100).
-- "recommended_outcome" должен быть строкой, содержащей ОДИН наиболее вероятный исход из списка ['П1', 'X', 'П2'].`;
                 
-                 const schema = {
-                    type: Type.OBJECT,
-                    properties: {
-                        probabilities: {
-                        type: Type.OBJECT,
-                        properties: {
-                            "П1": { type: Type.NUMBER }, "X": { type: Type.NUMBER }, "П2": { type: Type.NUMBER },
-                            "1X": { type: Type.NUMBER }, "X2": { type: Type.NUMBER },
-                            "Тотал Больше 2.5": { type: Type.NUMBER }, "Тотал Меньше 2.5": { type: Type.NUMBER },
-                            "Обе забьют - Да": { type: Type.NUMBER },
-                        }
-                        },
-                        recommended_outcome: { type: Type.STRING, enum: ["П1", "X", "П2"] }
-                    },
-                    required: ["probabilities", "recommended_outcome"]
-                };
+                const { prompt, schema } = getAiPayloadForSport(sport, matchName);
 
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
@@ -101,12 +125,12 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
             if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null && game.scores.away !== null) {
                 gameData.score = `${game.scores.home} - ${game.scores.away}`;
                 gameData.scores = { home: game.scores.home, away: game.scores.away };
-                if (game.scores.home > game.scores.away) {
-                    gameData.winner = 'home';
-                } else if (game.scores.away > game.scores.home) {
-                    gameData.winner = 'away';
-                } else {
-                    gameData.winner = 'draw';
+                 if (sport === 'hockey' || sport === 'basketball' || sport === 'nba') {
+                    gameData.winner = game.scores.home > game.scores.away ? 'home' : 'away';
+                } else { // Football etc.
+                    if (game.scores.home > game.scores.away) gameData.winner = 'home';
+                    else if (game.scores.away > game.scores.home) gameData.winner = 'away';
+                    else gameData.winner = 'draw';
                 }
             }
 

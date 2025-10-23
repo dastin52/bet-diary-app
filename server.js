@@ -56,34 +56,35 @@ app.post('/api/gemini', async (req, res) => {
   }
 });
 
-// Mock endpoint for fetching matches for local development
-app.get('/api/matches', (req, res) => {
-    const sport = req.query.sport;
-    console.log(`[LOCAL DEV] Serving mock matches for sport: ${sport}`);
-    // This can be expanded with more complex mock data generation if needed
-    const mockData = [
-        { sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
-        { sport: sport, eventName: 'Mock Cup', teams: 'Команда В vs. Команда Г', date: '2024-07-28', time: '21:00', status: { long: 'First Half', short: '1H', emoji: '🔴' } },
-    ];
-    res.json(mockData);
-});
 
 // Mock endpoint for fetching matches WITH AI predictions for local dev
 app.get('/api/matches-with-predictions', (req, res) => {
     const sport = req.query.sport;
     console.log(`[LOCAL DEV] Serving mock matches with predictions for sport: ${sport}`);
     
-    const mockMatches = [
-        { sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
-        { sport: sport, eventName: 'Mock Cup', teams: 'Команда В vs. Команда Г', date: '2024-07-28', time: '21:00', isHotMatch: false, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
-        { sport: sport, eventName: 'Mock Finals', teams: 'Команда X vs. Команда Y', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '3 - 1', winner: 'home' },
-    ];
+    let mockMatches = [];
+    let mockPredictions = [];
 
-    const mockPredictions = [
-        { sport: sport, matchName: 'Команда А vs. Команда Б', prediction: 'П1 - 55%, X - 25%, П2 - 20%' },
-        { sport: sport, matchName: 'Команда В vs. Команда Г', prediction: 'П1 - 30%, X - 30%, П2 - 40%' },
-        { sport: sport, matchName: 'Команда X vs. Команда Y', prediction: 'П1 - 60%, X - 20%, П2 - 20%' }, // This one should resolve to 'Correct'
-    ];
+    if (sport === 'football') {
+        mockMatches = [
+            { sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
+            { sport: sport, eventName: 'Mock Finals', teams: 'Команда X vs. Команда Y', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '3 - 1', scores: { home: 3, away: 1 }, winner: 'home' },
+        ];
+        mockPredictions = [
+            { sport: sport, matchName: 'Команда А vs. Команда Б', prediction: JSON.stringify({ "probabilities": { "П1": 55, "X": 25, "П2": 20 }, "coefficients": { "П1": 1.8, "X": 3.5, "П2": 4.0 }, "recommended_outcome": "П1" }) },
+            { sport: sport, matchName: 'Команда X vs. Команда Y', prediction: JSON.stringify({ "probabilities": { "П1": 60, "X": 20, "П2": 20 }, "coefficients": { "П1": 1.6, "X": 4.0, "П2": 5.0 }, "recommended_outcome": "П1" }) },
+        ];
+    } else if (sport === 'basketball' || sport === 'nba') {
+        mockMatches = [
+            { sport: sport, eventName: 'Mock NBA', teams: 'Лейкерс vs. Клипперс', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' } },
+            { sport: sport, eventName: 'Mock Euroleague', teams: 'ЦСКА vs. Реал Мадрид', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '91 - 88', scores: { home: 91, away: 88 }, winner: 'home' },
+        ];
+        mockPredictions = [
+            { sport: sport, matchName: 'Лейкерс vs. Клипперс', prediction: JSON.stringify({ "probabilities": { "П1 (с ОТ)": 52, "П2 (с ОТ)": 48 }, "coefficients": { "П1 (с ОТ)": 1.9, "П2 (с ОТ)": 1.9 }, "recommended_outcome": "П1 (с ОТ)" }) },
+            { sport: sport, matchName: 'ЦСКА vs. Реал Мадрид', prediction: JSON.stringify({ "probabilities": { "П1 (с ОТ)": 65, "П2 (с ОТ)": 35 }, "coefficients": { "П1 (с ОТ)": 1.5, "П2 (с ОТ)": 2.5 }, "recommended_outcome": "П1 (с ОТ)" }) },
+        ];
+    }
+
 
     res.json({
         matches: mockMatches,
