@@ -1,5 +1,5 @@
 // functions/telegram/predictions.ts
-import { TelegramUpdate, UserState, Env, AIPrediction, AIPredictionStatus } from './types';
+import { TelegramUpdate, UserState, Env, AIPrediction, AIPredictionStatus, SharedPrediction } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
@@ -56,14 +56,32 @@ export async function startPredictionLog(update: TelegramUpdate, state: UserStat
 
 function calculateStats(predictions: AIPrediction[]) {
     const settled = predictions.filter(p => p.status !== AIPredictionStatus.Pending);
-    const correct = settled.filter(p => p.status === AIPredictionStatus.Correct).length;
+    const correctPredictions = settled.filter(p => p.status === AIPredictionStatus.Correct);
+    
     const total = settled.length;
-    const accuracy = total > 0 ? (correct / total) * 100 : 0;
-    return { total, correct, accuracy };
+    const accuracy = total > 0 ? (correctPredictions.length / total) * 100 : 0;
+
+    const winningCoefficients = correctPredictions.reduce<number[]>((acc, p) => {
+        try {
+            const data = JSON.parse(p.prediction);
+            const outcome = data.recommended_outcome;
+            const coeff = data.coefficients?.[outcome];
+            if (typeof coeff === 'number') {
+                acc.push(coeff);
+            }
+        } catch {}
+        return acc;
+    }, []);
+    
+    const avgCorrectCoefficient = winningCoefficients.length > 0
+        ? winningCoefficients.reduce((sum, coeff) => sum + coeff, 0) / winningCoefficients.length
+        : 0;
+
+    return { total, correct: correctPredictions.length, accuracy, avgCorrectCoefficient };
 }
 
-async function showDeepAnalytics(chatId: number, messageId: number, state: UserState, env: Env, sportFilter: string) {
-    const predictionsToAnalyze = (state.aiPredictions || []).filter(p => 
+async function showDeepAnalytics(chatId: number, messageId: number, allPredictions: AIPrediction[], env: Env, sportFilter: string) {
+    const predictionsToAnalyze = allPredictions.filter(p => 
         p.status !== AIPredictionStatus.Pending && 
         p.matchResult &&
         (sportFilter === 'all' || p.sport === sportFilter)
@@ -89,7 +107,7 @@ async function showDeepAnalytics(chatId: number, messageId: number, state: UserS
     const sortedAnalytics = Object.entries(deepAnalyticsData)
         .map(([market, data]) => ({
             market,
-            accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+            accuracy: data.total > 0 ? (data.total > 0 ? (data.correct / data.total) * 100 : 0) : 0,
             count: data.total,
         }))
         .filter(item => item.count > 0)
@@ -101,7 +119,7 @@ async function showDeepAnalytics(chatId: number, messageId: number, state: UserS
     if (sortedAnalytics.length === 0) {
         text += "_Нет данных для анализа._";
     } else {
-        sortedAnalytics.forEach(item => {
+        sortedAnalytics.slice(0, 15).forEach(item => { // Limit to 15 to avoid message too long error
             text += `*${item.market}*: ${item.accuracy.toFixed(1)}% (${item.count} оценок)\n`;
         });
     }
@@ -115,9 +133,25 @@ async function showDeepAnalytics(chatId: number, messageId: number, state: UserS
 
 
 async function showPredictionLog(chatId: number, messageId: number | null, state: UserState, env: Env, page: number, sportFilter: string, outcomeFilter: string) {
-    const allPredictions = state.aiPredictions || [];
     
-    const filteredPredictions = allPredictions.filter(p => {
+    // Fetch all predictions from central KV store for all sports
+    const currentHour = new Date().toISOString().slice(0, 13);
+    const sportsKeys = ['football', 'hockey', 'basketball', 'nba'];
+    const centralPredictionsPromises = sportsKeys.map(sport => 
+        env.BOT_STATE.get(`central_predictions:${sport}:${currentHour}`, { type: 'json' })
+    );
+    const centralPredictionsResults = await Promise.all(centralPredictionsPromises);
+    const allCentralPredictions = centralPredictionsResults
+        .flat()
+        .filter((p): p is SharedPrediction => p !== null && p.prediction !== null)
+        .map(p => p.prediction as AIPrediction);
+    
+    // Combine with personal predictions and de-duplicate
+    const allPredictions = [...state.aiPredictions, ...allCentralPredictions];
+    const uniquePredictions = Array.from(new Map(allPredictions.map(p => [p.matchName, p])).values())
+        .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const filteredPredictions = uniquePredictions.filter(p => {
         const sportMatch = sportFilter === 'all' || p.sport === sportFilter;
         let outcomeMatch = outcomeFilter === 'all';
         if (outcomeFilter !== 'all') {
@@ -133,7 +167,8 @@ async function showPredictionLog(chatId: number, messageId: number | null, state
 
     const stats = calculateStats(filteredPredictions);
     let text = `*🔮 База прогнозов AI*\n\n`;
-    text += `*Точность (${sportFilter}/${outcomeFilter}):* ${stats.accuracy.toFixed(1)}% (${stats.correct}/${stats.total})\n\n`;
+    text += `*Точность (${sportFilter}/${outcomeFilter}):* ${stats.accuracy.toFixed(1)}% (${stats.correct}/${stats.total})\n`;
+    text += `*📈 Средний верный коэф.:* ${stats.avgCorrectCoefficient.toFixed(2)}\n\n`;
 
     const totalPages = Math.ceil(filteredPredictions.length / PREDS_PER_PAGE);
     const currentPage = Math.max(0, Math.min(page, totalPages - 1));
@@ -159,13 +194,9 @@ async function showPredictionLog(chatId: number, messageId: number | null, state
     
     const sportButtons = [
         { text: sportFilter === 'all' ? '[Все]' : 'Все', callback_data: buildPredCb(ACTIONS.LIST, 0, 'all', outcomeFilter) },
-        ...SPORTS.slice(0, 4).map(s => ({ text: sportFilter === s ? `[${s}]` : s, callback_data: buildPredCb(ACTIONS.LIST, 0, s, outcomeFilter) }))
+        ...['football', 'hockey', 'basketball'].map(s => ({ text: sportFilter === s ? `[${s}]` : s, callback_data: buildPredCb(ACTIONS.LIST, 0, s, outcomeFilter) }))
     ];
     
-    const availableOutcomes = Array.from(new Set(allPredictions.flatMap(p => {
-        try { return Object.keys(JSON.parse(p.prediction).probabilities) } catch { return [] }
-    }))).sort();
-
     const outcomeButtons = [
         { text: outcomeFilter === 'all' ? '[Все исх.]' : 'Все исх.', callback_data: buildPredCb(ACTIONS.LIST, 0, sportFilter, 'all') },
         ...['П1', 'X', 'П2'].map(o => ({ text: outcomeFilter === o ? `[${o}]` : o, callback_data: buildPredCb(ACTIONS.LIST, 0, sportFilter, o) }))
@@ -197,13 +228,29 @@ export async function handlePredictionCallback(update: TelegramUpdate, state: Us
 
     const [_, action, pageStr, sportFilter, outcomeFilter] = cb.data.split('|');
     const page = parseInt(pageStr) || 0;
+    
+    // As we are fetching all predictions, we need to pass the combined list to analytics
+     const currentHour = new Date().toISOString().slice(0, 13);
+    const sportsKeys = ['football', 'hockey', 'basketball', 'nba'];
+    const centralPredictionsPromises = sportsKeys.map(sport => 
+        env.BOT_STATE.get(`central_predictions:${sport}:${currentHour}`, { type: 'json' })
+    );
+    const centralPredictionsResults = await Promise.all(centralPredictionsPromises);
+    const allCentralPredictions = centralPredictionsResults
+        .flat()
+        .filter((p): p is SharedPrediction => p !== null && p.prediction !== null)
+        .map(p => p.prediction as AIPrediction);
+    
+    const allPredictions = [...state.aiPredictions, ...allCentralPredictions];
+    const uniquePredictions = Array.from(new Map(allPredictions.map(p => [p.matchName, p])).values());
+
 
     switch (action) {
         case ACTIONS.LIST:
             await showPredictionLog(cb.message.chat.id, cb.message.message_id, state, env, page, sportFilter, outcomeFilter);
             break;
         case ACTIONS.ANALYTICS:
-            await showDeepAnalytics(cb.message.chat.id, cb.message.message_id, state, env, sportFilter);
+            await showDeepAnalytics(cb.message.chat.id, cb.message.message_id, uniquePredictions, env, sportFilter);
             break;
     }
 }

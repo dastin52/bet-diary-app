@@ -196,4 +196,5 @@ export interface AIPrediction {
 // Новый тип для централизованной базы прогнозов
 export interface SharedPrediction extends UpcomingMatch {
   prediction: AIPrediction | null;
+  timestamp: number;
 }

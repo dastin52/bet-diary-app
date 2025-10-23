@@ -65,6 +65,9 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
                 ...game.status,
                 emoji: getMatchStatusEmoji(game.status),
             },
+            score: (game.scores && game.scores.home !== null && game.scores.away !== null) 
+                    ? `${game.scores.home} - ${game.scores.away}` 
+                    : undefined
         }));
 
         return new Response(JSON.stringify(translatedGames), {

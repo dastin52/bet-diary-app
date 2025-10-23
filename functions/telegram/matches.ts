@@ -1,5 +1,5 @@
 // functions/telegram/matches.ts
-import { TelegramUpdate, UserState, Env, SportGame, AIPredictionStatus, AIPrediction } from './types';
+import { TelegramUpdate, UserState, Env, SportGame, AIPredictionStatus, AIPrediction, SharedPrediction } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
@@ -83,7 +83,8 @@ export async function resolvePredictionsInState(state: UserState, finishedMatche
         const match = finishedMatches.find(m => {
              const homeTeam = translationMap[m.teams.home.name] || m.teams.home.name;
              const awayTeam = translationMap[m.teams.away.name] || m.teams.away.name;
-             return p.matchName === `${homeTeam} vs ${awayTeam}`;
+             const matchName = `${homeTeam} vs ${awayTeam}`;
+             return p.matchName === matchName;
         });
         
         if (!match || !match.scores || match.scores.home === null || match.scores.away === null) return p;
@@ -98,9 +99,8 @@ export async function resolvePredictionsInState(state: UserState, finishedMatche
         
         if (!recommendedOutcome) return p;
 
-        // FIX: Explicitly type the winner to satisfy the AIPrediction type.
         const winner: 'home' | 'away' | 'draw' = match.scores.home > match.scores.away ? 'home' : match.scores.away > match.scores.home ? 'away' : 'draw';
-        const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away' };
+        const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away', 'П1 (осн. время)': 'home', 'X (осн. время)': 'draw', 'П2 (осн. время)': 'away' };
         const aiWinner = outcomeMap[recommendedOutcome];
         
         if (!aiWinner) return p;
@@ -166,11 +166,16 @@ async function showMatchesList(chatId: number, messageId: number | null, state: 
     try {
         const sportLabel = AVAILABLE_SPORTS.find(s => s.key === sport)?.label || sport;
         if (loadingMessageId) {
-            await editMessageText(chatId, loadingMessageId, `Загружаю актуальные матчи... (${sportLabel})`, env);
+            await editMessageText(chatId, loadingMessageId, `Загружаю актуальные матчи и прогнозы AI... (${sportLabel})`, env);
         } else {
-            const sentMessage = await sendMessage(chatId, `Загружаю актуальные матчи... (${sportLabel})`, env);
+            const sentMessage = await sendMessage(chatId, `Загружаю актуальные матчи и прогнозы AI... (${sportLabel})`, env);
             loadingMessageId = sentMessage.result.message_id;
         }
+
+        const currentHour = new Date().toISOString().slice(0, 13);
+        const centralPredictionsKey = `central_predictions:${sport}:${currentHour}`;
+        const centralPredictionsData = await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[] | null;
+        const centralPredictionsMap = new Map(centralPredictionsData?.map(p => [p.teams, p.prediction]));
 
         const games = await getTodaysGamesBySport(sport, env);
 
@@ -190,7 +195,7 @@ async function showMatchesList(chatId: number, messageId: number | null, state: 
             const updatedState = await resolvePredictionsInState(currentState, finishedMatches, translationMap);
             if (JSON.stringify(updatedState) !== JSON.stringify(currentState)) {
                 await updateAndSyncState(chatId, updatedState, env);
-                currentState = updatedState; // Use the updated state for the rest of the function
+                currentState = updatedState;
             }
         }
 
@@ -218,10 +223,21 @@ async function showMatchesList(chatId: number, messageId: number | null, state: 
                 const statusEmoji = getMatchStatusEmoji(game.status);
                 const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
                 const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
+                const matchName = `${homeTeam} vs ${awayTeam}`;
                 const scoreText = (game.scores && game.scores.home !== null && game.scores.away !== null) 
                     ? ` *[${game.scores.home}:${game.scores.away}]*` 
                     : '';
-                text += `${statusEmoji} *${gameTime}* - ${homeTeam} vs ${awayTeam}${scoreText}\n`;
+                
+                let predictionText = '';
+                const prediction = centralPredictionsMap.get(matchName);
+                if (prediction) {
+                    try {
+                        const data = JSON.parse(prediction.prediction);
+                        predictionText = ` _AI: ${data.recommended_outcome} (${data.probabilities[data.recommended_outcome]}%)_`;
+                    } catch {}
+                }
+
+                text += `${statusEmoji} *${gameTime}* - ${matchName}${scoreText}${predictionText}\n`;
             });
             text += '\n';
         });

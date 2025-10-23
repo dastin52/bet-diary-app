@@ -1,5 +1,6 @@
 // functions/api/matches-with-predictions.ts
-import { Env, SportGame, AIPrediction, AIPredictionStatus } from '../telegram/types';
+// FIX: Import SharedPrediction from the central types file.
+import { Env, SportGame, AIPrediction, AIPredictionStatus, SharedPrediction } from '../telegram/types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { getTodaysGamesBySport } from '../services/sportApi';
 import { translateTeamNames } from '../services/translationService';
@@ -9,12 +10,18 @@ interface EventContext {
     env: Env;
 }
 
-interface SharedPrediction extends SportGame {
-  prediction: AIPrediction | null;
-}
+// FIX: Removed local definition of SharedPrediction as it's now imported.
 
 // TTL for the main cache in seconds (1 hour)
 const CACHE_TTL_SECONDS = 3600;
+
+const getStatusPriority = (statusShort: string): number => {
+    const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
+    const scheduled = ['NS', 'TBD'];
+    if (live.includes(statusShort)) return 1;
+    if (scheduled.includes(statusShort)) return 2;
+    return 3; // Finished, Postponed, etc.
+};
 
 const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
     if (!status) return '⏳';
@@ -88,11 +95,21 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
 
     try {
         // 2. Cache miss: Fetch fresh data
-        const games = await getTodaysGamesBySport(sport, env);
+        let games = await getTodaysGamesBySport(sport, env);
         if (games.length === 0) {
             await env.BOT_STATE.put(cacheKey, JSON.stringify([]), { expirationTtl: CACHE_TTL_SECONDS });
             return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
+        
+        // Sort games: Live > Scheduled > Finished
+        games.sort((a, b) => {
+            const priorityA = getStatusPriority(a.status.short);
+            const priorityB = getStatusPriority(b.status.short);
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+            }
+            return a.timestamp - b.timestamp;
+        });
 
         const teamNames = games.flatMap(game => [game?.teams?.home?.name, game?.teams?.away?.name]).filter((name): name is string => !!name);
         const uniqueTeamNames = Array.from(new Set(teamNames));
@@ -129,12 +146,12 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
 
             // Map to frontend-friendly format
             const sharedPredictionData: any = {
+                ...game, // Spread the original game object
                 sport: sport,
                 eventName: game.league.name,
                 teams: matchName,
                 date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
                 time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
-                isHotMatch: false, 
                 status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
                 prediction: prediction
             };
@@ -151,18 +168,19 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
             return sharedPredictionData;
         }));
         
-        // Resolve statuses for predictions on finished games (if any were created in a past hour's cache)
+        // Resolve statuses for predictions on finished games
          const resolvedGames = processedGames.map(game => {
             if (game.prediction && game.prediction.status === AIPredictionStatus.Pending && game.winner) {
                  try {
                     const predictionData = JSON.parse(game.prediction.prediction);
                     const recommended = predictionData.recommended_outcome;
-                    const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away' };
+                    const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away', 'П1 (осн. время)': 'home', 'X (осн. время)': 'draw', 'П2 (осн. время)': 'away' };
                     if (outcomeMap[recommended] === game.winner) {
                         game.prediction.status = AIPredictionStatus.Correct;
                     } else {
                          game.prediction.status = AIPredictionStatus.Incorrect;
                     }
+                    game.prediction.matchResult = { winner: game.winner, scores: game.scores! };
                 } catch(e) {/* ignore */}
             }
             return game;

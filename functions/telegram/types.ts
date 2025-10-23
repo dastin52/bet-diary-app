@@ -296,3 +296,8 @@ export interface SportApiConfig {
         params?: string;
     }
 }
+// FIX: Added missing SharedPrediction type definition.
+export interface SharedPrediction extends SportGame {
+  prediction: AIPrediction | null;
+  timestamp: number;
+}

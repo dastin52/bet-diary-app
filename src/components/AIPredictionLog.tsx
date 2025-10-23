@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
-import { AIPrediction, AIPredictionStatus, SharedPrediction } from '../types';
+import { AIPrediction, AIPredictionStatus } from '../types';
 import Select from './ui/Select';
 import { usePredictionContext } from '../contexts/PredictionContext';
+// FIX: The useBetContext hook is exported from BetContext, not useBets.
 import { useBetContext } from '../contexts/BetContext';
 import Button from './ui/Button';
 
@@ -120,9 +121,26 @@ const AIPredictionLog: React.FC = () => {
 
     const { stats, deepAnalytics } = useMemo(() => {
         const settled = combinedPredictions.filter(p => p.status !== AIPredictionStatus.Pending);
-        const correct = settled.filter(p => p.status === AIPredictionStatus.Correct).length;
+        const correctPredictions = settled.filter(p => p.status === AIPredictionStatus.Correct);
+        
         const total = settled.length;
-        const accuracy = total > 0 ? (correct / total) * 100 : 0;
+        const accuracy = total > 0 ? (correctPredictions.length / total) * 100 : 0;
+        
+        const winningCoefficients = correctPredictions.reduce<number[]>((acc, p) => {
+            try {
+                const data = JSON.parse(p.prediction);
+                const outcome = data.recommended_outcome;
+                const coeff = data.coefficients?.[outcome];
+                if (typeof coeff === 'number') {
+                    acc.push(coeff);
+                }
+            } catch {}
+            return acc;
+        }, []);
+        
+        const avgCorrectCoefficient = winningCoefficients.length > 0
+            ? winningCoefficients.reduce((sum, coeff) => sum + coeff, 0) / winningCoefficients.length
+            : 0;
         
         const initialOutcomeStats: Record<string, { correct: number; total: number }> = {
             'П1': { correct: 0, total: 0 },
@@ -135,7 +153,6 @@ const AIPredictionLog: React.FC = () => {
                 const data = JSON.parse(p.prediction);
                 const outcome = data.recommended_outcome;
                 if (outcome && ['П1', 'X', 'П2'].includes(outcome)) {
-                    // FIX: Create a temporary variable to help TypeScript with type narrowing.
                     if (!acc[outcome]) {
                         acc[outcome] = { correct: 0, total: 0 };
                     }
@@ -154,12 +171,12 @@ const AIPredictionLog: React.FC = () => {
         }));
         
         const predictionsWithResults = combinedPredictions.filter(p => p.matchResult && p.matchResult.scores);
-        const deepAnalyticsData = predictionsWithResults.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
+        // FIX: Add explicit type for accumulator to prevent type inference issues.
+        const deepAnalyticsData = predictionsWithResults.reduce((acc: Record<string, { correct: number, total: number }>, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (data.probabilities && p.matchResult) {
                     for (const market in data.probabilities) {
-                        // FIX: Create a temporary variable to help TypeScript with type narrowing.
                         if (!acc[market]) {
                             acc[market] = { correct: 0, total: 0 };
                         }
@@ -183,7 +200,7 @@ const AIPredictionLog: React.FC = () => {
             count: data.total,
         })).sort((a,b) => b.count - a.count);
         
-        return { stats: { total, correct, accuracy, accuracyByOutcome }, deepAnalytics: deepAnalyticsResult };
+        return { stats: { total, correct: correctPredictions.length, accuracy, accuracyByOutcome, avgCorrectCoefficient }, deepAnalytics: deepAnalyticsResult };
     }, [combinedPredictions]);
 
     const filteredPredictions = useMemo(() => {
@@ -205,10 +222,11 @@ const AIPredictionLog: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <KpiCard title="Всего оценено" value={String(stats.total)} />
                 <KpiCard title="Верных прогнозов" value={String(stats.correct)} colorClass="text-green-400" />
                 <KpiCard title="Общая точность" value={`${stats.accuracy.toFixed(1)}%`} colorClass="text-indigo-400" />
+                <KpiCard title="Средний верный коэф." value={`${stats.avgCorrectCoefficient.toFixed(2)}`} colorClass="text-amber-400" />
             </div>
 
             <Card>
