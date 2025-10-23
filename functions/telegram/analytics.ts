@@ -45,7 +45,8 @@ export function calculateAnalytics(state: UserState, period: AnalyticsPeriod = '
     const winRate = nonVoidBets.length > 0 ? (wonBets.length / nonVoidBets.length) * 100 : 0;
     
     // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference.
-    const statsBySport = settledBets.reduce((acc: Record<string, { profit: number; staked: number; count: number }>, bet) => {
+    // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference.
+    const statsBySport = settledBets.reduce<Record<string, { profit: number; staked: number; count: number }>>((acc, bet) => {
         if (!acc[bet.sport]) {
             acc[bet.sport] = { profit: 0, staked: 0, count: 0 };
         }
@@ -53,10 +54,11 @@ export function calculateAnalytics(state: UserState, period: AnalyticsPeriod = '
         acc[bet.sport].staked += bet.stake;
         acc[bet.sport].count += 1;
         return acc;
-    }, {} as Record<string, { profit: number; staked: number; count: number }>);
+    }, {});
 
     // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference.
-    const statsByBetType = settledBets.reduce((acc: Record<string, { profit: number; staked: number; count: number }>, bet) => {
+    // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference.
+    const statsByBetType = settledBets.reduce<Record<string, { profit: number; staked: number; count: number }>>((acc, bet) => {
         const betTypeLabel = bet.betType; // Simpler for bot
         if (!acc[betTypeLabel]) {
             acc[betTypeLabel] = { profit: 0, staked: 0, count: 0 };
@@ -65,7 +67,7 @@ export function calculateAnalytics(state: UserState, period: AnalyticsPeriod = '
         acc[betTypeLabel].staked += bet.stake;
         acc[betTypeLabel].count += 1;
         return acc;
-    }, {} as Record<string, { profit: number; staked: number; count: number }>);
+    }, {});
 
     return {
         bankroll: state.bankroll,

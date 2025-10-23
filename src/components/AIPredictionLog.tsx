@@ -66,7 +66,7 @@ const PredictionDetails: React.FC<{ prediction: string }> = ({ prediction }) => 
     }
 }
 
-const resolveMarketOutcome = (market: string, scores: { home: number; away: number }, winner: 'home' | 'away' | 'draw'): 'correct' | 'incorrect' | 'unknown' => {
+const resolveMarketOutcome = (market: string, scores: { home: number; away: number }, winner?: 'home' | 'away' | 'draw'): 'correct' | 'incorrect' | 'unknown' => {
     const { home, away } = scores;
     const total = home + away;
 
@@ -143,7 +143,7 @@ const AIPredictionLog: React.FC = () => {
                     const newStatus = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
                      updateAIPrediction(prediction.id, {
                         status: newStatus,
-                        matchResult: { winner: finishedMatch.winner, scores: finishedMatch.scores }
+                        matchResult: { winner: finishedMatch.winner, scores: { home: finishedMatch.scores.home, away: finishedMatch.scores.away } }
                     });
                 }
             }
@@ -220,28 +220,33 @@ const AIPredictionLog: React.FC = () => {
             ? winningCoefficients.reduce((sum, coeff) => sum + coeff, 0) / winningCoefficients.length
             : 0;
         
-// FIX: Explicitly type the initial value for `reduce` to prevent properties being inferred as 'unknown'.
-        const statsByRecommendedOutcome = settled.reduce<Record<string, { correct: number, total: number, oddsSum: number }>>((acc, p) => {
+        // FIX: Added explicit generic type to the reduce accumulator to ensure correct type inference.
+        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, oddsSum: number }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
-                const outcome = data.recommended_outcome;
-// FIX: Add a type guard to ensure `outcome` is a string before using it as a key.
-                if (outcome && typeof outcome === 'string') {
-                    if (!acc[outcome]) acc[outcome] = { correct: 0, total: 0, oddsSum: 0 };
-                    acc[outcome].total++;
-                    if (p.status === AIPredictionStatus.Correct) {
-                        acc[outcome].correct++;
-                        const coeff = data.coefficients?.[outcome];
-                        if (typeof coeff === 'number') acc[outcome].oddsSum += coeff;
+                if (data.probabilities && p.matchResult) {
+                    for (const market in data.probabilities) {
+                        if (!acc[market]) acc[market] = { correct: 0, total: 0, oddsSum: 0 };
+
+                        const result = resolveMarketOutcome(market, p.matchResult.scores, p.matchResult.winner);
+
+                        if (result !== 'unknown') {
+                            acc[market].total++;
+                            if (result === 'correct') {
+                                acc[market].correct++;
+                                const coeff = data.coefficients?.[market];
+                                if (typeof coeff === 'number') acc[market].oddsSum += coeff;
+                            }
+                        }
                     }
                 }
             } catch {}
             return acc;
-        }, {} as Record<string, { correct: number, total: number, oddsSum: number }>);
-
+        }, {});
+        
         const mainOutcomes = ['П1', 'X', 'П2'];
         const mainOutcomeStats = mainOutcomes.map(outcome => {
-            const data = statsByRecommendedOutcome[outcome] || { correct: 0, total: 0, oddsSum: 0 };
+            const data = statsByAllOutcomes[outcome] || { correct: 0, total: 0, oddsSum: 0 };
             return {
                 outcome,
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
@@ -250,12 +255,13 @@ const AIPredictionLog: React.FC = () => {
             };
         });
 
-        const deepOutcomeStats = Object.entries(statsByRecommendedOutcome)
+        const deepOutcomeStats = Object.entries(statsByAllOutcomes)
             .map(([market, data]) => ({
                 market,
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
                 avgCoeff: data.correct > 0 ? data.oddsSum / data.correct : 0,
                 count: data.total,
+                correct: data.correct,
             }))
             .filter(item => item.count > 0)
             .sort((a, b) => b.count - a.count);
@@ -282,9 +288,9 @@ const AIPredictionLog: React.FC = () => {
 - Верно: ${generalStats.correct}
 - Точность: ${generalStats.accuracy.toFixed(1)}%
 
-Точность по типам рекомендованных исходов:
+Точность по типам всех исходов (не только рекомендованных):
 ${deepOutcomeStats.map(item => 
-`- ${item.market}: ${item.accuracy.toFixed(1)}% (${item.correct}/${item.total})`
+`- ${item.market}: ${item.accuracy.toFixed(1)}% (${item.correct}/${item.count})`
 ).join('\n')}
 `;
         try {
@@ -296,6 +302,7 @@ ${deepOutcomeStats.map(item =>
             setIsAnalysisLoading(false);
         }
     }, [generalStats, deepOutcomeStats]);
+
 
     return (
         <div className="space-y-6">
@@ -333,7 +340,7 @@ ${deepOutcomeStats.map(item =>
 
             <Card>
                 <h3 className="text-lg font-semibold mb-2">Глубокая аналитика по исходам</h3>
-                 <p className="text-xs text-gray-500 mb-4">Статистика по всем рекомендованным AI исходам, отсортировано по количеству.</p>
+                 <p className="text-xs text-gray-500 mb-4">Статистика по всем возможным исходам, отсортировано по количеству.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {deepOutcomeStats.map(({ market, accuracy, avgCoeff, count }) => (
                          <div key={market} className="p-3 bg-gray-900/50 rounded-lg text-center">
