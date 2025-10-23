@@ -2,6 +2,7 @@
 import { Env, SportGame, AIPrediction, AIPredictionStatus } from '../telegram/types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { getTodaysGamesBySport } from '../services/sportApi';
+import { translateTeamNames } from '../services/translationService';
 
 interface EventContext {
     request: Request;
@@ -93,10 +94,16 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
             return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
 
+        const teamNames = games.flatMap(game => [game?.teams?.home?.name, game?.teams?.away?.name]).filter((name): name is string => !!name);
+        const uniqueTeamNames = Array.from(new Set(teamNames));
+        const translationMap = await translateTeamNames(uniqueTeamNames, env);
+
         const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
         
         const processedGames: SharedPrediction[] = await Promise.all(games.map(async (game): Promise<SharedPrediction> => {
-            const matchName = `${game.teams.home.name} vs ${game.teams.away.name}`;
+            const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
+            const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
+            const matchName = `${homeTeam} vs ${awayTeam}`;
             let prediction: AIPrediction | null = null;
 
             if (game.status.short === 'NS') {

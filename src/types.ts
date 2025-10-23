@@ -187,6 +187,10 @@ export interface AIPrediction {
     matchName: string;
     prediction: string; // JSON string
     status: AIPredictionStatus;
+    matchResult?: {
+        winner: 'home' | 'away' | 'draw';
+        scores: { home: number; away: number; };
+    }
 }
 
 // Новый тип для централизованной базы прогнозов

@@ -1,4 +1,4 @@
-import { Bet, BankTransaction, Goal, GoalMetric, GoalStatus } from '../types';
+import { Bet, BankTransaction, Goal, GoalMetric, GoalStatus, AIPrediction } from '../types';
 import { DEMO_STATE } from '../demoData';
 
 const getKeys = (userKey: string) => ({
@@ -6,6 +6,7 @@ const getKeys = (userKey: string) => ({
   bankrollKey: `sportsBettingBankroll_${userKey}`,
   goalsKey: `sportsBettingGoals_${userKey}`,
   bankHistoryKey: `sportsBettingBankHistory_${userKey}`,
+  aiPredictionsKey: `sportsBettingAIPredictions_${userKey}`,
 });
 
 export interface UserBetData {
@@ -13,6 +14,7 @@ export interface UserBetData {
   bankroll: number;
   goals: Goal[];
   bankHistory: BankTransaction[];
+  aiPredictions: AIPrediction[];
 }
 
 
@@ -21,6 +23,7 @@ const normalizeUserData = (data: Partial<UserBetData>): UserBetData => {
     const bets = Array.isArray(data.bets) ? data.bets : [];
     const bankroll = (typeof data.bankroll === 'number' && !isNaN(data.bankroll)) ? data.bankroll : 10000;
     const bankHistory = Array.isArray(data.bankHistory) ? data.bankHistory : [];
+    const aiPredictions = Array.isArray(data.aiPredictions) ? data.aiPredictions : [];
 
     const goals = (Array.isArray(data.goals) ? data.goals : [])
       .map((g: any) => {
@@ -44,7 +47,7 @@ const normalizeUserData = (data: Partial<UserBetData>): UserBetData => {
       })
       .filter((g): g is Goal => g !== null);
 
-    return { bets, bankroll, goals, bankHistory };
+    return { bets, bankroll, goals, bankHistory, aiPredictions };
 };
 
 
@@ -54,19 +57,21 @@ export const loadUserData = (userKey: string): UserBetData => {
     return normalizeUserData(DEMO_STATE);
   }
 
-  const { betsKey, bankrollKey, goalsKey, bankHistoryKey } = getKeys(userKey);
+  const { betsKey, bankrollKey, goalsKey, bankHistoryKey, aiPredictionsKey } = getKeys(userKey);
 
   try {
     const storedBets = localStorage.getItem(betsKey);
     const storedBankroll = localStorage.getItem(bankrollKey);
     const storedHistory = localStorage.getItem(bankHistoryKey);
     const storedGoals = localStorage.getItem(goalsKey);
+    const storedAIPredictions = localStorage.getItem(aiPredictionsKey);
 
     const rawData: Partial<UserBetData> = {
         bets: storedBets ? JSON.parse(storedBets) : [],
         bankroll: storedBankroll ? parseFloat(storedBankroll) : 10000,
         bankHistory: storedHistory ? JSON.parse(storedHistory) : [],
         goals: storedGoals ? JSON.parse(storedGoals) : [],
+        aiPredictions: storedAIPredictions ? JSON.parse(storedAIPredictions) : [],
     };
     
     return normalizeUserData(rawData);
@@ -80,13 +85,14 @@ export const loadUserData = (userKey: string): UserBetData => {
 export const saveUserData = (userKey: string, data: UserBetData): void => {
   if (userKey === 'demo_user') return;
   
-  const { betsKey, bankrollKey, goalsKey, bankHistoryKey } = getKeys(userKey);
+  const { betsKey, bankrollKey, goalsKey, bankHistoryKey, aiPredictionsKey } = getKeys(userKey);
 
   try {
     localStorage.setItem(betsKey, JSON.stringify(data.bets));
     localStorage.setItem(bankrollKey, String(data.bankroll));
     localStorage.setItem(goalsKey, JSON.stringify(data.goals));
     localStorage.setItem(bankHistoryKey, JSON.stringify(data.bankHistory));
+    localStorage.setItem(aiPredictionsKey, JSON.stringify(data.aiPredictions));
   } catch (error) {
     console.error('Error saving user data to localStorage', error);
   }

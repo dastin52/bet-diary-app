@@ -1,6 +1,7 @@
 // functions/api/matches.ts
 import { getTodaysGamesBySport } from '../services/sportApi';
-import { translateTeamNames } from '../telegram/matches';
+// FIX: Corrected the import path. The translateTeamNames function is in translationService.
+import { translateTeamNames } from '../services/translationService';
 import { Env, SportGame } from '../telegram/types';
 
 interface EventContext {
