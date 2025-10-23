@@ -1,10 +1,11 @@
 // functions/telegram/matches.ts
-import { TelegramUpdate, UserState, Env, SportGame } from './types';
+import { TelegramUpdate, UserState, Env, SportGame, AIPredictionStatus, AIPrediction } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
 import { getTodaysGamesBySport } from '../services/sportApi';
 import { GoogleGenAI } from "@google/genai";
+import { updateAndSyncState } from './state';
 
 export const MATCH_PREFIX = 'match|';
 export const MATCH_SPORT_PREFIX = 'match_sport|';
@@ -25,6 +26,9 @@ const AVAILABLE_SPORTS = [
     { key: 'basketball', label: '🏀 Баскетбол' },
     { key: 'nba', label: '🏀 NBA' },
 ];
+
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN'];
+
 
 /**
  * Returns an emoji based on the match status short code.
@@ -171,6 +175,51 @@ Team names: ${namesToTranslate.join(', ')}`;
     return finalTranslations;
 }
 
+export async function resolvePredictionsInState(state: UserState, finishedMatches: SportGame[], translationMap: Record<string,string>): Promise<UserState> {
+    if (finishedMatches.length === 0) return state;
+
+    let hasChanged = false;
+    const updatedPredictions = state.aiPredictions.map(p => {
+        if (p.status !== AIPredictionStatus.Pending) return p;
+
+        const match = finishedMatches.find(m => {
+             const homeTeam = translationMap[m.teams.home.name] || m.teams.home.name;
+             const awayTeam = translationMap[m.teams.away.name] || m.teams.away.name;
+             return p.matchName === `${homeTeam} vs ${awayTeam}`;
+        });
+        
+        if (!match || !match.scores || match.scores.home === null || match.scores.away === null) return p;
+
+        let recommendedOutcome: string | null = null;
+        try {
+            const predictionData = JSON.parse(p.prediction);
+            recommendedOutcome = predictionData?.recommended_outcome || null;
+        } catch (e) {
+            console.warn(`Could not parse prediction JSON for "${p.matchName}"`);
+        }
+        
+        if (!recommendedOutcome) return p;
+
+        // FIX: Explicitly type the winner to satisfy the AIPrediction type.
+        const winner: 'home' | 'away' | 'draw' = match.scores.home > match.scores.away ? 'home' : match.scores.away > match.scores.home ? 'away' : 'draw';
+        const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away' };
+        const aiWinner = outcomeMap[recommendedOutcome];
+        
+        if (!aiWinner) return p;
+        
+        hasChanged = true;
+        const newStatus = aiWinner === winner ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
+
+        return { 
+            ...p, 
+            status: newStatus,
+            matchResult: { winner, scores: { home: match.scores.home, away: match.scores.away } }
+        };
+    });
+
+    return hasChanged ? { ...state, aiPredictions: updatedPredictions } : state;
+}
+
 
 
 export async function handleMatchesCommand(update: TelegramUpdate, state: UserState, env: Env) {
@@ -183,7 +232,7 @@ export async function handleSportSelectionCallback(update: TelegramUpdate, state
     const cb = update.callback_query;
     if (!cb || !cb.data) return;
     const sport = cb.data.replace(MATCH_SPORT_PREFIX, '');
-    await showMatchesList(cb.message.chat.id, cb.message.message_id, env, sport, 0);
+    await showMatchesList(cb.message.chat.id, cb.message.message_id, state, env, sport, 0);
 }
 
 export async function handleMatchesCallback(update: TelegramUpdate, state: UserState, env: Env) {
@@ -194,7 +243,7 @@ export async function handleMatchesCallback(update: TelegramUpdate, state: UserS
     const page = parseInt(pageStr) || 0;
 
     if (action === ACTIONS.LIST) {
-        await showMatchesList(cb.message.chat.id, cb.message.message_id, env, sport, page);
+        await showMatchesList(cb.message.chat.id, cb.message.message_id, state, env, sport, page);
     }
 }
 
@@ -213,8 +262,9 @@ export async function showSportSelectionMenu(chatId: number, messageId: number, 
 }
 
 
-async function showMatchesList(chatId: number, messageId: number | null, env: Env, sport: string, page: number) {
+async function showMatchesList(chatId: number, messageId: number | null, state: UserState, env: Env, sport: string, page: number) {
     let loadingMessageId = messageId;
+    let currentState = state;
     try {
         const sportLabel = AVAILABLE_SPORTS.find(s => s.key === sport)?.label || sport;
         if (loadingMessageId) {
@@ -233,20 +283,22 @@ async function showMatchesList(chatId: number, messageId: number | null, env: En
             return;
         }
 
-        // Translate team names
-        const teamNames = games.flatMap(game => [
-            game?.teams?.home?.name,
-            game?.teams?.away?.name
-        ]).filter((name): name is string => typeof name === 'string' && name.trim() !== '');
+        const teamNames = games.flatMap(game => [game?.teams?.home?.name, game?.teams?.away?.name]).filter((name): name is string => !!name);
         const uniqueTeamNames = Array.from(new Set(teamNames));
         const translationMap = await translateTeamNames(uniqueTeamNames, env);
+        
+        const finishedMatches = games.filter(g => FINISHED_STATUSES.includes(g.status.short));
+        if (finishedMatches.length > 0) {
+            const updatedState = await resolvePredictionsInState(currentState, finishedMatches, translationMap);
+            if (JSON.stringify(updatedState) !== JSON.stringify(currentState)) {
+                await updateAndSyncState(chatId, updatedState, env);
+                currentState = updatedState; // Use the updated state for the rest of the function
+            }
+        }
 
-        // Group games by league
         const gamesByLeague = games.reduce((acc, game) => {
             const leagueName = game.league.name || 'Неизвестная лига';
-            if (!acc[leagueName]) {
-                acc[leagueName] = [];
-            }
+            if (!acc[leagueName]) acc[leagueName] = [];
             acc[leagueName].push(game);
             return acc;
         }, {} as Record<string, SportGame[]>);

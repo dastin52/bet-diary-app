@@ -10,8 +10,7 @@ const PREDS_PER_PAGE = 5;
 
 const ACTIONS = {
     LIST: 'list',
-    FILTER_SPORT: 'fs',
-    FILTER_OUTCOME: 'fo',
+    ANALYTICS: 'analytics',
 };
 
 const buildPredCb = (action: string, ...args: (string | number)[]): string => `${PRED_PREFIX}${action}|${args.join('|')}`;
@@ -23,6 +22,30 @@ const getStatusEmoji = (status: AIPredictionStatus): string => {
         default: return '⏳';
     }
 };
+
+const resolveMarketOutcome = (market: string, scores: { home: number; away: number }): 'correct' | 'incorrect' | 'unknown' => {
+    const { home, away } = scores;
+    const total = home + away;
+
+    switch (market) {
+        case 'П1': return home > away ? 'correct' : 'incorrect';
+        case 'X': return home === away ? 'correct' : 'incorrect';
+        case 'П2': return away > home ? 'correct' : 'incorrect';
+        case '1X': return home >= away ? 'correct' : 'incorrect';
+        case 'X2': return away >= home ? 'correct' : 'incorrect';
+        case 'Обе забьют - Да': return home > 0 && away > 0 ? 'correct' : 'incorrect';
+        default:
+            const totalMatch = market.match(/Тотал (Больше|Меньше) (\d+\.\d+)/);
+            if (totalMatch) {
+                const type = totalMatch[1];
+                const value = parseFloat(totalMatch[2]);
+                if (type === 'Больше') return total > value ? 'correct' : 'incorrect';
+                if (type === 'Меньше') return total < value ? 'correct' : 'incorrect';
+            }
+            return 'unknown';
+    }
+};
+
 
 export async function startPredictionLog(update: TelegramUpdate, state: UserState, env: Env) {
     const message = update.message || update.callback_query?.message;
@@ -39,6 +62,58 @@ function calculateStats(predictions: AIPrediction[]) {
     return { total, correct, accuracy };
 }
 
+async function showDeepAnalytics(chatId: number, messageId: number, state: UserState, env: Env, sportFilter: string) {
+    const predictionsToAnalyze = (state.aiPredictions || []).filter(p => 
+        p.status !== AIPredictionStatus.Pending && 
+        p.matchResult &&
+        (sportFilter === 'all' || p.sport === sportFilter)
+    );
+
+    const deepAnalyticsData = predictionsToAnalyze.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
+        try {
+            const data = JSON.parse(p.prediction);
+            if (data.probabilities && p.matchResult) {
+                for (const market in data.probabilities) {
+                    if (!acc[market]) acc[market] = { correct: 0, total: 0 };
+                    const result = resolveMarketOutcome(market, p.matchResult.scores);
+                    if (result !== 'unknown') {
+                        acc[market].total++;
+                        if (result === 'correct') acc[market].correct++;
+                    }
+                }
+            }
+        } catch {}
+        return acc;
+    }, {});
+
+    const sortedAnalytics = Object.entries(deepAnalyticsData)
+        .map(([market, data]) => ({
+            market,
+            accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+            count: data.total,
+        }))
+        .filter(item => item.count > 0)
+        .sort((a, b) => b.count - a.count);
+
+    let text = `*📊 Глубокая аналитика по исходам*\n`;
+    text += `_Фильтр по спорту: ${sportFilter}_\n\n`;
+
+    if (sortedAnalytics.length === 0) {
+        text += "_Нет данных для анализа._";
+    } else {
+        sortedAnalytics.forEach(item => {
+            text += `*${item.market}*: ${item.accuracy.toFixed(1)}% (${item.count} оценок)\n`;
+        });
+    }
+
+    const keyboard = makeKeyboard([
+        [{ text: '◀️ Назад к списку', callback_data: buildPredCb(ACTIONS.LIST, 0, sportFilter, 'all') }]
+    ]);
+
+    await editMessageText(chatId, messageId, text, env, keyboard);
+}
+
+
 async function showPredictionLog(chatId: number, messageId: number | null, state: UserState, env: Env, page: number, sportFilter: string, outcomeFilter: string) {
     const allPredictions = state.aiPredictions || [];
     
@@ -48,9 +123,9 @@ async function showPredictionLog(chatId: number, messageId: number | null, state
         if (outcomeFilter !== 'all') {
             try {
                 const data = JSON.parse(p.prediction);
-                outcomeMatch = data.recommended_outcome === outcomeFilter;
+                outcomeMatch = (data.recommended_outcome === outcomeFilter) || (outcomeFilter in data.probabilities);
             } catch {
-                outcomeMatch = false; // Old format doesn't match
+                outcomeMatch = false;
             }
         }
         return sportMatch && outcomeMatch;
@@ -87,6 +162,10 @@ async function showPredictionLog(chatId: number, messageId: number | null, state
         ...SPORTS.slice(0, 4).map(s => ({ text: sportFilter === s ? `[${s}]` : s, callback_data: buildPredCb(ACTIONS.LIST, 0, s, outcomeFilter) }))
     ];
     
+    const availableOutcomes = Array.from(new Set(allPredictions.flatMap(p => {
+        try { return Object.keys(JSON.parse(p.prediction).probabilities) } catch { return [] }
+    }))).sort();
+
     const outcomeButtons = [
         { text: outcomeFilter === 'all' ? '[Все исх.]' : 'Все исх.', callback_data: buildPredCb(ACTIONS.LIST, 0, sportFilter, 'all') },
         ...['П1', 'X', 'П2'].map(o => ({ text: outcomeFilter === o ? `[${o}]` : o, callback_data: buildPredCb(ACTIONS.LIST, 0, sportFilter, o) }))
@@ -94,12 +173,14 @@ async function showPredictionLog(chatId: number, messageId: number | null, state
 
     const navButtons = [];
     if (currentPage > 0) navButtons.push({ text: '⬅️', callback_data: buildPredCb(ACTIONS.LIST, currentPage - 1, sportFilter, outcomeFilter) });
+    if (totalPages > 1) navButtons.push({ text: `${currentPage + 1}/${totalPages}`, callback_data: 'noop' });
     if (currentPage < totalPages - 1) navButtons.push({ text: '➡️', callback_data: buildPredCb(ACTIONS.LIST, currentPage + 1, sportFilter, outcomeFilter) });
 
     const keyboard = makeKeyboard([
         sportButtons,
         outcomeButtons,
         navButtons,
+        [{ text: '📊 Глубокая аналитика', callback_data: buildPredCb(ACTIONS.ANALYTICS, 0, sportFilter, 'all') }],
         [{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]
     ]);
 
@@ -117,7 +198,12 @@ export async function handlePredictionCallback(update: TelegramUpdate, state: Us
     const [_, action, pageStr, sportFilter, outcomeFilter] = cb.data.split('|');
     const page = parseInt(pageStr) || 0;
 
-    if (action === ACTIONS.LIST) {
-        await showPredictionLog(cb.message.chat.id, cb.message.message_id, state, env, page, sportFilter, outcomeFilter);
+    switch (action) {
+        case ACTIONS.LIST:
+            await showPredictionLog(cb.message.chat.id, cb.message.message_id, state, env, page, sportFilter, outcomeFilter);
+            break;
+        case ACTIONS.ANALYTICS:
+            await showDeepAnalytics(cb.message.chat.id, cb.message.message_id, state, env, sportFilter);
+            break;
     }
 }

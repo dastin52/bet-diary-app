@@ -1,5 +1,3 @@
-
-
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -152,6 +150,7 @@ export interface UpcomingMatch {
     emoji: string;
   };
   score?: string; // e.g. "2 - 1"
+  scores?: { home: number; away: number; }; // e.g. { home: 2, away: 1 }
   winner?: 'home' | 'away' | 'draw';
 }
 
@@ -184,6 +183,10 @@ export interface AIPrediction {
     createdAt: string;
     sport: string;
     matchName: string;
-    prediction: string;
+    prediction: string; // JSON string
     status: AIPredictionStatus;
+    matchResult?: {
+        winner: 'home' | 'away' | 'draw';
+        scores: { home: number; away: number; };
+    }
 }

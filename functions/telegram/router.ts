@@ -33,6 +33,7 @@ export const CB = {
     MATCHES: 'matches',
     AI_CHAT: 'ai_chat',
     AI_PREDICTIONS: 'ai_preds',
+    AI_PREDICTIONS_ANALYTICS: 'ai_preds_analytics',
     AI_CHAT_PERFORMANCE: 'ai_perf',
     AI_CHAT_MATCH: 'ai_match',
     AI_CHAT_STRATEGY: 'ai_strat',

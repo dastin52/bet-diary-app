@@ -21,7 +21,7 @@ export interface UseBetsReturn {
   deleteGoal: (id: string) => void;
   addAIPrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
   addMultipleAIPredictions: (predictions: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>[]) => void;
-  updateAIPrediction: (id: string, status: AIPredictionStatus) => void;
+  updateAIPrediction: (id: string, updates: Partial<Pick<AIPrediction, 'status' | 'matchResult'>>) => void;
   resolveAIPredictions: (finishedMatches: UpcomingMatch[]) => void;
   analytics: {
     totalStaked: number;
@@ -320,9 +320,9 @@ export const useBets = (userKey: string): UseBetsReturn => {
         });
     }, [isDemoMode]);
 
-    const updateAIPrediction = useCallback((id: string, status: AIPredictionStatus) => {
+    const updateAIPrediction = useCallback((id: string, updates: Partial<Pick<AIPrediction, 'status' | 'matchResult'>>) => {
         if (isDemoMode) return;
-        setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, status } : p));
+        setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
     }, [isDemoMode]);
 
     const resolveAIPredictions = useCallback((finishedMatches: UpcomingMatch[]) => {
@@ -334,35 +334,30 @@ export const useBets = (userKey: string): UseBetsReturn => {
                 if (p.status !== AIPredictionStatus.Pending) return p;
     
                 const match = finishedMatches.find(m => m.teams === p.matchName);
-                if (!match || typeof match.winner === 'undefined') return p;
+                if (!match || typeof match.winner === 'undefined' || !match.scores) return p;
     
                 let recommendedOutcome: string | null = null;
                 try {
                     const predictionData = JSON.parse(p.prediction);
                     recommendedOutcome = predictionData?.recommended_outcome || null;
                 } catch (e) {
-                    // Fallback for old string format
-                    const matchOld = p.prediction.match(/(П1|X|П2)\s*-\s*(\d+(\.\d+)?)%/i);
-                    if (matchOld) {
-                         recommendedOutcome = matchOld[1].toUpperCase();
-                    }
+                    console.warn(`Could not parse prediction JSON for "${p.matchName}"`);
                 }
                 
                 if (!recommendedOutcome) return p;
     
-                const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = {
-                    'П1': 'home',
-                    'X': 'draw',
-                    'П2': 'away',
-                };
-    
+                const outcomeMap: Record<string, 'home' | 'draw' | 'away'> = { 'П1': 'home', 'X': 'draw', 'П2': 'away' };
                 const aiWinner = outcomeMap[recommendedOutcome];
                 if (!aiWinner) return p;
                 
                 hasChanged = true;
                 const newStatus = aiWinner === match.winner ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
     
-                return { ...p, status: newStatus };
+                return { 
+                    ...p, 
+                    status: newStatus,
+                    matchResult: { winner: match.winner, scores: match.scores }
+                };
             });
     
             return hasChanged ? updatedPredictions : prevPredictions;

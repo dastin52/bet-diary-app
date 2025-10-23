@@ -134,8 +134,12 @@ export interface AIPrediction {
     createdAt: string;
     sport: string;
     matchName: string;
-    prediction: string;
+    prediction: string; // JSON string
     status: AIPredictionStatus;
+    matchResult?: {
+        winner: 'home' | 'away' | 'draw';
+        scores: { home: number; away: number; };
+    }
 }
 
 export type Message = {
@@ -208,7 +212,6 @@ export interface UserState {
   goals: Goal[];
   bankHistory: BankTransaction[];
   dialog: DialogState | null;
-  // FIX: Add missing 'aiPredictions' property to match its usage in state management.
   aiPredictions: AIPrediction[];
 }
 

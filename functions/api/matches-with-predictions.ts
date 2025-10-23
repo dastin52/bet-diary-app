@@ -100,6 +100,7 @@ export const onRequestGet = async ({ request, env }: EventContext): Promise<Resp
             
             if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null && game.scores.away !== null) {
                 gameData.score = `${game.scores.home} - ${game.scores.away}`;
+                gameData.scores = { home: game.scores.home, away: game.scores.away };
                 if (game.scores.home > game.scores.away) {
                     gameData.winner = 'home';
                 } else if (game.scores.away > game.scores.home) {
