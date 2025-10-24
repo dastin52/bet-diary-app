@@ -60,7 +60,7 @@ const getAiPayloadForSport = (sport: string, matchName: string): { prompt: strin
             break;
     }
 
-    const prompt = `Проанализируй матч по виду спорта "${sport}": ${matchName}. Дай прогноз на вероятность прохода и ПРИМЕРНЫЙ коэффициент для следующих исходов: ${promptOutcomes}. Предоставь ответ ТОЛЬКО в формате JSON. JSON должен содержать два ключа: "probabilities" и "coefficients".`;
+    const prompt = `Проанализируй матч по виду спорта "${sport}": ${matchName}. Дай прогноз на вероятность прохода и ПРИМЕРНЫЙ коэффициент для следующих исходов: ${promptOutcomes}.`;
 
     const schema = {
         type: Type.OBJECT, properties: {
@@ -104,7 +104,7 @@ async function generatePredictionsForSport(sport: string, env: Env): Promise<Sha
                 const { prompt, schema } = getAiPayloadForSport(sport, matchName);
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
-                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    contents: prompt,
                     config: { responseMimeType: "application/json", responseSchema: schema }
                 });
                 const predictionData = JSON.parse(response.text);
