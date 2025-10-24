@@ -13,6 +13,8 @@
 
 
 
+
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -48,9 +50,8 @@ export const useAdminData = (): UseAdminDataReturn => {
     try {
       // 1. Get all registered users
       const allUsers = getUsers();
-      // FIX: Use Number() wrapper for explicit type coercion to prevent arithmetic operation errors on Date objects in strict mode.
-      // Fix: Use Number() wrapper for explicit type coercion as hinted in the original code's comment.
-      setUsers(allUsers.sort((a, b) => Number(new Date(b.registeredAt)) - Number(new Date(a.registeredAt))));
+      // FIX: Use .getTime() for explicit type coercion to prevent arithmetic operation errors on Date objects in strict mode.
+      setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
       // 2. Aggregate bets from all users
       let collectedBets: Bet[] = [];
@@ -100,8 +101,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Add explicit type to initial value of reduce to prevent `count` from being `unknown`.
-    // Fix: Add explicit type to the accumulator in reduce to ensure correct type inference.
+    // FIX: Add explicit type to the accumulator in reduce to ensure correct type inference.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -111,8 +111,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Add explicit type to initial value of reduce to prevent `count` from being `unknown`.
-    // Fix: Add explicit type to the accumulator in reduce to ensure correct type inference.
+    // FIX: Add explicit type to the accumulator in reduce to ensure correct type inference.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
