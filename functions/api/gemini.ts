@@ -104,7 +104,7 @@ async function generatePredictionsForSport(sport: string, env: Env): Promise<Sha
                 const { prompt, schema } = getAiPayloadForSport(sport, matchName);
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
-                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    contents: prompt,
                     config: { responseMimeType: "application/json", responseSchema: schema }
                 });
                 const predictionData = JSON.parse(response.text);
