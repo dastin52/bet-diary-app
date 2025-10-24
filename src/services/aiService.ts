@@ -1,5 +1,6 @@
 
 
+
 import { Bet, BetLeg, Message, GroundingSource, BetStatus, UpcomingMatch, SharedPrediction } from '../types';
 import { UseBetsReturn } from "../hooks/useBets";
 
@@ -122,7 +123,7 @@ export const fetchAIPredictionAnalysis = async (analyticsText: string): Promise<
 };
 
 
-export const fetchMatchAnalysis = async (match: UpcomingMatch | SharedPrediction): Promise<{ text: string; sources: GroundingSource[] | undefined }> => {
+export const fetchMatchAnalysis = async (match: SharedPrediction): Promise<{ text: string; sources: GroundingSource[] | undefined }> => {
     const currentDate = new Date().toLocaleDateString('ru-RU', dateOptions);
     const prompt = `Сделай детальный анализ предстоящего матча: ${match.teams} (${match.sport}, ${match.eventName}) который состоится ${match.date}. Включи последние новости, статистику команд, историю встреч и форму. В конце дай свой прогноз на исход.`;
     

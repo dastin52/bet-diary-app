@@ -22,9 +22,16 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       setIsLoading(true);
       setError(null);
-      // Simple cache busting, in a real app might use more sophisticated logic
-      const url = `/api/matches-with-predictions?sport=${sport}${force ? `&t=${new Date().getTime()}` : ''}`;
-      const response = await fetch(url);
+      
+      const response = await fetch('/api/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              endpoint: 'getMatchesWithPredictions',
+              payload: { sport }
+          }),
+      });
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Не удалось загрузить матчи.');
