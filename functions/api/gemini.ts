@@ -60,7 +60,7 @@ const getAiPayloadForSport = (sport: string, matchName: string): { prompt: strin
             break;
     }
 
-    const prompt = `Сгенерируй JSON с вероятностями и коэффициентами для спортивного матча: вид спорта - "${sport}", матч - "${matchName}".`;
+    const prompt = `Предоставь вероятности и коэффициенты для спортивного матча: ${matchName} (${sport}).`;
 
     const schema = {
         type: Type.OBJECT, properties: {
