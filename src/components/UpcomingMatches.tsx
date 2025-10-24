@@ -44,22 +44,40 @@ const sportTabs = [
     { key: 'nba', label: 'NBA' },
 ];
 
+const getStatusPriority = (statusShort: string): number => {
+    const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
+    const scheduled = ['NS', 'TBD'];
+    const finished = ['FT', 'AET', 'PEN', 'Finished', 'POST', 'CANC', 'ABD', 'AWD', 'WO'];
+    
+    if (live.includes(statusShort)) return 1;
+    if (scheduled.includes(statusShort)) return 2;
+    if (finished.includes(statusShort)) return 3;
+    return 4; // Others
+};
+
+
 const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
     const { allPredictions, isLoading, error } = usePredictionContext();
     const [isExpanded, setIsExpanded] = useState(true);
     const [activeSport, setActiveSport] = useState('all');
 
-    const upcomingMatches = useMemo(() => {
+    const filteredAndSortedMatches = useMemo(() => {
         return allPredictions
             .filter(p => {
-                const isUpcoming = p.status.short === 'NS';
                 if (activeSport === 'all') {
-                    return isUpcoming;
+                    return true;
                 }
-                return isUpcoming && p.sport === activeSport;
+                return p.sport === activeSport;
             })
-            .sort((a, b) => (b.isHotMatch ? 1 : -1) - (a.isHotMatch ? -1 : 1))
-            .slice(0, 5);
+            .sort((a, b) => {
+                const priorityA = getStatusPriority(a.status.short);
+                const priorityB = getStatusPriority(b.status.short);
+                if (priorityA !== priorityB) {
+                    return priorityA - priorityB;
+                }
+                // FIX: This line is now valid because the `timestamp` property was added to the SharedPrediction type.
+                return a.timestamp - b.timestamp;
+            });
     }, [allPredictions, activeSport]);
 
     const renderContent = () => {
@@ -69,12 +87,12 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
         if (error) {
             return <p className="text-center text-red-400">{error}</p>;
         }
-        if (upcomingMatches.length === 0) {
-            return <p className="text-center text-gray-500 py-4">Нет предстоящих матчей для выбранного фильтра.</p>;
+        if (filteredAndSortedMatches.length === 0) {
+            return <p className="text-center text-gray-500 py-4">Нет матчей для выбранного фильтра.</p>;
         }
         return (
-            <div className="space-y-2">
-                {upcomingMatches.map((match, index) => (
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                {filteredAndSortedMatches.map((match, index) => (
                     <button
                         key={index}
                         onClick={() => onMatchClick(match)}
@@ -83,12 +101,13 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                         <div>
                             <p className="text-xs text-gray-500 dark:text-gray-400">{SPORT_MAP[match.sport] || match.sport} &middot; {match.eventName}</p>
                             <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
-                                {match.isHotMatch && <FireIcon />}
+                                {match.status.emoji}
                                 {match.teams}
+                                {match.score && <span className="font-bold ml-2 text-indigo-400">{match.score}</span>}
                             </p>
                             <p className="text-sm text-indigo-500 dark:text-indigo-400">{match.date} &middot; {match.time}</p>
                         </div>
-                        <div className="text-sm text-gray-400 hover:text-white">
+                        <div className="text-sm text-gray-400 hover:text-white flex-shrink-0 ml-2">
                            Анализ &rarr;
                         </div>
                     </button>

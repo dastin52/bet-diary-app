@@ -2,6 +2,8 @@
 
 
 
+
+
 export enum BetStatus {
   Pending = 'pending',
   Won = 'won',
@@ -158,6 +160,8 @@ export interface SharedPrediction {
   date: string;
   time: string;
   isHotMatch: boolean;
+  // FIX: Add the missing timestamp property to align with the data from the API.
+  timestamp: number;
   status: {
     long: string;
     short: string;

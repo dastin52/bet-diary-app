@@ -225,7 +225,7 @@ const AIPredictionLog: React.FC = () => {
         });
     }, [combinedAndEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
     
-    const { generalStats, mainOutcomeStats, deepOutcomeStats } = useMemo(() => {
+    const { generalStats, mainOutcomeStats, deepOutcomeStats, probabilityStats } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending);
         const correct = settled.filter(p => p.status === AIPredictionStatus.Correct);
         
@@ -276,7 +276,6 @@ const AIPredictionLog: React.FC = () => {
 
         const deepOutcomeStats = Object.entries(statsByAllOutcomes)
             .map(([market, data]) => {
-                // Fix: Add a type assertion to inform TypeScript about the shape of `data`.
                 const typedData = data as { correct: number; total: number; allCoefficients: number[] };
                 return {
                     market,
@@ -289,10 +288,49 @@ const AIPredictionLog: React.FC = () => {
             .filter(item => item.count > 0)
             .sort((a, b) => b.count - a.count);
 
+        const probabilityBuckets: Record<string, { correct: number, total: number }> = {
+            '0-25%': { correct: 0, total: 0 },
+            '25-40%': { correct: 0, total: 0 },
+            '40-55%': { correct: 0, total: 0 },
+            '55-70%': { correct: 0, total: 0 },
+            '70-85%': { correct: 0, total: 0 },
+            '85-100%': { correct: 0, total: 0 },
+        };
+
+        settled.forEach(p => {
+            try {
+                const data = JSON.parse(p.prediction);
+                const prob = data.probabilities?.[data.recommended_outcome];
+                if (typeof prob !== 'number') return;
+
+                let bucketKey: string | null = null;
+                if (prob >= 0 && prob <= 25) bucketKey = '0-25%';
+                else if (prob > 25 && prob <= 40) bucketKey = '25-40%';
+                else if (prob > 40 && prob <= 55) bucketKey = '40-55%';
+                else if (prob > 55 && prob <= 70) bucketKey = '55-70%';
+                else if (prob > 70 && prob <= 85) bucketKey = '70-85%';
+                else if (prob > 85 && prob <= 100) bucketKey = '85-100%';
+                
+                if (bucketKey) {
+                    probabilityBuckets[bucketKey].total++;
+                    if (p.status === AIPredictionStatus.Correct) {
+                        probabilityBuckets[bucketKey].correct++;
+                    }
+                }
+            } catch {}
+        });
+
+        const probabilityStats = Object.entries(probabilityBuckets).map(([range, data]) => ({
+            range,
+            ...data,
+            accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+        }));
+
         return {
             generalStats: { total, correct: correct.length, accuracy, modalCorrectCoefficient },
             mainOutcomeStats,
             deepOutcomeStats,
+            probabilityStats,
         };
     }, [filteredPredictions]);
 
@@ -350,6 +388,28 @@ ${deepOutcomeStats.map(item =>
                 <KpiCard title="Общая точность" value={`${generalStats.accuracy.toFixed(1)}%`} colorClass={generalStats.accuracy >= 50 ? 'text-green-400' : 'text-red-400'}/>
                 <KpiCard title="Частый верный коэф." value={generalStats.modalCorrectCoefficient.toFixed(2)} colorClass="text-amber-400" />
             </div>
+
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Точность по вероятности AI</h3>
+                <p className="text-xs text-gray-500 mb-4">Анализ того, как часто рекомендованные исходы сбываются в зависимости от уверенности AI.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                    {probabilityStats.map(bucket => (
+                        <div key={bucket.range}>
+                            <div className="flex justify-between items-center text-sm mb-1">
+                                <span className="font-medium text-gray-300">Вероятность {bucket.range}</span>
+                                <span className="text-xs text-gray-400">{bucket.correct} из {bucket.total}</span>
+                            </div>
+                            <div className="w-full bg-gray-700 rounded-full h-4">
+                                <div 
+                                    className="bg-indigo-500 h-4 rounded-full text-xs text-white flex items-center justify-center transition-all duration-500" 
+                                    style={{ width: `${bucket.accuracy}%` }}>
+                                    {bucket.total > 0 && `${bucket.accuracy.toFixed(1)}%`}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </Card>
 
              <Card>
                 <h3 className="text-lg font-semibold mb-2">Точность по основным исходам</h3>
