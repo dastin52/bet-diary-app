@@ -195,21 +195,17 @@ export default {
                         SPORTS_TO_PROCESS.map(sport => processSport(sport, env))
                     );
 
-                    const combinedPredictions = allSportsResults
-                        .filter((result): result is PromiseFulfilledResult<SharedPrediction[]> => {
-                            if (result.status === 'rejected') {
-                                console.error(`[CRON] Failed to process a sport:`, result.reason);
-                                return false;
-                            }
-                            return true;
-                        })
-                        .flatMap(result => result.value);
+                    // Log the outcome of each sport processing task
+                    allSportsResults.forEach((result, index) => {
+                        const sport = SPORTS_TO_PROCESS[index];
+                        if (result.status === 'rejected') {
+                            console.error(`[CRON] A sport failed to process: ${sport}`, result.reason);
+                        } else {
+                             console.log(`[CRON] Sport processed successfully: ${sport}`);
+                        }
+                    });
 
-                    // Save the combined list to a single key for optimized fetching by the web app
-                    await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions));
-                    console.log(`[CRON] Successfully stored a combined total of ${combinedPredictions.length} predictions.`);
-
-                    console.log('[CRON] All sports processed successfully.');
+                    console.log('[CRON] All individual sports processing tasks are complete.');
                 } catch (error) {
                     console.error('[CRON] A critical error occurred during execution:', error);
                 }

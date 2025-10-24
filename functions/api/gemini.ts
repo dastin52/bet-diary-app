@@ -1,6 +1,6 @@
 // functions/api/gemini.ts
 import { GoogleGenAI } from "@google/genai";
-import { Env } from '../telegram/types';
+import { Env, SharedPrediction } from '../telegram/types';
 
 interface ApiProxyRequest {
     endpoint: string;
@@ -18,7 +18,7 @@ type PagesFunction<E = unknown> = (
 ) => Response | Promise<Response>;
 
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
     try {
         const body = await request.json() as ApiProxyRequest;
         const { endpoint, payload } = body;
@@ -34,12 +34,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         
         switch (endpoint) {
              case 'getAllPredictions': {
-                const cacheKey = 'central_predictions:all';
-                const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
-
-                // Return cached data if available, otherwise an empty array.
-                // This prevents timeouts by not generating data on-demand.
-                responseData = cachedData || [];
+                const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
+                
+                const promises = SPORTS_TO_PROCESS.map(sport => 
+                    env.BOT_STATE.get(`central_predictions:${sport}`, { type: 'json' })
+                );
+                const results = await Promise.all(promises);
+                
+                // Filter out null/non-array results and flatten into a single array
+                const combinedPredictions = results
+                    .filter((data): data is SharedPrediction[] => Array.isArray(data))
+                    .flat();
+                
+                responseData = combinedPredictions;
+                
+                // Asynchronously update the combined cache for subsequent fast retrievals.
+                // This won't block the response to the user.
+                waitUntil(env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions)));
+                
                 break;
             }
             case 'getMatchesWithPredictions': {
