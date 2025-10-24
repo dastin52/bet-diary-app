@@ -37,15 +37,15 @@ interface UpcomingMatchesProps {
 }
 
 const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
-    const { predictions, isLoading, error } = usePredictionContext();
+    const { allPredictions, isLoading, error } = usePredictionContext();
     const [isExpanded, setIsExpanded] = useState(true);
 
     const upcomingMatches = useMemo(() => {
-        return predictions
+        return allPredictions
             .filter(p => p.status.short === 'NS')
             .sort((a, b) => (b.isHotMatch ? 1 : -1) - (a.isHotMatch ? -1 : 1))
             .slice(0, 5);
-    }, [predictions]);
+    }, [allPredictions]);
 
     const renderContent = () => {
         if (isLoading) {

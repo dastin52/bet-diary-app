@@ -120,7 +120,7 @@ const calculateMode = (numbers: number[]): number => {
 type EnhancedAIPrediction = AIPrediction & { leagueName?: string };
 
 const AIPredictionLog: React.FC = () => {
-    const { predictions: centralPredictions, isLoading, fetchPredictions, activeSport } = usePredictionContext();
+    const { allPredictions: centralPredictions, isLoading, fetchAllPredictions } = usePredictionContext();
     const { aiPredictions: personalPredictions, updateAIPrediction } = useBetContext();
     const [sportFilter, setSportFilter] = useState('all');
     const [leagueFilter, setLeagueFilter] = useState('all');
@@ -297,7 +297,7 @@ const AIPredictionLog: React.FC = () => {
     }, [filteredPredictions]);
 
     const handleRefresh = () => {
-        fetchPredictions(activeSport, true);
+        fetchAllPredictions(true);
     };
 
     const handleGetAIAnalysis = useCallback(async () => {
