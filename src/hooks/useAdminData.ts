@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -88,6 +89,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         });
         
         // FIX: Use .getTime() for explicit type coercion to prevent arithmetic operation errors on Date objects in strict mode.
+        // Fix for line 153: Use .getTime() for date arithmetic.
         setUsers(finalUsersWithTg.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
         // 4. Aggregate bets from all users that have data in localStorage
@@ -144,6 +146,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // FIX: Add explicit type to the reduce accumulator to ensure correct type inference.
+    // Fix for line 255: Add explicit type to the accumulator in reduce to ensure correct type inference.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -154,6 +157,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .slice(0, 10);
 
     // FIX: Add explicit type to the reduce accumulator to ensure correct type inference.
+    // Fix for line 256: Add explicit type to the accumulator in reduce to ensure correct type inference.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
