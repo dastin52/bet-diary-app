@@ -60,7 +60,7 @@ const getAiPayloadForSport = (sport: string, matchName: string): { prompt: strin
             break;
     }
 
-    const prompt = `Проанализируй матч по виду спорта "${sport}": ${matchName}. Дай прогноз на вероятность прохода и ПРИМЕРНЫЙ коэффициент для следующих исходов: ${promptOutcomes}.`;
+    const prompt = `Спортивный матч для анализа: вид спорта "${sport}", матч "${matchName}". Сгенерируй вероятности и коэффициенты для следующих исходов: ${promptOutcomes}.`;
 
     const schema = {
         type: Type.OBJECT, properties: {

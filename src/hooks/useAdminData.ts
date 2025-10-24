@@ -1,5 +1,6 @@
 
 
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -89,8 +90,6 @@ export const useAdminData = (): UseAdminDataReturn => {
             return user;
         });
         
-        // FIX: The error on line 156 is due to performing arithmetic on Date objects.
-        // Using .getTime() converts dates to numbers, allowing correct sorting.
         // FIX: Use .getTime() to perform arithmetic on Date objects for sorting.
         setUsers(finalUsersWithTg.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
@@ -147,8 +146,6 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: The error on line 259 is due to incorrect type inference in the reduce function.
-    // Explicitly typing the accumulator with <Record<string, number>> ensures 'count' is a number.
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
@@ -159,8 +156,6 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: The error on line 260 is due to incorrect type inference in the reduce function.
-    // Explicitly typing the accumulator with <Record<string, number>> ensures 'count' is a number.
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
