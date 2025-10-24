@@ -190,9 +190,21 @@ export default {
             (async () => {
                 try {
                     console.log(`[CRON] Triggered at ${new Date().toISOString()}`);
-                    const allSportsPredictions = await Promise.all(SPORTS_TO_PROCESS.map(sport => processSport(sport, env)));
-                    const combinedPredictions = allSportsPredictions.flat();
                     
+                    const allSportsResults = await Promise.allSettled(
+                        SPORTS_TO_PROCESS.map(sport => processSport(sport, env))
+                    );
+
+                    const combinedPredictions = allSportsResults
+                        .filter((result): result is PromiseFulfilledResult<SharedPrediction[]> => {
+                            if (result.status === 'rejected') {
+                                console.error(`[CRON] Failed to process a sport:`, result.reason);
+                                return false;
+                            }
+                            return true;
+                        })
+                        .flatMap(result => result.value);
+
                     // Save the combined list to a single key for optimized fetching by the web app
                     await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions));
                     console.log(`[CRON] Successfully stored a combined total of ${combinedPredictions.length} predictions.`);

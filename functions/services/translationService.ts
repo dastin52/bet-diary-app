@@ -49,6 +49,9 @@ Team names: ${namesToTranslate.join(', ')}`;
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: prompt,
+            config: {
+                systemInstruction: "You are a translation expert specializing in sports team names. Your task is to translate a list of team names from any language into Russian. Always provide a Russian translation, even if it's a direct transliteration. The output must be a valid JSON object mapping original names to their Russian translations."
+            }
         });
 
         if (!response || typeof response.text !== 'string' || response.text.trim() === '') {
