@@ -33,41 +33,19 @@ const FINISHED_STATUSES = ['FT', 'AET', 'PEN'];
 
 /**
  * Returns an emoji based on the match status short code.
- * @param status - The status object from the API.
- * @returns An emoji string: 🔴 for live, 🏁 for finished, ⏳ for scheduled.
  */
 const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
     if (!status) return '⏳'; // Default to scheduled/unknown
 
     switch (status.short) {
-        // Live statuses from various sports
-        case '1H': // Halftime
-        case 'HT':
-        case '2H':
-        case 'ET': // Extra Time
-        case 'BT': // Break Time
-        case 'P':  // Penalties
-        case 'LIVE':
-        case 'INTR': // Interrupted
+        // Live statuses
+        case '1H': case 'HT': case '2H': case 'ET': case 'BT': case 'P':  case 'LIVE': case 'INTR':
             return '🔴'; // Live
-
         // Finished statuses
-        case 'FT': // Finished
-        case 'AET': // Finished after Extra Time
-        case 'PEN': // Finished after Penalties
-            return '🏁'; // Finished
-
-        // Concluded but not standard finished (e.g., postponed, canceled)
-        case 'POST': // Postponed
-        case 'CANC': // Canceled
-        case 'ABD':  // Abandoned
-        case 'AWD':  // Awarded
-        case 'WO':   // Walkover
-            return '🏁';
-
+        case 'FT': case 'AET': case 'PEN': case 'Finished': case 'POST': case 'CANC': case 'ABD':  case 'AWD': case 'WO':
+            return '🏁'; // Finished or Concluded
         // Scheduled statuses
-        case 'NS': // Not Started
-        case 'TBD': // To Be Defined
+        case 'NS': case 'TBD':
         default:
             return '⏳'; // Scheduled
     }
@@ -162,49 +140,32 @@ export async function showSportSelectionMenu(chatId: number, messageId: number, 
 
 async function showMatchesList(chatId: number, messageId: number | null, state: UserState, env: Env, sport: string, page: number) {
     let loadingMessageId = messageId;
-    let currentState = state;
+    
     try {
         const sportLabel = AVAILABLE_SPORTS.find(s => s.key === sport)?.label || sport;
         if (loadingMessageId) {
-            await editMessageText(chatId, loadingMessageId, `Загружаю актуальные матчи и прогнозы AI... (${sportLabel})`, env);
+            await editMessageText(chatId, loadingMessageId, `Загружаю актуальные матчи... (${sportLabel})`, env);
         } else {
-            const sentMessage = await sendMessage(chatId, `Загружаю актуальные матчи и прогнозы AI... (${sportLabel})`, env);
+            const sentMessage = await sendMessage(chatId, `Загружаю актуальные матчи... (${sportLabel})`, env);
             loadingMessageId = sentMessage.result.message_id;
         }
 
-        const currentHour = new Date().toISOString().slice(0, 13);
-        const centralPredictionsKey = `central_predictions:${sport}:${currentHour}`;
-        const centralPredictionsData = await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[] | null;
-        const centralPredictionsMap = new Map(centralPredictionsData?.map(p => [p.teams, p.prediction]));
+        const centralPredictionsKey = `central_predictions:${sport}`;
+        const games = await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[] | null;
 
-        const games = await getTodaysGamesBySport(sport, env);
-
-        if (games.length === 0) {
-            const text = `На сегодня матчей по виду спорта "${sportLabel}" не найдено.`;
+        if (!games || games.length === 0) {
+            const text = `На сегодня матчей по виду спорта "${sportLabel}" не найдено или они еще генерируются. Попробуйте через минуту.`;
             const keyboard = makeKeyboard([[{ text: '◀️ Назад к выбору спорта', callback_data: CB.MATCHES }], [{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]]);
             if (loadingMessageId) await editMessageText(chatId, loadingMessageId, text, env, keyboard);
             return;
         }
-
-        const teamNames = games.flatMap(game => [game?.teams?.home?.name, game?.teams?.away?.name]).filter((name): name is string => !!name);
-        const uniqueTeamNames = Array.from(new Set(teamNames));
-        const translationMap = await translateTeamNames(uniqueTeamNames, env);
         
-        const finishedMatches = games.filter(g => FINISHED_STATUSES.includes(g.status.short));
-        if (finishedMatches.length > 0) {
-            const updatedState = await resolvePredictionsInState(currentState, finishedMatches, translationMap);
-            if (JSON.stringify(updatedState) !== JSON.stringify(currentState)) {
-                await updateAndSyncState(chatId, updatedState, env);
-                currentState = updatedState;
-            }
-        }
-
         const gamesByLeague = games.reduce((acc, game) => {
             const leagueName = game.league.name || 'Неизвестная лига';
             if (!acc[leagueName]) acc[leagueName] = [];
             acc[leagueName].push(game);
             return acc;
-        }, {} as Record<string, SportGame[]>);
+        }, {} as Record<string, SharedPrediction[]>);
 
         const leagues = Object.keys(gamesByLeague);
         const totalPages = Math.ceil(leagues.length / LEAGUES_PER_PAGE);
@@ -219,17 +180,15 @@ async function showMatchesList(chatId: number, messageId: number | null, state: 
         leaguesOnPage.forEach(leagueName => {
             text += `*🏆 ${leagueName}*\n`;
             gamesByLeague[leagueName].forEach(game => {
-                const gameTime = new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+                const gameTime = game.time;
+                // FIX: Use the helper function to get the emoji, as the property doesn't exist on the base type.
                 const statusEmoji = getMatchStatusEmoji(game.status);
-                const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
-                const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
-                const matchName = `${homeTeam} vs ${awayTeam}`;
-                const scoreText = (game.scores && game.scores.home !== null && game.scores.away !== null) 
-                    ? ` *[${game.scores.home}:${game.scores.away}]*` 
-                    : '';
+                const matchName = game.teams;
+                // FIX: Use optional chaining on `game.score` as it's an optional property.
+                const scoreText = game.score ? ` *[${game.score}]*` : '';
                 
                 let predictionText = '';
-                const prediction = centralPredictionsMap.get(matchName);
+                const prediction = game.prediction;
                 if (prediction) {
                     try {
                         const data = JSON.parse(prediction.prediction);
@@ -259,7 +218,7 @@ async function showMatchesList(chatId: number, messageId: number | null, state: 
 
     } catch (error) {
         console.error("Error in showMatchesList:", error);
-        const userFriendlyError = error instanceof Error ? `🚫 ${error.message}` : `🚫 Произошла ошибка при загрузке матчей. Попробуйте позже.`;
+        const userFriendlyError = `🚫 Произошла ошибка при загрузке матчей. Попробуйте позже.`;
         const keyboard = makeKeyboard([[{ text: '◀️ В меню', callback_data: CB.BACK_TO_MAIN }]]);
         if (loadingMessageId) await editMessageText(chatId, loadingMessageId, userFriendlyError, env, keyboard);
     }

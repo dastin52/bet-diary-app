@@ -177,26 +177,31 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
         return sharedPredictionData;
     }));
     
-    // Store individual sport predictions for potential fallback/specific queries
+    // Store individual sport predictions
     await env.BOT_STATE.put(`central_predictions:${sport}`, JSON.stringify(processedGames));
     console.log(`[CRON] Successfully processed and stored ${processedGames.length} predictions for ${sport}.`);
     return processedGames;
 }
 
-export const onRequest: (context: EventContext) => Promise<Response> = async ({ env, waitUntil }) => {
-    try {
-        console.log(`[CRON] Triggered at ${new Date().toISOString()}`);
-        const allSportsPredictions = await Promise.all(SPORTS_TO_PROCESS.map(sport => processSport(sport, env)));
-        const combinedPredictions = allSportsPredictions.flat();
-        
-        // Save the combined list to a single key for optimized fetching
-        waitUntil(env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions)));
-        console.log(`[CRON] Successfully stored a combined total of ${combinedPredictions.length} predictions.`);
+// This is the entry point for the scheduled Cloudflare Worker
+export default {
+    async scheduled(controller: any, env: Env, ctx: any): Promise<void> {
+        ctx.waitUntil(
+            (async () => {
+                try {
+                    console.log(`[CRON] Triggered at ${new Date().toISOString()}`);
+                    const allSportsPredictions = await Promise.all(SPORTS_TO_PROCESS.map(sport => processSport(sport, env)));
+                    const combinedPredictions = allSportsPredictions.flat();
+                    
+                    // Save the combined list to a single key for optimized fetching by the web app
+                    await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions));
+                    console.log(`[CRON] Successfully stored a combined total of ${combinedPredictions.length} predictions.`);
 
-        console.log('[CRON] All sports processed successfully.');
-        return new Response('Cron job executed successfully.', { status: 200 });
-    } catch (error) {
-        console.error('[CRON] A critical error occurred during execution:', error);
-        return new Response('Cron job failed.', { status: 500 });
+                    console.log('[CRON] All sports processed successfully.');
+                } catch (error) {
+                    console.error('[CRON] A critical error occurred during execution:', error);
+                }
+            })()
+        );
     }
 };

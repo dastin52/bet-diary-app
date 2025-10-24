@@ -144,7 +144,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
+    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
     }, {});
@@ -154,7 +154,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .slice(0, 10);
 
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
+    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
     }, {});
