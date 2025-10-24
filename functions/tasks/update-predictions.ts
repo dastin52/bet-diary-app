@@ -95,7 +95,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                 const { prompt, schema } = getAiPayloadForSport(sport, matchName);
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
-                    contents: prompt,
+                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
                     config: { responseMimeType: "application/json", responseSchema: schema }
                 });
                 const predictionData = JSON.parse(response.text);
