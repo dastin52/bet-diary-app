@@ -114,9 +114,12 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
             try {
                 const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
                 const response = await ai.models.generateContent({
-                    model: "gemini-2.5-flash",
-                    contents: prompt,
-                    config: { responseMimeType: "application/json", responseSchema: schema }
+                    model: "gem-pro",
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: schema,
+                    },
                 });
                 const rawPredictionData = JSON.parse(response.text);
 
@@ -162,7 +165,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
         const sharedPredictionData: any = {
             ...game, sport: sport, eventName: game.league.name, teams: matchName,
             date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
-            time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
+            time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow', timeZoneName: 'short' }),
             status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
             prediction: prediction
         };
