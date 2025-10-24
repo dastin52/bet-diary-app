@@ -150,6 +150,15 @@ async function generatePredictionsForSport(sport: string, env: Env): Promise<Sha
     return processedGames;
 }
 
+// Helper function to generate all predictions on-demand if the main cache is missed.
+async function generateAllPredictions(env: Env): Promise<SharedPrediction[]> {
+    console.warn(`[API On-Demand] Generating predictions for ALL sports due to cache miss.`);
+    const allSportsPredictions = await Promise.all(
+        ['football', 'hockey', 'basketball', 'nba'].map(sport => generatePredictionsForSport(sport, env))
+    );
+    return allSportsPredictions.flat();
+}
+
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
     try {
@@ -166,6 +175,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         let responseData;
         
         switch (endpoint) {
+             case 'getAllPredictions': {
+                const cacheKey = 'central_predictions:all';
+                const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
+
+                if (cachedData) {
+                    return new Response(JSON.stringify(cachedData), {
+                        status: 200, headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' },
+                    });
+                }
+
+                // Fallback: if the main cache is missing, generate everything on the fly.
+                const predictions = await generateAllPredictions(env);
+                // Store the result in the cache for next time.
+                waitUntil(env.BOT_STATE.put(cacheKey, JSON.stringify(predictions)));
+
+                responseData = predictions;
+                break;
+            }
             case 'getMatchesWithPredictions': {
                 const { sport } = payload;
                  if (!sport) {

@@ -11,7 +11,7 @@ const MenuIcon = () => (
 );
 
 
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
+type View = 'dashboard' | 'log' | 'admin' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 interface HeaderProps {
   onAddBetClick: () => void;
   onCashOutClick: () => void;
@@ -36,10 +36,6 @@ const viewTitles: Record<View, { title: string; subtitle: string }> = {
     admin: {
         title: 'Панель Администратора',
         subtitle: 'Обзор пользователей и глобальной статистики.'
-    },
-    competition: {
-        title: 'Соревнования',
-        subtitle: 'Соревнуйтесь с другими игроками!'
     },
     settings: {
         title: 'Настройки',

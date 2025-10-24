@@ -63,13 +63,12 @@ const getAiPayloadForSport = (sport: string, matchName: string): { prompt: strin
     return { prompt, schema };
 };
 
-async function processSport(sport: string, env: Env) {
+async function processSport(sport: string, env: Env): Promise<SharedPrediction[]> {
     console.log(`[CRON] Starting processing for sport: ${sport}`);
     let games = await getTodaysGamesBySport(sport, env);
     if (games.length === 0) {
-        console.log(`[CRON] No games found for ${sport}. Storing empty array.`);
-        await env.BOT_STATE.put(`central_predictions:${sport}`, JSON.stringify([]));
-        return;
+        console.log(`[CRON] No games found for ${sport}.`);
+        return [];
     }
 
     games.sort((a, b) => {
@@ -138,15 +137,23 @@ async function processSport(sport: string, env: Env) {
         }
         return sharedPredictionData;
     }));
-
+    
+    // Store individual sport predictions for potential fallback/specific queries
     await env.BOT_STATE.put(`central_predictions:${sport}`, JSON.stringify(processedGames));
     console.log(`[CRON] Successfully processed and stored ${processedGames.length} predictions for ${sport}.`);
+    return processedGames;
 }
 
-export const onRequest: (context: EventContext) => Promise<Response> = async ({ env }) => {
+export const onRequest: (context: EventContext) => Promise<Response> = async ({ env, waitUntil }) => {
     try {
         console.log(`[CRON] Triggered at ${new Date().toISOString()}`);
-        await Promise.all(SPORTS_TO_PROCESS.map(sport => processSport(sport, env)));
+        const allSportsPredictions = await Promise.all(SPORTS_TO_PROCESS.map(sport => processSport(sport, env)));
+        const combinedPredictions = allSportsPredictions.flat();
+        
+        // Save the combined list to a single key for optimized fetching
+        waitUntil(env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions)));
+        console.log(`[CRON] Successfully stored a combined total of ${combinedPredictions.length} predictions.`);
+
         console.log('[CRON] All sports processed successfully.');
         return new Response('Cron job executed successfully.', { status: 200 });
     } catch (error) {

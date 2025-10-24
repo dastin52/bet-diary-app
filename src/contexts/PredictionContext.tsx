@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { SharedPrediction } from '../types';
 
-const SPORTS_TO_FETCH = ['football', 'hockey', 'basketball', 'nba'];
-
 interface PredictionContextType {
   allPredictions: SharedPrediction[];
   isLoading: boolean;
@@ -21,28 +19,22 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
     setIsLoading(true);
     setError(null);
     try {
-      const sportPromises = SPORTS_TO_FETCH.map(sport => 
-        fetch('/api/gemini', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                endpoint: 'getMatchesWithPredictions',
-                payload: { sport }
-            }),
-        }).then(async (res) => {
-          if (!res.ok) {
-            console.error(`Не удалось загрузить прогнозы для спорта: ${sport}`);
-            // Не прерываем выполнение, просто возвращаем пустой массив для этого вида спорта
-            return [];
-          }
-          return res.json();
-        })
-      );
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: 'getAllPredictions',
+          payload: {} // No payload needed for this optimized endpoint
+        }),
+      });
       
-      const results = await Promise.all(sportPromises);
-      const combinedPredictions: SharedPrediction[] = results.flat();
-      
-      setAllPredictions(combinedPredictions);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Не удалось загрузить прогнозы с сервера.');
+      }
+
+      const predictions: SharedPrediction[] = await response.json();
+      setAllPredictions(predictions);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Произошла неизвестная ошибка при загрузке прогнозов.');

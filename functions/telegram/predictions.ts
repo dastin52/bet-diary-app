@@ -136,17 +136,8 @@ async function showDeepAnalytics(chatId: number, messageId: number, allPredictio
 
 async function showPredictionLog(chatId: number, messageId: number | null, state: UserState, env: Env, page: number, sportFilter: string, outcomeFilter: string) {
     
-    // Fetch all predictions from central KV store for all sports
-    const currentHour = new Date().toISOString().slice(0, 13);
-    const sportsKeys = ['football', 'hockey', 'basketball', 'nba'];
-    const centralPredictionsPromises = sportsKeys.map(sport => 
-        env.BOT_STATE.get(`central_predictions:${sport}:${currentHour}`, { type: 'json' })
-    );
-    const centralPredictionsResults = await Promise.all(centralPredictionsPromises);
-    const allCentralPredictions = centralPredictionsResults
-        .flat()
-        .filter((p): p is SharedPrediction => p !== null && p.prediction !== null)
-        .map(p => p.prediction as AIPrediction);
+    // Optimized: Fetch all predictions from the single central KV store key
+    const allCentralPredictions = (await env.BOT_STATE.get('central_predictions:all', { type: 'json' }) as AIPrediction[]) || [];
     
     // Combine with personal predictions and de-duplicate
     const allPredictions = [...state.aiPredictions, ...allCentralPredictions];
@@ -232,16 +223,7 @@ export async function handlePredictionCallback(update: TelegramUpdate, state: Us
     const page = parseInt(pageStr) || 0;
     
     // As we are fetching all predictions, we need to pass the combined list to analytics
-     const currentHour = new Date().toISOString().slice(0, 13);
-    const sportsKeys = ['football', 'hockey', 'basketball', 'nba'];
-    const centralPredictionsPromises = sportsKeys.map(sport => 
-        env.BOT_STATE.get(`central_predictions:${sport}:${currentHour}`, { type: 'json' })
-    );
-    const centralPredictionsResults = await Promise.all(centralPredictionsPromises);
-    const allCentralPredictions = centralPredictionsResults
-        .flat()
-        .filter((p): p is SharedPrediction => p !== null && p.prediction !== null)
-        .map(p => p.prediction as AIPrediction);
+    const allCentralPredictions = (await env.BOT_STATE.get('central_predictions:all', { type: 'json' }) as AIPrediction[]) || [];
     
     const allPredictions = [...state.aiPredictions, ...allCentralPredictions];
     const uniquePredictions = Array.from(new Map(allPredictions.map(p => [p.matchName, p])).values());

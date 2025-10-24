@@ -14,16 +14,15 @@ export async function showMainMenu(chatId: number, messageId: number | null, env
             { text: '📝 Добавить ставку', callback_data: CB.ADD_BET },
         ],
         [
-            { text: '🏆 Соревнования', callback_data: CB.COMPETITIONS },
-            { text: '🎯 Мои цели', callback_data: CB.GOALS }
+            { text: '🎯 Мои цели', callback_data: CB.GOALS },
+            { text: '📈 Управление ставками', callback_data: CB.MANAGE_BETS }
         ],
         [
-            { text: '📈 Управление ставками', callback_data: CB.MANAGE_BETS },
-            { text: '🏒 Актуальные матчи', callback_data: CB.MATCHES }
-        ],
-        [
-            { text: '🤖 AI-Аналитик', callback_data: CB.AI_CHAT },
+            { text: '🏒 Актуальные матчи', callback_data: CB.MATCHES },
             { text: '🔮 База прогнозов AI', callback_data: CB.AI_PREDICTIONS }
+        ],
+        [
+            { text: '🤖 AI-Аналитик', callback_data: CB.AI_CHAT }
         ]
     ]);
     if (messageId) {

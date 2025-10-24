@@ -1,10 +1,9 @@
 // functions/telegram/router.ts
 import { TelegramUpdate, UserState, Env } from './types';
 import { handleGoalCallback, GOAL_PREFIX } from './goals';
-import { handleCompetitionCallback, COMP_PREFIX } from './competition';
 import { manageBets, MANAGE_PREFIX } from './manageBets';
 import { showMainMenu } from './ui';
-import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleCompetitions, handleGoals, handleAiChat, showStartMenu, handleMatches, handlePredictions } from './commands';
+import { handleStats, showLinkAccountInfo, handleAddBet, handleManageBets, handleGoals, handleAiChat, showStartMenu, handleMatches, handlePredictions } from './commands';
 import { answerCallbackQuery } from './telegramApi';
 // FIX: Import 'startAddBetDialog' and other dialog starters to resolve reference errors.
 import { continueDialog, startAddBetDialog, startScreenshotDialog, startBotRegisterDialog, startBotLoginDialog } from './dialogs';
@@ -27,7 +26,6 @@ export const CB = {
     // main menu
     SHOW_STATS: buildStatsCb('show', 'week'),
     ADD_BET: 'add_bet',
-    COMPETITIONS: 'competitions',
     GOALS: 'goals',
     MANAGE_BETS: 'manage_bets',
     MATCHES: 'matches',
@@ -70,10 +68,6 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
         await handleGoalCallback(cb, state, env);
         return;
     }
-    if (cb.data.startsWith(COMP_PREFIX)) {
-        await handleCompetitionCallback(update, state, env);
-        return;
-    }
     if (cb.data.startsWith(MATCH_SPORT_PREFIX)) {
         await handleSportSelectionCallback(update, state, env);
         return;
@@ -100,9 +94,6 @@ export async function routeCallbackQuery(update: TelegramUpdate, state: UserStat
             break;
         case CB.MANAGE_BETS:
             await handleManageBets(update, state, env);
-            break;
-        case CB.COMPETITIONS:
-            await handleCompetitions(update, state, env);
             break;
         case CB.GOALS:
             await handleGoals(update, state, env);

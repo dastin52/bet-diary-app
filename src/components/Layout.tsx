@@ -3,7 +3,6 @@ import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
 import BetLog from './BetLog';
 import AdminPanel from './AdminPanel';
-import CompetitionPanel from './CompetitionPanel';
 import Header from './Header';
 import AddBetModal from './AddBetModal';
 import AIChatModal from './AIChatModal';
@@ -21,7 +20,7 @@ import ImportBetsModal from './ImportBetsModal';
 import BetDetailModal from './BetDetailModal';
 import AIPredictionLog from './AIPredictionLog';
 
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
+type View = 'dashboard' | 'log' | 'admin' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 
 interface LayoutProps {
   isDemoMode: boolean;
@@ -102,8 +101,6 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
         return <BankHistoryPanel />;
       case 'admin':
         return isAdmin ? <AdminPanel /> : <Dashboard onOpenAIChat={handleOpenGeneralChatModal} />;
-      case 'competition':
-        return <CompetitionPanel />;
       case 'settings':
         return <SettingsPanel />;
       case 'goals':

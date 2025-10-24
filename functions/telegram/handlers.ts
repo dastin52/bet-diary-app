@@ -4,7 +4,7 @@ import { getUserState, setUserState } from './state';
 import { reportError, sendMessage, deleteMessage } from './telegramApi';
 import { routeCallbackQuery } from './router';
 import { continueDialog } from './dialogs';
-import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth, handleManageBets, handleCompetitions, handleGoals, handleAiChat, handlePredictions } from './commands';
+import { handleStart, handleHelp, handleReset, handleAddBet, handleStats, handleAuth, handleManageBets, handleGoals, handleAiChat, handlePredictions } from './commands';
 
 const GLOBAL_COMMANDS = ['/start', '/help', '/reset'];
 
@@ -52,7 +52,6 @@ export async function handleMessage(update: TelegramUpdate, env: Env) {
                 case '/addbet': await handleAddBet(update, state, env); return;
                 case '/stats': await handleStats(update, state, env); return;
                 case '/manage': await handleManageBets(update, state, env); return;
-                case '/competitions': await handleCompetitions(update, state, env); return;
                 case '/goals': await handleGoals(update, state, env); return;
                 case '/ai': await handleAiChat(update, state, env); return;
                 case '/aipredictions': await handlePredictions(update, state, env); return;

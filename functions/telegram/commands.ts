@@ -4,7 +4,6 @@ import { sendMessage, sendDocument, editMessageText } from './telegramApi';
 import { showMainMenu, showStatsMenu, makeKeyboard } from './ui';
 import { setUserState, updateAndSyncState } from './state';
 import { startManageBets } from './manageBets';
-import { showCompetitionsMenu } from './competition';
 import { startManageGoals } from './goals';
 import { calculateAnalytics, formatShortReportText, formatDetailedReportText, generateAnalyticsHtml, AnalyticsPeriod } from './analytics';
 import { startAddBetDialog, startAiChatDialog } from './dialogs';
@@ -62,7 +61,6 @@ export async function handleHelp(message: TelegramMessage, env: Env) {
 /addbet - Добавить новую ставку
 /stats - Посмотреть статистику
 /manage - Управление ставками
-/competitions - Таблицы лидеров
 /goals - Управление целями
 /ai - Чат с AI-аналитиком
 /aipredictions - База прогнозов AI
@@ -151,14 +149,6 @@ export async function handleManageBets(update: TelegramUpdate, state: UserState,
         return;
     }
     await startManageBets(update, state, env);
-}
-
-export async function handleCompetitions(update: TelegramUpdate, state: UserState, env: Env) {
-    if (!state.user) {
-        await sendMessage(update.message!.chat.id, "Пожалуйста, войдите или зарегистрируйтесь.", env);
-        return;
-    }
-    await showCompetitionsMenu(update, state, env);
 }
 
 export async function handleGoals(update: TelegramUpdate, state: UserState, env: Env) {

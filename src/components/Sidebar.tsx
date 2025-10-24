@@ -22,13 +22,6 @@ const BankIcon = () => (
     </svg>
 );
 
-const CompetitionIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-    </svg>
-);
-
 const AdminIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -76,7 +69,7 @@ const AiIcon = () => (
     </svg>
 );
 const AIPredictionIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 4.992c2.613.621 4.225 3.332 3.604 5.945-1.24 5.256-4.237 8.23-7.604 8.23-3.367 0-6.364-2.974-7.604-8.23C3.775 8.324 5.387 5.613 8 4.992M12 12h.01M12 12v3.313" />
     </svg>
 );
@@ -88,7 +81,7 @@ const SimulatorIcon = () => (
 
 
 
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
+type View = 'dashboard' | 'log' | 'admin' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 
 interface SidebarProps {
   currentView: View;
@@ -129,7 +122,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMo
   const [copied, setCopied] = useState(false);
 
   const handleSetView = (view: View) => {
-    const allowedDemoViews: View[] = ['dashboard', 'competition'];
+    const allowedDemoViews: View[] = ['dashboard'];
     if (isDemoMode && !allowedDemoViews.includes(view)) {
         onAuthRequired();
         return;
@@ -159,7 +152,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMo
                 <NavItem icon={<DashboardIcon />} label="Дашборд" view="dashboard" currentView={currentView} onClick={setCurrentView} />
                 <NavItem icon={<LogIcon />} label="Журнал ставок" view="log" currentView={currentView} onClick={handleSetView} />
                 <NavItem icon={<BankIcon />} label="История банка" view="bank_history" currentView={currentView} onClick={handleSetView} />
-                <NavItem icon={<CompetitionIcon />} label="Соревнования" view="competition" currentView={currentView} onClick={handleSetView} />
             </nav>
             
             <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
