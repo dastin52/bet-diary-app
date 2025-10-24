@@ -32,35 +32,55 @@ const getMatchStatusEmoji = (status: { short: string } | undefined): string => {
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
 
-const getAiPayloadForSport = (sport: string, matchName: string): { prompt: string; schema: any } => {
-    let outcomes: any;
-    let promptOutcomes: string;
+const getAiPayloadForSport = (sport: string, matchName: string): { prompt: string; schema: any; keyMapping: Record<string, string> } => {
+    const outcomes: any = {};
+    const keyMapping: Record<string, string> = {};
+
+    const addOutcome = (key: string, description: string) => {
+        outcomes[key] = { type: Type.NUMBER, description };
+        keyMapping[key] = description;
+    };
 
     switch (sport) {
         case 'basketball': case 'nba':
-            promptOutcomes = 'П1 (с ОТ), П2 (с ОТ), Тотал Больше 215.5, Тотал Меньше 215.5, Тотал Больше 225.5, Тотал Меньше 225.5';
-            outcomes = { "П1 (с ОТ)": { type: Type.NUMBER }, "П2 (с ОТ)": { type: Type.NUMBER }, "Тотал Больше 215.5": { type: Type.NUMBER }, "Тотал Меньше 215.5": { type: Type.NUMBER }, "Тотал Больше 225.5": { type: Type.NUMBER }, "Тотал Меньше 225.5": { type: Type.NUMBER }};
+            addOutcome('p1_ot', 'П1 (с ОТ)');
+            addOutcome('p2_ot', 'П2 (с ОТ)');
+            addOutcome('total_over_215_5', 'Тотал Больше 215.5');
+            addOutcome('total_under_215_5', 'Тотал Меньше 215.5');
+            addOutcome('total_over_225_5', 'Тотал Больше 225.5');
+            addOutcome('total_under_225_5', 'Тотал Меньше 225.5');
             break;
         case 'hockey':
-            promptOutcomes = 'П1 (осн. время), X (осн. время), П2 (осн. время), П1 (вкл. ОТ и буллиты), П2 (вкл. ОТ и буллиты), Тотал Больше 5.5, Тотал Меньше 5.5';
-            outcomes = { "П1 (осн. время)": { type: Type.NUMBER }, "X (осн. время)": { type: Type.NUMBER }, "П2 (осн. время)": { type: Type.NUMBER }, "П1 (вкл. ОТ и буллиты)": { type: Type.NUMBER }, "П2 (вкл. ОТ и буллиты)": { type: Type.NUMBER }, "Тотал Больше 5.5": { type: Type.NUMBER }, "Тотал Меньше 5.5": { type: Type.NUMBER } };
+            addOutcome('p1_main', 'П1 (осн. время)');
+            addOutcome('x_main', 'X (осн. время)');
+            addOutcome('p2_main', 'П2 (осн. время)');
+            addOutcome('p1_final', 'П1 (вкл. ОТ и буллиты)');
+            addOutcome('p2_final', 'П2 (вкл. ОТ и буллиты)');
+            addOutcome('total_over_5_5', 'Тотал Больше 5.5');
+            addOutcome('total_under_5_5', 'Тотал Меньше 5.5');
             break;
-        default:
-            promptOutcomes = 'П1, X, П2, 1X, X2, "Тотал Больше 2.5", "Тотал Меньше 2.5", "Обе забьют - Да"';
-            outcomes = { "П1": { type: Type.NUMBER }, "X": { type: Type.NUMBER }, "П2": { type: Type.NUMBER }, "1X": { type: Type.NUMBER }, "X2": { type: Type.NUMBER }, "Тотал Больше 2.5": { type: Type.NUMBER }, "Тотал Меньше 2.5": { type: Type.NUMBER }, "Обе забьют - Да": { type: Type.NUMBER } };
+        default: // football
+            addOutcome('p1', 'П1');
+            addOutcome('x', 'X');
+            addOutcome('p2', 'П2');
+            addOutcome('one_x', '1X');
+            addOutcome('x_two', 'X2');
+            addOutcome('total_over_2_5', 'Тотал Больше 2.5');
+            addOutcome('total_under_2_5', 'Тотал Меньше 2.5');
+            addOutcome('both_to_score_yes', 'Обе забьют - Да');
             break;
     }
 
-    const prompt = `Предоставь вероятности и коэффициенты для спортивного матча: ${matchName} (${sport}).`;
+    const prompt = `Calculate probabilities and coefficients for the sports match: ${matchName} (${sport}). Use the provided schema keys. The description for each key specifies the exact market name.`;
 
     const schema = {
         type: Type.OBJECT, properties: {
-            probabilities: { type: Type.OBJECT, properties: outcomes, description: "Вероятности исходов в процентах." },
-            coefficients: { type: Type.OBJECT, properties: outcomes, description: "Примерные коэффициенты для исходов." },
+            probabilities: { type: Type.OBJECT, properties: outcomes, description: "Probabilities for each outcome in percentages." },
+            coefficients: { type: Type.OBJECT, properties: outcomes, description: "Example coefficients for each outcome." },
         }, required: ["probabilities", "coefficients"]
     };
 
-    return { prompt, schema };
+    return { prompt, schema, keyMapping };
 };
 
 async function processSport(sport: string, env: Env): Promise<SharedPrediction[]> {
@@ -92,29 +112,48 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
         if (game.status.short === 'NS') {
             try {
-                const { prompt, schema } = getAiPayloadForSport(sport, matchName);
+                const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
                     contents: prompt,
                     config: { responseMimeType: "application/json", responseSchema: schema }
                 });
-                const predictionData = JSON.parse(response.text);
+                const rawPredictionData = JSON.parse(response.text);
 
-                if (predictionData && predictionData.probabilities) {
-                    let bestOutcome = ''; let maxValue = -Infinity;
-                    for (const outcome in predictionData.probabilities) {
-                        const prob = parseFloat(predictionData.probabilities[outcome]);
-                        const coeff = parseFloat(predictionData.coefficients[outcome]);
+                if (rawPredictionData && rawPredictionData.probabilities) {
+                    const remapObjectKeys = (obj: Record<string, any>, mapping: Record<string, string>) => {
+                        if (!obj) return {};
+                        const newObj: Record<string, any> = {};
+                        for (const key in obj) {
+                            const newKey = mapping[key] || key;
+                            newObj[newKey] = obj[key];
+                        }
+                        return newObj;
+                    };
+
+                    const remappedProbabilities = remapObjectKeys(rawPredictionData.probabilities, keyMapping);
+                    const remappedCoefficients = remapObjectKeys(rawPredictionData.coefficients, keyMapping);
+                    
+                    let bestOutcomeKey = ''; let maxValue = -Infinity;
+                    for (const key in rawPredictionData.probabilities) {
+                        const prob = parseFloat(rawPredictionData.probabilities[key]);
+                        const coeff = parseFloat(rawPredictionData.coefficients[key]);
                         if (!isNaN(prob) && !isNaN(coeff) && coeff > 1) {
                             const value = (prob / 100) * coeff - 1;
-                            if (value > maxValue) { maxValue = value; bestOutcome = outcome; }
+                            if (value > maxValue) { maxValue = value; bestOutcomeKey = key; }
                         }
                     }
-                    predictionData.recommended_outcome = bestOutcome || 'Нет выгодной ставки';
+                    const recommendedOutcome = keyMapping[bestOutcomeKey] || 'Нет выгодной ставки';
+
+                    const finalPredictionData = {
+                        probabilities: remappedProbabilities,
+                        coefficients: remappedCoefficients,
+                        recommended_outcome: recommendedOutcome,
+                    };
 
                     prediction = {
                         id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
-                        matchName: matchName, prediction: JSON.stringify(predictionData), status: AIPredictionStatus.Pending,
+                        matchName: matchName, prediction: JSON.stringify(finalPredictionData), status: AIPredictionStatus.Pending,
                     };
                 }
             } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }
