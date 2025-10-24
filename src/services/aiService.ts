@@ -1,3 +1,4 @@
+
 import { Bet, BetLeg, Message, GroundingSource, BetStatus, UpcomingMatch } from '../types';
 import { UseBetsReturn } from "../hooks/useBets";
 
@@ -103,6 +104,22 @@ export const fetchAIStrategy = async (analytics: UseBetsReturn['analytics']): Pr
         throw new Error("Не удалось получить стратегический анализ от AI.");
     }
 };
+
+// FIX: Add the missing fetchUpcomingMatches function.
+export const fetchUpcomingMatches = async (): Promise<UpcomingMatch[]> => {
+    // Этот вызов требует сложной логики с JSON-схемой и инструментами,
+    // которая должна быть реализована на бэкенде.
+   try {
+       const response = await callApiProxy('findMatches', {});
+       if (response.events && Array.isArray(response.events)) {
+           return response.events;
+       }
+       return [];
+   } catch (error) {
+       console.error("Ошибка при поиске событий:", error);
+       throw new Error("Не удалось получить список матчей от AI.");
+   }
+}
 
 export const fetchAIPredictionAnalysis = async (analyticsText: string): Promise<string> => {
     const prompt = `Вот статистика производительности нашей модели. Проанализируй её и дай рекомендации.\n\n${analyticsText}`;
