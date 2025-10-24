@@ -4,6 +4,8 @@ import { editMessageText, sendMessage } from './telegramApi';
 import { makeKeyboard } from './ui';
 import { CB } from './router';
 import { SPORTS } from '../constants';
+import { resolveMarketOutcome } from '../utils/predictionUtils';
+
 
 export const PRED_PREFIX = 'aipred|';
 const PREDS_PER_PAGE = 5;
@@ -22,30 +24,6 @@ const getStatusEmoji = (status: AIPredictionStatus): string => {
         default: return '⏳';
     }
 };
-
-const resolveMarketOutcome = (market: string, scores: { home: number; away: number }): 'correct' | 'incorrect' | 'unknown' => {
-    const { home, away } = scores;
-    const total = home + away;
-
-    switch (market) {
-        case 'П1': return home > away ? 'correct' : 'incorrect';
-        case 'X': return home === away ? 'correct' : 'incorrect';
-        case 'П2': return away > home ? 'correct' : 'incorrect';
-        case '1X': return home >= away ? 'correct' : 'incorrect';
-        case 'X2': return away >= home ? 'correct' : 'incorrect';
-        case 'Обе забьют - Да': return home > 0 && away > 0 ? 'correct' : 'incorrect';
-        default:
-            const totalMatch = market.match(/Тотал (Больше|Меньше) (\d+\.\d+)/);
-            if (totalMatch) {
-                const type = totalMatch[1];
-                const value = parseFloat(totalMatch[2]);
-                if (type === 'Больше') return total > value ? 'correct' : 'incorrect';
-                if (type === 'Меньше') return total < value ? 'correct' : 'incorrect';
-            }
-            return 'unknown';
-    }
-};
-
 
 export async function startPredictionLog(update: TelegramUpdate, state: UserState, env: Env) {
     const message = update.message || update.callback_query?.message;
@@ -87,15 +65,13 @@ async function showDeepAnalytics(chatId: number, messageId: number, allPredictio
         (sportFilter === 'all' || p.sport === sportFilter)
     );
 
-    // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference.
-    // FIX: Provide a typed initial value for the reduce accumulator to ensure correct type inference.
     const deepAnalyticsData = predictionsToAnalyze.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
         try {
             const data = JSON.parse(p.prediction);
             if (data.probabilities && p.matchResult) {
                 for (const market in data.probabilities) {
                     if (!acc[market]) acc[market] = { correct: 0, total: 0 };
-                    const result = resolveMarketOutcome(market, p.matchResult.scores);
+                    const result = resolveMarketOutcome(market, p.matchResult.scores, p.matchResult.winner);
                     if (result !== 'unknown') {
                         acc[market].total++;
                         if (result === 'correct') acc[market].correct++;
