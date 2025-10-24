@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -34,8 +35,8 @@ export const useAdminData = (): UseAdminDataReturn => {
     try {
       // 1. Get all registered users
       const allUsers = getUsers();
-      // FIX: Use .getTime() for explicit type coercion to prevent arithmetic operation errors on Date objects in strict mode.
-      // Fix for line 94: Use .getTime() for date arithmetic.
+      // FIX: The error on line 97 is due to performing arithmetic on Date objects.
+      // Using .getTime() converts dates to numbers, allowing correct sorting.
       setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
       // 2. Aggregate bets from all users
@@ -86,8 +87,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Add explicit type to the accumulator in reduce to ensure correct type inference.
-    // Fix for line 196: Add explicit type to the accumulator in reduce to ensure correct type inference.
+    // FIX: The error on line 200 is due to incorrect type inference in the reduce function.
+    // Explicitly typing the accumulator with <Record<string, number>> ensures 'count' is a number.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -97,8 +98,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Add explicit type to the accumulator in reduce to ensure correct type inference.
-    // Fix for line 197: Add explicit type to the accumulator in reduce to ensure correct type inference.
+    // FIX: The error on line 201 is due to incorrect type inference in the reduce function.
+    // Explicitly typing the accumulator with <Record<string, number>> ensures 'count' is a number.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
