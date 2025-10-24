@@ -1,6 +1,3 @@
-
-
-
 import { Bet, BetLeg, Message, GroundingSource, BetStatus, UpcomingMatch, SharedPrediction } from '../types';
 import { UseBetsReturn } from "../hooks/useBets";
 

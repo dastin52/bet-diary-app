@@ -69,7 +69,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
         }
 
         // --- Fetch keys from all known user prefixes ---
-        const prefixes = ['tgchat:', 'betdata:', 'data:user:'];
+        const prefixes = ['tgstate:', 'betdata:'];
         const allKeysPromises = prefixes.map(prefix => listAllKeys(env.BOT_STATE, prefix));
         const allKeysNested = await Promise.all(allKeysPromises);
         const allKeys = allKeysNested.flat();
@@ -90,22 +90,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
             if (user) {
                 // If a full user object is found, use it
                 return user;
-            } else if (key.name.startsWith('data:user:')) {
-                // If not, but it's a legacy key, create a partial user from the key's email
-                const email = key.name.replace('data:user:', '');
-                if (email) {
-                    const partialUser: User = {
-                        email: email,
-                        nickname: email.split('@')[0], // Use part of email as a placeholder nickname
-                        registeredAt: new Date(0).toISOString(), // Placeholder, no date available
-                        password_hash: '',
-                        referralCode: '',
-                        buttercups: 0,
-                        status: 'active',
-                    };
-                    return partialUser;
-                }
-            }
+            } 
             return null;
         });
 
@@ -116,7 +101,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
         for (const user of usersRaw) {
             const existingUser = userMap.get(user.email);
             if (!existingUser) {
-                userMap.set(user.email, { ...user, source: 'telegram' });
+                userMap.set(user.email, { ...user });
             } else {
                 // Merge, prioritizing records that are more complete (e.g., have a real nickname)
                 const isExistingMoreComplete = existingUser.nickname !== existingUser.email.split('@')[0] && existingUser.registeredAt !== new Date(0).toISOString();
@@ -124,10 +109,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
                 
                 if (!isExistingMoreComplete && isCurrentUserMoreComplete) {
                      // Current user is better, so it becomes the base
-                    userMap.set(user.email, { ...existingUser, ...user, source: 'telegram' });
+                    userMap.set(user.email, { ...existingUser, ...user });
                 } else {
                     // Existing user is better or they are equal, so it's the base
-                    userMap.set(user.email, { ...user, ...existingUser, source: 'telegram' });
+                    userMap.set(user.email, { ...user, ...existingUser });
                 }
             }
         }

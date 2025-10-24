@@ -1,8 +1,23 @@
-
-
-
-
-
+// FIX: Add SharedPrediction type to be used by the prediction context and components.
+export interface SharedPrediction {
+  sport: string;
+  eventName: string;
+  teams: string;
+  date: string;
+  time: string;
+  isHotMatch: boolean;
+  // FIX: Add the missing timestamp property to align with the data from the API.
+  timestamp: number;
+  status: {
+    long: string;
+    short: string;
+    emoji: string;
+  };
+  score?: string;
+  scores?: { home: number; away: number; };
+  winner?: 'home' | 'away' | 'draw';
+  prediction: AIPrediction | null;
+}
 
 export enum BetStatus {
   Pending = 'pending',
@@ -150,27 +165,6 @@ export interface UpcomingMatch {
   date: string;
   time: string;
   isHotMatch: boolean;
-}
-
-// FIX: Add SharedPrediction type to be used by the prediction context and components.
-export interface SharedPrediction {
-  sport: string;
-  eventName: string;
-  teams: string;
-  date: string;
-  time: string;
-  isHotMatch: boolean;
-  // FIX: Add the missing timestamp property to align with the data from the API.
-  timestamp: number;
-  status: {
-    long: string;
-    short: string;
-    emoji: string;
-  };
-  score?: string;
-  scores?: { home: number; away: number; };
-  winner?: 'home' | 'away' | 'draw';
-  prediction: AIPrediction | null;
 }
 
 export interface TeamStats {
