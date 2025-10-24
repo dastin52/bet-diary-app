@@ -36,16 +36,31 @@ interface UpcomingMatchesProps {
     onMatchClick: (match: SharedPrediction) => void;
 }
 
+const sportTabs = [
+    { key: 'all', label: 'Все' },
+    { key: 'football', label: 'Футбол' },
+    { key: 'hockey', label: 'Хоккей' },
+    { key: 'basketball', label: 'Баскетбол' },
+    { key: 'nba', label: 'NBA' },
+];
+
 const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
     const { allPredictions, isLoading, error } = usePredictionContext();
     const [isExpanded, setIsExpanded] = useState(true);
+    const [activeSport, setActiveSport] = useState('all');
 
     const upcomingMatches = useMemo(() => {
         return allPredictions
-            .filter(p => p.status.short === 'NS')
+            .filter(p => {
+                const isUpcoming = p.status.short === 'NS';
+                if (activeSport === 'all') {
+                    return isUpcoming;
+                }
+                return isUpcoming && p.sport === activeSport;
+            })
             .sort((a, b) => (b.isHotMatch ? 1 : -1) - (a.isHotMatch ? -1 : 1))
             .slice(0, 5);
-    }, [allPredictions]);
+    }, [allPredictions, activeSport]);
 
     const renderContent = () => {
         if (isLoading) {
@@ -55,7 +70,7 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
             return <p className="text-center text-red-400">{error}</p>;
         }
         if (upcomingMatches.length === 0) {
-            return <p className="text-center text-gray-500">Нет предстоящих матчей для отображения.</p>;
+            return <p className="text-center text-gray-500 py-4">Нет предстоящих матчей для выбранного фильтра.</p>;
         }
         return (
             <div className="space-y-2">
@@ -89,6 +104,21 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                 <ChevronIcon isOpen={isExpanded} />
             </div>
             <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[500px] opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
+                 <div className="flex space-x-1 sm:space-x-2 border-b border-gray-200 dark:border-gray-700 mb-4 pb-2 overflow-x-auto">
+                    {sportTabs.map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveSport(tab.key)}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                                activeSport === tab.key
+                                    ? 'bg-indigo-600 text-white shadow-md'
+                                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
                 {renderContent()}
             </div>
         </Card>
