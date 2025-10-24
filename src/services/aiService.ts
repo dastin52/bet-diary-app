@@ -1,5 +1,6 @@
 
-import { Bet, BetLeg, Message, GroundingSource, BetStatus, UpcomingMatch } from '../types';
+
+import { Bet, BetLeg, Message, GroundingSource, BetStatus, UpcomingMatch, SharedPrediction } from '../types';
 import { UseBetsReturn } from "../hooks/useBets";
 
 const dateOptions: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
@@ -105,22 +106,6 @@ export const fetchAIStrategy = async (analytics: UseBetsReturn['analytics']): Pr
     }
 };
 
-// FIX: Add the missing fetchUpcomingMatches function.
-export const fetchUpcomingMatches = async (): Promise<UpcomingMatch[]> => {
-    // Этот вызов требует сложной логики с JSON-схемой и инструментами,
-    // которая должна быть реализована на бэкенде.
-   try {
-       const response = await callApiProxy('findMatches', {});
-       if (response.events && Array.isArray(response.events)) {
-           return response.events;
-       }
-       return [];
-   } catch (error) {
-       console.error("Ошибка при поиске событий:", error);
-       throw new Error("Не удалось получить список матчей от AI.");
-   }
-}
-
 export const fetchAIPredictionAnalysis = async (analyticsText: string): Promise<string> => {
     const prompt = `Вот статистика производительности нашей модели. Проанализируй её и дай рекомендации.\n\n${analyticsText}`;
     try {
@@ -137,7 +122,7 @@ export const fetchAIPredictionAnalysis = async (analyticsText: string): Promise<
 };
 
 
-export const fetchMatchAnalysis = async (match: UpcomingMatch): Promise<{ text: string; sources: GroundingSource[] | undefined }> => {
+export const fetchMatchAnalysis = async (match: UpcomingMatch | SharedPrediction): Promise<{ text: string; sources: GroundingSource[] | undefined }> => {
     const currentDate = new Date().toLocaleDateString('ru-RU', dateOptions);
     const prompt = `Сделай детальный анализ предстоящего матча: ${match.teams} (${match.sport}, ${match.eventName}) который состоится ${match.date}. Включи последние новости, статистику команд, историю встреч и форму. В конце дай свой прогноз на исход.`;
     

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import Card from './ui/Card';
-import { UpcomingMatch } from '../types';
-import { fetchUpcomingMatches } from '../services/aiService';
+import { SharedPrediction } from '../types';
+import { usePredictionContext } from '../contexts/PredictionContext';
 
 const FireIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-400" viewBox="0 0 20 20" fill="currentColor">
@@ -33,31 +33,19 @@ const LoadingSkeleton: React.FC = () => (
 
 
 interface UpcomingMatchesProps {
-    onMatchClick: (match: UpcomingMatch) => void;
+    onMatchClick: (match: SharedPrediction) => void;
 }
 
 const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
-    const [matches, setMatches] = useState<UpcomingMatch[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { predictions, isLoading, error } = usePredictionContext();
     const [isExpanded, setIsExpanded] = useState(true);
 
-    useEffect(() => {
-        const loadMatches = async () => {
-            try {
-                setIsLoading(true);
-                setError(null);
-                const fetchedMatches = await fetchUpcomingMatches();
-                 const sortedMatches = fetchedMatches.sort((a, b) => (b.isHotMatch ? 1 : -1) - (a.isHotMatch ? -1 : 1));
-                setMatches(sortedMatches);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Произошла неизвестная ошибка.');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        loadMatches();
-    }, []);
+    const upcomingMatches = useMemo(() => {
+        return predictions
+            .filter(p => p.status.short === 'NS')
+            .sort((a, b) => (b.isHotMatch ? 1 : -1) - (a.isHotMatch ? -1 : 1))
+            .slice(0, 5);
+    }, [predictions]);
 
     const renderContent = () => {
         if (isLoading) {
@@ -66,19 +54,19 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
         if (error) {
             return <p className="text-center text-red-400">{error}</p>;
         }
-        if (matches.length === 0) {
-            return <p className="text-center text-gray-500">Не удалось найти предстоящих матчей.</p>;
+        if (upcomingMatches.length === 0) {
+            return <p className="text-center text-gray-500">Нет предстоящих матчей для отображения.</p>;
         }
         return (
             <div className="space-y-2">
-                {matches.map((match, index) => (
-                    <button 
+                {upcomingMatches.map((match, index) => (
+                    <button
                         key={index}
                         onClick={() => onMatchClick(match)}
                         className="w-full text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors duration-200 flex justify-between items-center"
                     >
                         <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{match.sport} &middot; {match.eventName}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{SPORT_MAP[match.sport] || match.sport} &middot; {match.eventName}</p>
                             <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                                 {match.isHotMatch && <FireIcon />}
                                 {match.teams}
@@ -105,6 +93,13 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
             </div>
         </Card>
     );
+};
+
+const SPORT_MAP: Record<string, string> = {
+    football: 'Футбол',
+    basketball: 'Баскетбол',
+    hockey: 'Хоккей',
+    nba: 'NBA',
 };
 
 export default UpcomingMatches;

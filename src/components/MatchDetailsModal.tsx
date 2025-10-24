@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './ui/Modal';
-import { UpcomingMatch, GroundingSource } from '../types';
+import { GroundingSource, SharedPrediction, UpcomingMatch } from '../types';
 import { fetchMatchAnalysis } from '../services/aiService';
 
 const LoadingSpinner = () => (
@@ -9,7 +9,7 @@ const LoadingSpinner = () => (
     </div>
 );
 
-const MatchDetailsModal: React.FC<{ match: UpcomingMatch; onClose: () => void; }> = ({ match, onClose }) => {
+const MatchDetailsModal: React.FC<{ match: SharedPrediction; onClose: () => void; }> = ({ match, onClose }) => {
     const [analysis, setAnalysis] = useState<{ text: string; sources?: GroundingSource[] } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
