@@ -6,11 +6,16 @@ import { translateTeamNames } from '../services/translationService';
 import { resolveMarketOutcome } from '../utils/predictionUtils';
 
 // This defines the environment variables and bindings expected by this function
-interface EventContext {
+interface EventContext<E> {
     request: Request;
-    env: Env;
+    env: E;
     waitUntil: (promise: Promise<any>) => void;
 }
+
+type PagesFunction<E = unknown> = (
+    context: EventContext<E>
+) => Response | Promise<Response>;
+
 
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 
@@ -253,15 +258,16 @@ async function runUpdateTask(env: Env) {
     }
 }
 
-// This is the entry point for the scheduled Cloudflare Worker
-export default {
-    async scheduled(controller: any, env: Env, ctx: any): Promise<void> {
-        ctx.waitUntil(runUpdateTask(env));
-    }
+// CORRECT EXPORT for Cloudflare Pages scheduled functions
+export const onCron: PagesFunction<Env> = async ({ env, waitUntil }) => {
+    waitUntil(runUpdateTask(env));
+    // Scheduled functions in Pages don't return a Response, but we return a simple one to satisfy the type.
+    // The platform ignores this response.
+    return new Response('Cron task initiated.', { status: 202 });
 };
 
 // This handles the manual trigger from the admin panel
-export const onRequestPost: (context: EventContext) => Promise<Response> = async ({ env, waitUntil }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ env, waitUntil }) => {
     // Run the update in the background, don't wait for it to finish
     waitUntil(runUpdateTask(env));
     // Immediately respond to the client
