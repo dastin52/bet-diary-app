@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -96,6 +90,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         
         // FIX: Use .getTime() to perform arithmetic on Date objects for sorting.
         // Fix: Use .getTime() to perform arithmetic on Date objects.
+        // FIX: Corrected date subtraction by calling .getTime() on both Date objects.
         setUsers(finalUsersWithTg.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
         // 4. Aggregate bets from all users that have data in localStorage
@@ -153,6 +148,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     // Fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
+    // FIX: Explicitly typed the accumulator for the reduce function to resolve incorrect type inference.
     const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -164,6 +160,7 @@ export const useAdminData = (): UseAdminDataReturn => {
 
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     // Fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
+    // FIX: Explicitly typed the accumulator for the reduce function to resolve incorrect type inference.
     const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;

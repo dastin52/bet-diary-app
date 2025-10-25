@@ -139,4 +139,5 @@ export const DEMO_STATE = {
   bankroll: DEMO_BANKROLL,
   bankHistory: DEMO_BANK_HISTORY,
   goals: [], // Demo starts with no goals
+  aiPredictions: [], // Demo starts with no predictions
 };
