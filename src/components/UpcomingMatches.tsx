@@ -47,12 +47,20 @@ const sportTabs = [
 const getStatusPriority = (statusShort: string): number => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
     const scheduled = ['NS', 'TBD'];
-    const finished = ['FT', 'AET', 'PEN', 'Finished', 'POST', 'CANC', 'ABD', 'AWD', 'WO'];
     
     if (live.includes(statusShort)) return 1;
     if (scheduled.includes(statusShort)) return 2;
-    if (finished.includes(statusShort)) return 3;
-    return 4; // Others
+    return 3; // Finished and others
+};
+
+const SPORT_MAP: Record<string, string> = {
+    football: 'Футбол',
+    basketball: 'Баскетбол',
+    hockey: 'Хоккей',
+    nba: 'NBA',
+    'Футбол': 'Футбол',
+    'Баскетбол': 'Баскетбол',
+    'Хоккей': 'Хоккей',
 };
 
 
@@ -64,11 +72,8 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
     const filteredAndSortedMatches = useMemo(() => {
         return allPredictions
             .filter(p => {
-                if (activeSport === 'all') {
-                    return true;
-                }
-                // Check against both the key and the mapped value
-                return p.sport === activeSport || SPORT_MAP[p.sport] === SPORT_MAP[activeSport];
+                if (activeSport === 'all') return true;
+                return p.sport.toLowerCase() === activeSport.toLowerCase() || (activeSport === 'nba' && p.eventName === 'NBA');
             })
             .sort((a, b) => {
                 const priorityA = getStatusPriority(a.status.short);
@@ -142,16 +147,6 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
             </div>
         </Card>
     );
-};
-
-const SPORT_MAP: Record<string, string> = {
-    football: 'Футбол',
-    basketball: 'Баскетбол',
-    hockey: 'Хоккей',
-    nba: 'NBA',
-    'Футбол': 'Футбол',
-    'Баскетбол': 'Баскетбол',
-    'Хоккей': 'Хоккей',
 };
 
 export default UpcomingMatches;

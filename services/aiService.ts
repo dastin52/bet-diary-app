@@ -151,6 +151,24 @@ export const fetchMatchAnalysis = async (match: UpcomingMatch): Promise<{ text: 
     }
 }
 
+// FIX: Add the missing fetchAIPredictionAnalysis function.
+export const fetchAIPredictionAnalysis = async (analytics: string): Promise<string> => {
+    const systemInstruction = `Вы — эксперт-аналитик по спортивным ставкам, специализирующийся на оценке производительности моделей прогнозирования. Проанализируйте предоставленную статистику точности AI-прогнозов. Сделайте краткие, но содержательные выводы. Определите сильные и слабые стороны модели (например, в каких видах спорта или на каких рынках она наиболее/наименее точна). Дайте рекомендации, каким прогнозам стоит доверять больше. Отвечайте на русском языке.`;
+    const prompt = `Проанализируй эту статистику по прогнозам и сделай выводы:\n\n${analytics}`;
+    
+    try {
+        const response = await callApiProxy('generateContent', {
+            model: "gemini-2.5-flash",
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: { systemInstruction },
+        });
+        return response.text;
+    } catch (error) {
+        console.error("Ошибка при запросе анализа прогнозов от AI:", error);
+        throw new Error("Не удалось получить анализ прогнозов от AI.");
+    }
+};
+
 
 export const getAIChatResponse = async (
     bet: Bet | null,

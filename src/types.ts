@@ -158,15 +158,6 @@ export interface UserSettings {
   theme: 'light' | 'dark' | 'system';
 }
 
-export interface UpcomingMatch {
-  sport: string;
-  eventName: string;
-  teams: string;
-  date: string;
-  time: string;
-  isHotMatch: boolean;
-}
-
 export interface TeamStats {
   name: string;
   sport: string;
@@ -198,6 +189,7 @@ export interface AIPrediction {
     matchName: string;
     prediction: string;
     status: AIPredictionStatus;
+    // FIX: Add optional matchResult property to store final scores and winner. This resolves a type error in the useBets hook.
     matchResult?: {
         winner: 'home' | 'away' | 'draw';
         scores: { home: number; away: number; };

@@ -179,4 +179,9 @@ export interface AIPrediction {
     matchName: string;
     prediction: string;
     status: AIPredictionStatus;
+    // FIX: Add optional matchResult property to store final scores and winner.
+    matchResult?: {
+        winner: 'home' | 'away' | 'draw';
+        scores: { home: number; away: number; };
+    }
 }

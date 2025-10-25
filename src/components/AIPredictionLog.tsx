@@ -1,14 +1,14 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
 import { AIPrediction, AIPredictionStatus } from '../types';
 import Select from './ui/Select';
 import { usePredictionContext } from '../contexts/PredictionContext';
-import { useBetContext } from '../contexts/BetContext';
 import Button from './ui/Button';
 import { SPORTS } from '../constants';
 import Modal from './ui/Modal';
 import { fetchAIPredictionAnalysis } from '../services/aiService';
+import { resolveMarketOutcome } from '../utils/predictionUtils';
 
 
 const SPORT_MAP: Record<string, string> = {
@@ -62,44 +62,6 @@ const PredictionDetails: React.FC<{ prediction: string }> = ({ prediction }) => 
     }
 }
 
-const resolveMarketOutcome = (market: string, scores: { home: number; away: number }, winner?: 'home' | 'away' | 'draw'): 'correct' | 'incorrect' | 'unknown' => {
-    const { home, away } = scores;
-    const total = home + away;
-
-    switch (true) {
-        case market === 'П1':
-        case market === 'П1 (осн. время)':
-            return (home > away) ? 'correct' : 'incorrect';
-        case market === 'X':
-        case market === 'X (осн. время)':
-            return home === away ? 'correct' : 'incorrect';
-        case market === 'П2':
-        case market === 'П2 (осн. время)':
-            return (away > home) ? 'correct' : 'incorrect';
-        case market.startsWith('П1'): // Catches "П1 (с ОТ)" etc.
-            return winner === 'home' ? 'correct' : 'incorrect';
-        case market.startsWith('П2'): // Catches "П2 (с ОТ)" etc.
-            return winner === 'away' ? 'correct' : 'incorrect';
-        case market === '1X': return home >= away ? 'correct' : 'incorrect';
-        case market === 'X2': return away >= home ? 'correct' : 'incorrect';
-        case market === '12': return home !== away ? 'correct' : 'incorrect';
-        case market === 'Обе забьют - Да': return home > 0 && away > 0 ? 'correct' : 'incorrect';
-        case market === 'Обе забьют - Нет': return home === 0 || away === 0 ? 'correct' : 'incorrect';
-        
-        case market.includes('Тотал Больше'): {
-            const value = parseFloat(market.split(' ')[2].replace(',', '.'));
-            return !isNaN(value) && total > value ? 'correct' : 'incorrect';
-        }
-        case market.includes('Тотал Меньше'): {
-            const value = parseFloat(market.split(' ')[2].replace(',', '.'));
-            return !isNaN(value) && total < value ? 'correct' : 'incorrect';
-        }
-        
-        default:
-            return 'unknown';
-    }
-};
-
 const calculateMode = (numbers: number[]): number => {
     if (numbers.length === 0) return 0;
     const frequency: Record<string, number> = {};
@@ -121,7 +83,6 @@ type EnhancedAIPrediction = AIPrediction & { leagueName?: string };
 
 const AIPredictionLog: React.FC = () => {
     const { allPredictions: centralPredictions, isLoading, fetchAllPredictions } = usePredictionContext();
-    const { aiPredictions: personalPredictions, updateAIPrediction } = useBetContext();
     const [sportFilter, setSportFilter] = useState('all');
     const [leagueFilter, setLeagueFilter] = useState('all');
     const [outcomeFilter, setOutcomeFilter] = useState('all');
@@ -129,72 +90,22 @@ const AIPredictionLog: React.FC = () => {
     const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
     const [analysisText, setAnalysisText] = useState('');
     const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
-
-    // Effect for auto-resolving pending predictions
-    useEffect(() => {
-        const pendingPersonal = personalPredictions.filter(p => p.status === AIPredictionStatus.Pending);
-        if (pendingPersonal.length === 0 || centralPredictions.length === 0) return;
-
-        const finishedCentral = centralPredictions.filter(p => p.winner && p.scores);
-        if (finishedCentral.length === 0) return;
-
-        pendingPersonal.forEach(personalPred => {
-            const matchingFinishedMatch = finishedCentral.find(centralPred => centralPred.teams === personalPred.matchName);
-
-            if (matchingFinishedMatch) {
-                updateAIPrediction(personalPred.id, {
-                    matchResult: {
-                        scores: matchingFinishedMatch.scores!,
-                        winner: matchingFinishedMatch.winner!,
-                    }
-                });
-            }
-        });
-    }, [centralPredictions, personalPredictions, updateAIPrediction]);
-
-    // This effect runs when a matchResult is added to a prediction
-    useEffect(() => {
-        const predictionsToUpdate = personalPredictions.filter(p => p.matchResult && p.status === AIPredictionStatus.Pending);
-
-        predictionsToUpdate.forEach(prediction => {
-            let recommendedOutcome: string | null = null;
-            try {
-                const predictionData = JSON.parse(prediction.prediction);
-                recommendedOutcome = predictionData?.recommended_outcome || null;
-            } catch (e) { return; }
-
-            if (!recommendedOutcome || !prediction.matchResult) return;
-
-            const result = resolveMarketOutcome(recommendedOutcome, prediction.matchResult.scores, prediction.matchResult.winner);
-
-            if (result !== 'unknown') {
-                const newStatus = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
-                updateAIPrediction(prediction.id, { status: newStatus });
-            }
-        });
-    }, [personalPredictions, updateAIPrediction]);
-
-
-    const combinedAndEnhancedPredictions = useMemo(() => {
-        const predictionsMap = new Map<string, EnhancedAIPrediction>();
-        centralPredictions.forEach(p => {
-            if (p.prediction) {
-                predictionsMap.set(p.teams, { ...p.prediction, leagueName: p.eventName });
-            }
-        });
-        personalPredictions.forEach(p => {
-            const existing = predictionsMap.get(p.matchName);
-            // Overwrite central with personal if exists, preserving league name
-            predictionsMap.set(p.matchName, { ...p, leagueName: existing?.leagueName || 'Личные' });
-        });
-        return Array.from(predictionsMap.values())
+    
+    const allEnhancedPredictions = useMemo(() => {
+        return centralPredictions
+            .filter(p => p.prediction) // Only include matches that have a prediction
+            .map(p => ({
+                ...(p.prediction as AIPrediction),
+                leagueName: p.eventName,
+            }))
             .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [centralPredictions, personalPredictions]);
+    }, [centralPredictions]);
+
 
     const { availableOutcomes, availableLeagues } = useMemo(() => {
         const outcomes = new Set<string>();
         const leagues = new Set<string>();
-        combinedAndEnhancedPredictions.forEach(p => {
+        allEnhancedPredictions.forEach(p => {
             if (p.leagueName) leagues.add(p.leagueName);
             try {
                 const data = JSON.parse(p.prediction);
@@ -205,10 +116,10 @@ const AIPredictionLog: React.FC = () => {
             availableOutcomes: Array.from(outcomes).sort(),
             availableLeagues: Array.from(leagues).sort()
         };
-    }, [combinedAndEnhancedPredictions]);
+    }, [allEnhancedPredictions]);
 
     const filteredPredictions = useMemo(() => {
-        return combinedAndEnhancedPredictions.filter(p => {
+        return allEnhancedPredictions.filter(p => {
             const sportMatch = sportFilter === 'all' || (SPORT_MAP[p.sport] === sportFilter) || p.sport === sportFilter;
             const leagueMatch = leagueFilter === 'all' || p.leagueName === leagueFilter;
 
@@ -223,7 +134,7 @@ const AIPredictionLog: React.FC = () => {
             }
             return sportMatch && leagueMatch && outcomeMatch;
         });
-    }, [combinedAndEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
+    }, [allEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
     
     const { generalStats, mainOutcomeStats, deepOutcomeStats, probabilityStats } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending);

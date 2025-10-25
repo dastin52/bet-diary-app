@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './ui/Modal';
-// FIX: Changed UpcomingMatch to SharedPrediction to align with the data from the prediction context.
 import { GroundingSource, SharedPrediction } from '../types';
 import { fetchMatchAnalysis } from '../services/aiService';
 
@@ -10,7 +9,6 @@ const LoadingSpinner = () => (
     </div>
 );
 
-// FIX: Changed match prop type to SharedPrediction to align with parent component and service function.
 const MatchDetailsModal: React.FC<{ match: SharedPrediction; onClose: () => void; }> = ({ match, onClose }) => {
     const [analysis, setAnalysis] = useState<{ text: string; sources?: GroundingSource[] } | null>(null);
     const [isLoading, setIsLoading] = useState(true);

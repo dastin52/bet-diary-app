@@ -6,7 +6,6 @@ import AICard from './AICard';
 import KpiCard from './ui/KpiCard';
 import UpcomingMatches from './UpcomingMatches';
 import MatchDetailsModal from './MatchDetailsModal';
-// FIX: Changed UpcomingMatch to SharedPrediction to align with the data from the prediction context.
 import { Goal, SharedPrediction } from '../types';
 import { LineChartTooltip, BarChartTooltip, StackedBarChartTooltip, OddsPerformanceTooltip } from './charts/ChartTooltip';
 import { getGoalProgress } from '../utils/goalUtils';
@@ -72,7 +71,6 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat }) => {
   const { analytics, bankroll, goals } = useBetContext();
   const { totalProfit, roi, betCount, balanceHistory, profitBySport, profitByBetType, winLossBySport, performanceByOdds } = analytics;
-  // FIX: Changed state to use SharedPrediction to match the type from child components.
   const [selectedMatch, setSelectedMatch] = useState<SharedPrediction | null>(null);
 
   const profitColor = totalProfit >= 0 ? 'text-green-500' : 'text-red-500';
