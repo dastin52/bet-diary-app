@@ -39,7 +39,7 @@ const cache = {
 // --- CONSTANTS & HELPERS ---
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
-const CACHE_TTL_SECONDS = 3600; // 1 hour, reduced from 2 to ensure hourly updates fetch new dynamic data
+const BATCH_SIZE = 15; // Process in batches
 
 const getStatusPriority = (statusShort) => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
@@ -72,136 +72,72 @@ const resolveMarketOutcome = (market, scores, winner) => {
 function generateMockGames(sport) {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
-    const currentUTCHour = now.getUTCHours();
-    const currentUTCMinutes = now.getUTCMinutes();
 
     const baseGame = (id, home, away, league, time, baseStatus) => {
         const gameDate = new Date(`${todayStr}T${time}:00Z`);
-        const gameUTCHour = gameDate.getUTCHours();
         const timestamp = Math.floor(gameDate.getTime() / 1000);
         
         let currentStatus = baseStatus;
         let scores = undefined;
+        let winner = undefined;
         const minutesSinceStart = (now.getTime() - gameDate.getTime()) / 60000;
         
-        if (minutesSinceStart > 0) { // Game has started or finished
+        if (minutesSinceStart > 0) {
             if (sport === 'football') {
-                 if (minutesSinceStart < 45) {
-                    currentStatus = { long: 'First Half', short: '1H' };
-                    scores = { home: Math.floor(minutesSinceStart / 20) % 2, away: Math.floor(minutesSinceStart / 25) % 2 };
-                } else if (minutesSinceStart < 65) {
-                    currentStatus = { long: 'Half Time', short: 'HT' };
-                    scores = { home: 1, away: 0 };
-                } else if (minutesSinceStart < 110) {
-                    currentStatus = { long: 'Second Half', short: '2H' };
-                    scores = { home: 1 + Math.floor((minutesSinceStart-60) / 40), away: Math.floor((minutesSinceStart-60) / 35) };
-                } else {
-                    currentStatus = { long: 'Finished', short: 'FT' };
-                    scores = { home: 2, away: 1 };
-                }
-            } else { // Simplified for other sports
-                 if (minutesSinceStart < 120) {
-                    currentStatus = { long: 'Live', short: 'LIVE' };
-                    scores = { home: 50 + Math.floor(minutesSinceStart/5), away: 50 + Math.floor(minutesSinceStart/6) };
-                } else {
-                    currentStatus = { long: 'Finished', short: 'FT' };
-                    scores = { home: 102, away: 98 };
-                }
+                 if (minutesSinceStart < 45) { currentStatus = { long: 'First Half', short: '1H' }; scores = { home: 1, away: 0 }; }
+                 else if (minutesSinceStart < 65) { currentStatus = { long: 'Half Time', short: 'HT' }; scores = { home: 1, away: 0 }; }
+                 else if (minutesSinceStart < 110) { currentStatus = { long: 'Second Half', short: '2H' }; scores = { home: 2, away: 1 }; }
+                 else { currentStatus = { long: 'Finished', short: 'FT' }; scores = { home: 2, away: 1 }; }
+            } else {
+                 if (minutesSinceStart < 120) { currentStatus = { long: 'Live', short: 'LIVE' }; scores = { home: 50 + Math.floor(minutesSinceStart/5), away: 50 + Math.floor(minutesSinceStart/6) }; }
+                 else { currentStatus = { long: 'Finished', short: 'FT' }; scores = { home: 102, away: 98 }; }
             }
+             if (scores) { winner = scores.home > scores.away ? 'home' : scores.away > scores.home ? 'away' : 'draw'; }
         }
 
-        return {
-            id, date: gameDate.toISOString(), time, timestamp, timezone: 'UTC', 
-            status: currentStatus,
-            league: { id: id * 10, name: league, country: 'World', logo: '', season: new Date().getFullYear() },
-            teams: { home: { id: id * 100 + 1, name: home, logo: '' }, away: { id: id * 100 + 2, name: away, logo: '' } },
-            scores,
-        };
+        return { id, date: gameDate.toISOString(), time, timestamp, timezone: 'UTC', status: currentStatus, league: { id: id * 10, name: league }, teams: { home: { id: id*100+1, name: home }, away: { id: id*100+2, name: away } }, scores, winner };
     };
 
     switch (sport) {
-        case 'football':
-            return [
-                baseGame(201, 'Real Madrid', 'FC Barcelona', 'La Liga', '19:00', { long: 'Not Started', short: 'NS' }),
-                baseGame(202, 'Manchester City', 'Liverpool', 'Premier League', '15:30', { long: 'Not Started', short: 'NS' }),
-                baseGame(203, 'Bayern Munich', 'Dortmund', 'Bundesliga', '12:00', { long: 'Not Started', short: 'NS' }),
-            ];
-        case 'hockey':
-            return [
-                baseGame(101, 'CSKA Moscow', 'SKA St. Petersburg', 'KHL', '16:30', { long: 'Not Started', short: 'NS' }),
-                baseGame(102, 'Toronto Maple Leafs', 'Boston Bruins', 'NHL', '23:00', { long: 'Not Started', short: 'NS' }),
-                baseGame(103, 'Dynamo Moscow', 'Ak Bars Kazan', 'KHL', '13:00', { long: 'Not Started', short: 'NS' }),
-            ];
-        case 'basketball':
-             return [
-                baseGame(301, 'Anadolu Efes', 'Real Madrid', 'Euroleague', '18:45', { long: 'Not Started', short: 'NS' }),
-                baseGame(302, 'Olympiacos', 'FC Barcelona', 'Euroleague', '21:15', { long: 'Not Started', short: 'NS' }),
-                baseGame(303, 'Fenerbahce', 'CSKA Moscow', 'Euroleague', '17:00', { long: 'Not Started', short: 'NS' }),
-             ];
-        case 'nba':
-             return [
-                baseGame(401, 'Los Angeles Lakers', 'Boston Celtics', 'NBA', '23:30', { long: 'Not Started', short: 'NS' }), 
-                baseGame(402, 'Golden State Warriors', 'Phoenix Suns', 'NBA', '22:00', { long: 'Not Started', short: 'NS' }),
-             ];
-        default:
-            return [];
+        case 'football': return [ baseGame(201, 'Real Madrid', 'FC Barcelona', 'La Liga', '19:00', { long: 'Not Started', short: 'NS' }), baseGame(202, 'Manchester City', 'Liverpool', 'Premier League', '15:30', { long: 'Not Started', short: 'NS' }), baseGame(203, 'Bayern Munich', 'Dortmund', 'Bundesliga', '12:00', { long: 'Not Started', short: 'NS' }), ];
+        case 'hockey': return [ baseGame(101, 'CSKA Moscow', 'SKA St. Petersburg', 'KHL', '16:30', { long: 'Not Started', short: 'NS' }), baseGame(102, 'Toronto Maple Leafs', 'Boston Bruins', 'NHL', '23:00', { long: 'Not Started', short: 'NS' }), ];
+        case 'basketball': return [ baseGame(301, 'Anadolu Efes', 'Real Madrid', 'Euroleague', '18:45', { long: 'Not Started', short: 'NS' }), baseGame(302, 'Olympiacos', 'FC Barcelona', 'Euroleague', '21:15', { long: 'Not Started', short: 'NS' }), ];
+        case 'nba': return [ baseGame(401, 'Los Angeles Lakers', 'Boston Celtics', 'NBA', '23:30', { long: 'Not Started', short: 'NS' }), baseGame(402, 'Golden State Warriors', 'Phoenix Suns', 'NBA', '22:00', { long: 'Not Started', short: 'NS' }), ];
+        default: return [];
     }
 }
 
 async function getTodaysGamesBySport(sport, env) {
-    const today = new Date().toISOString().split('T')[0];
-    const cacheKey = `games:${sport}:${today}`;
-    
-    // NOTE: The cache is now disabled for getTodaysGamesBySport to ensure dynamic data is always generated.
-    // The main prediction list is still cached.
-    // const cached = cache.get(cacheKey); 
-    // if (cached) return cached;
-
     if (!env.SPORT_API_KEY) {
-        console.log(`[MOCK] SPORT_API_KEY not found. Generating dynamic mock games for ${sport}.`);
-        const mockGames = generateMockGames(sport);
-        // We don't cache the result of mock games anymore to ensure freshness on every run.
-        return mockGames;
+        return generateMockGames(sport);
     }
-    // Real API call logic would go here, for now we rely on mocks.
-    return generateMockGames(sport);
+    return generateMockGames(sport); // Fallback for local dev
 }
 
 async function translateTeamNames(teamNames, env, ai) {
-    if (!teamNames || teamNames.length === 0) return {};
     const translations = {};
-    for (const name of teamNames) {
-        translations[name] = name; 
-    }
+    for (const name of teamNames) { translations[name] = name; }
     return translations;
 }
 
-// --- AI PREDICTION LOGIC ---
 const getAiPayloadForSport = (sport, matchName) => {
-    // Simplified for JS
-    const outcomes = {};
-    const keyMapping = {};
+    const outcomes = {}; const keyMapping = {};
     const addOutcome = (key, desc) => { outcomes[key] = { type: 'NUMBER', description: desc }; keyMapping[key] = desc; };
     if (sport === 'football') { addOutcome('p1', 'П1'); addOutcome('x', 'X'); addOutcome('p2', 'П2'); }
     else { addOutcome('p1_final', 'П1 (вкл. ОТ и буллиты)'); addOutcome('p2_final', 'П2 (вкл. ОТ и буллиты)'); }
-    const prompt = `Calculate probabilities and coefficients for the sports match: ${matchName} (${sport}). Use the provided schema keys. The description for each key specifies the exact market name.`;
+    const prompt = `Calculate probabilities and coefficients for the sports match: ${matchName} (${sport})...`;
     return { prompt, schema: { type: 'OBJECT', properties: { probabilities: { type: 'OBJECT', properties: outcomes }, coefficients: { type: 'OBJECT', properties: outcomes } } }, keyMapping };
 };
 
 // --- CORE UPDATER LOGIC ---
 async function processSport(sport) {
-    console.log(`[Updater] Starting a fresh update for sport: ${sport}`);
+    console.log(`[Updater] Starting update for sport: ${sport}`);
     let ai;
-    if (process.env.GEMINI_API_KEY) {
-        ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    }
+    if (process.env.GEMINI_API_KEY) { ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); }
 
     const games = await getTodaysGamesBySport(sport, process.env);
     const centralPredictionsKey = `central_predictions:${sport}`;
-    if (games.length === 0) {
-        cache.putPersistent(centralPredictionsKey, []);
-        return [];
-    }
+    if (games.length === 0) { cache.putPersistent(centralPredictionsKey, []); return []; }
 
     const existingPredictions = cache.getPersistent(centralPredictionsKey) || [];
     const existingPredictionMap = new Map(existingPredictions.map(p => [p.teams, p.prediction]));
@@ -211,52 +147,56 @@ async function processSport(sport) {
 
     const todaysSharedPredictions = [];
 
-    for (const game of games) {
-        const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
-        const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
-        const matchName = `${homeTeam} vs ${awayTeam}`;
+    // BATCHED PROCESSING
+    for (let i = 0; i < games.length; i += BATCH_SIZE) {
+        const batch = games.slice(i, i + BATCH_SIZE);
+        console.log(`[Updater] Processing batch ${i / BATCH_SIZE + 1} for ${sport} with ${batch.length} games.`);
         
-        let prediction = existingPredictionMap.get(matchName) || null;
+        const batchPromises = batch.map(async (game) => {
+            const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
+            const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
+            const matchName = `${homeTeam} vs ${awayTeam}`;
+            
+            let prediction = existingPredictionMap.get(matchName) || null;
 
-        if (FINISHED_STATUSES.includes(game.status.short) && game.scores && prediction?.status === 'pending') {
-            const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
-            const result = resolveMarketOutcome(JSON.parse(prediction.prediction).recommended_outcome, game.scores, winner);
-            if (result !== 'unknown') {
-                prediction.status = result === 'correct' ? 'correct' : 'incorrect';
-                prediction.matchResult = { winner, scores: game.scores };
-            }
-        } else if (game.status.short === 'NS' && !prediction && ai) {
-            try {
-                const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
-                const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }], config: { responseMimeType: "application/json", responseSchema: schema } });
-                const rawPredictionData = JSON.parse(response.text);
-                
-                if (rawPredictionData?.probabilities) {
-                     const remap = (obj, map) => Object.entries(obj).reduce((acc, [key, val]) => ({...acc, [map[key] || key]: val }), {});
-                     const finalData = {
-                        probabilities: remap(rawPredictionData.probabilities, keyMapping),
-                        coefficients: remap(rawPredictionData.coefficients, keyMapping),
-                        recommended_outcome: Object.keys(rawPredictionData.probabilities).reduce((a, b) => rawPredictionData.probabilities[a] > rawPredictionData.probabilities[b] ? a : b)
-                     };
-                     finalData.recommended_outcome = keyMapping[finalData.recommended_outcome];
-
-                     prediction = { id: `${game.id}-${Date.now()}`, createdAt: new Date().toISOString(), sport, matchName, prediction: JSON.stringify(finalData), status: 'pending' };
+            if (FINISHED_STATUSES.includes(game.status.short) && game.scores && prediction?.status === 'pending') {
+                const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
+                const result = resolveMarketOutcome(JSON.parse(prediction.prediction).recommended_outcome, game.scores, winner);
+                if (result !== 'unknown') {
+                    prediction.status = result === 'correct' ? 'correct' : 'incorrect';
+                    prediction.matchResult = { winner, scores: game.scores };
                 }
-            } catch (error) { console.error(`[Updater] Failed AI prediction for ${matchName}:`, error); }
-        }
+            } else if (game.status.short === 'NS' && !prediction && ai) {
+                try {
+                    const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
+                    const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }], config: { responseMimeType: "application/json", responseSchema: schema } });
+                    const rawPredictionData = JSON.parse(response.text);
+                    
+                    if (rawPredictionData?.probabilities) {
+                         const remap = (obj, map) => Object.entries(obj).reduce((acc, [key, val]) => ({...acc, [map[key] || key]: val }), {});
+                         let bestOutcomeKey = Object.keys(rawPredictionData.probabilities).reduce((a, b) => rawPredictionData.probabilities[a] > rawPredictionData.probabilities[b] ? a : b);
+                         const finalData = { probabilities: remap(rawPredictionData.probabilities, keyMapping), coefficients: remap(rawPredictionData.coefficients, keyMapping), recommended_outcome: keyMapping[bestOutcomeKey] };
+                         prediction = { id: `${game.id}-${Date.now()}`, createdAt: new Date().toISOString(), sport, matchName, prediction: JSON.stringify(finalData), status: 'pending' };
+                    }
+                } catch (error) { console.error(`[Updater] Failed AI prediction for ${matchName}:`, error); }
+            }
 
-        const sharedPrediction = {
-            ...game, sport, eventName: game.league.name, teams: matchName,
-            date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
-            time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
-            status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
-            prediction,
-            score: game.scores ? `${game.scores.home} - ${game.scores.away}` : undefined,
-            scores: game.scores,
-            winner: game.scores ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : undefined,
-        };
-        todaysSharedPredictions.push(sharedPrediction);
+            return {
+                ...game, sport, eventName: game.league.name, teams: matchName,
+                date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
+                time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
+                status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
+                prediction,
+                score: game.scores ? `${game.scores.home} - ${game.scores.away}` : undefined,
+                scores: game.scores,
+                winner: game.scores ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : undefined,
+            };
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        todaysSharedPredictions.push(...batchResults.filter(p => p));
     }
+
 
     const finalPredictions = todaysSharedPredictions.sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || a.timestamp - b.timestamp);
     cache.putPersistent(centralPredictionsKey, finalPredictions);

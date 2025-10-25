@@ -18,6 +18,7 @@ type PagesFunction<E = unknown> = (
 
 
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
+const BATCH_SIZE = 15; // Process 15 games in parallel at a time to avoid timeouts and rate limits
 
 const getStatusPriority = (statusShort: string): number => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
@@ -92,7 +93,6 @@ const getAiPayloadForSport = (sport: string, matchName: string): { prompt: strin
 async function processSport(sport: string, env: Env): Promise<SharedPrediction[]> {
     console.log(`[CRON] Starting a fresh update for sport: ${sport}`);
 
-    // 1. Fetch today's games.
     let games = await getTodaysGamesBySport(sport, env);
     const centralPredictionsKey = `central_predictions:${sport}`;
 
@@ -102,120 +102,89 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
         return [];
     }
 
-    // 2. Fetch existing predictions to avoid re-generating them.
     const existingPredictions = (await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[]) || [];
     const existingPredictionDataMap = new Map<string, AIPrediction | null>(existingPredictions.map(p => [p.teams, p.prediction]));
 
-    // 3. Translate names
     const teamNames = games.flatMap(g => [g?.teams?.home?.name, g?.teams?.away?.name]).filter((n): n is string => !!n);
     const uniqueTeamNames = Array.from(new Set(teamNames));
     const translationMap = await translateTeamNames(uniqueTeamNames, env);
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
     
-    // 4. Process each game in parallel
-    const gameProcessingPromises = games.map(async (game) => {
-        const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
-        const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
-        const matchName = `${homeTeam} vs ${awayTeam}`;
+    // BATCHED PROCESSING
+    const todaysSharedPredictions: SharedPrediction[] = [];
+    for (let i = 0; i < games.length; i += BATCH_SIZE) {
+        const batch = games.slice(i, i + BATCH_SIZE);
+        console.log(`[CRON] Processing batch ${i / BATCH_SIZE + 1} for ${sport} with ${batch.length} games.`);
         
-        let prediction = existingPredictionDataMap.get(matchName) ?? null;
+        const batchPromises = batch.map(async (game) => {
+            const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
+            const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
+            const matchName = `${homeTeam} vs ${awayTeam}`;
+            
+            let prediction = existingPredictionDataMap.get(matchName) ?? null;
 
-        // A. Resolve pending predictions for finished games.
-        if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
-            if (prediction && prediction.status === AIPredictionStatus.Pending) {
-                let recommendedOutcome: string | null = null;
+            if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
+                if (prediction && prediction.status === AIPredictionStatus.Pending) {
+                    let recommendedOutcome: string | null = null;
+                    try { const data = JSON.parse(prediction.prediction); recommendedOutcome = data?.recommended_outcome || null; } catch (e) { console.error(`Failed to parse prediction for ${matchName}`); }
+
+                    if (recommendedOutcome) {
+                        const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
+                        const result = resolveMarketOutcome(recommendedOutcome, game.scores, winner);
+                        if (result !== 'unknown') {
+                            prediction.status = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
+                            prediction.matchResult = { winner, scores: game.scores };
+                        }
+                    }
+                }
+            } else if (game.status.short === 'NS' && !prediction) {
                 try {
-                    const data = JSON.parse(prediction.prediction);
-                    recommendedOutcome = data?.recommended_outcome || null;
-                } catch (e) { console.error(`Failed to parse prediction for ${matchName}`); }
+                    const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
+                    const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }], config: { responseMimeType: "application/json", responseSchema: schema } });
+                    const rawPredictionData = JSON.parse(response.text);
 
-                if (recommendedOutcome) {
-                    const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
-                    const result = resolveMarketOutcome(recommendedOutcome, game.scores, winner);
-                    if (result !== 'unknown') {
-                        prediction.status = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
-                        prediction.matchResult = { winner, scores: game.scores };
+                    if (rawPredictionData && rawPredictionData.probabilities) {
+                        const remap = (obj: Record<string, any>, map: Record<string, string>) => Object.entries(obj).reduce((acc, [key, val]) => ({...acc, [map[key] || key]: val }), {});
+                        const remappedProbabilities = remap(rawPredictionData.probabilities, keyMapping);
+                        const remappedCoefficients = remap(rawPredictionData.coefficients, keyMapping);
+                        
+                        let bestOutcomeKey = ''; let maxValue = -Infinity;
+                        for (const key in rawPredictionData.probabilities) {
+                            const prob = parseFloat(rawPredictionData.probabilities[key]); const coeff = parseFloat(rawPredictionData.coefficients[key]);
+                            if (!isNaN(prob) && !isNaN(coeff) && coeff > 1) {
+                                const value = (prob / 100) * coeff - 1;
+                                if (value > maxValue) { maxValue = value; bestOutcomeKey = key; }
+                            }
+                        }
+                        const recommendedOutcome = keyMapping[bestOutcomeKey] || 'Нет выгодной ставки';
+
+                        prediction = {
+                            id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
+                            matchName: matchName, prediction: JSON.stringify({ probabilities: remappedProbabilities, coefficients: remappedCoefficients, recommended_outcome: recommendedOutcome }), status: AIPredictionStatus.Pending,
+                        };
                     }
-                }
+                } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }
             }
-        // B. Generate new predictions for scheduled games.
-        } else if (game.status.short === 'NS' && !prediction) {
-            try {
-                const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
-                const response = await ai.models.generateContent({
-                    model: "gemini-2.5-flash",
-                    contents: [{ parts: [{ text: prompt }] }],
-                    config: { responseMimeType: "application/json", responseSchema: schema },
-                });
-                const rawPredictionData = JSON.parse(response.text);
 
-                if (rawPredictionData && rawPredictionData.probabilities) {
-                     const remapObjectKeys = (obj: Record<string, any>, mapping: Record<string, string>) => {
-                        if (!obj) return {};
-                        const newObj: Record<string, any> = {};
-                        for (const key in obj) {
-                            const newKey = mapping[key] || key;
-                            newObj[newKey] = obj[key];
-                        }
-                        return newObj;
-                    };
+            return {
+                ...(game as any), sport: sport, eventName: game.league.name, teams: matchName,
+                date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
+                time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
+                status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
+                prediction: prediction,
+                score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : undefined,
+                scores: (game.scores && game.scores.home !== null) ? game.scores : undefined,
+                winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : undefined,
+            };
+        });
 
-                    const remappedProbabilities = remapObjectKeys(rawPredictionData.probabilities, keyMapping);
-                    const remappedCoefficients = remapObjectKeys(rawPredictionData.coefficients, keyMapping);
-                    
-                    let bestOutcomeKey = ''; let maxValue = -Infinity;
-                    for (const key in rawPredictionData.probabilities) {
-                        const prob = parseFloat(rawPredictionData.probabilities[key]);
-                        const coeff = parseFloat(rawPredictionData.coefficients[key]);
-                        if (!isNaN(prob) && !isNaN(coeff) && coeff > 1) {
-                            const value = (prob / 100) * coeff - 1;
-                            if (value > maxValue) { maxValue = value; bestOutcomeKey = key; }
-                        }
-                    }
-                    const recommendedOutcome = keyMapping[bestOutcomeKey] || 'Нет выгодной ставки';
+        const batchResults = await Promise.all(batchPromises);
+        todaysSharedPredictions.push(...batchResults.filter(p => p));
+    }
 
-                    const finalPredictionData = {
-                        probabilities: remappedProbabilities,
-                        coefficients: remappedCoefficients,
-                        recommended_outcome: recommendedOutcome,
-                    };
-                    
-                    prediction = {
-                        id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
-                        matchName: matchName, prediction: JSON.stringify(finalPredictionData), status: AIPredictionStatus.Pending,
-                    };
-                }
-            } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }
-        }
+    const finalPredictions = todaysSharedPredictions.sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || a.timestamp - b.timestamp);
 
-        // 5. Construct and return the final SharedPrediction object for today's list
-        return {
-            ...(game as any), // Cast to any to handle type diffs temporarily
-            sport: sport,
-            eventName: game.league.name,
-            teams: matchName,
-            date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
-            time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow', timeZoneName: 'short' }),
-            status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
-            prediction: prediction, // Use the existing, updated, or newly created prediction
-            score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : undefined,
-            scores: (game.scores && game.scores.home !== null) ? game.scores : undefined,
-            winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : undefined,
-        };
-    });
-
-    // Fix: Corrected typo in variable name.
-    const todaysSharedPredictions = await Promise.all(gameProcessingPromises);
-
-    const finalPredictions = todaysSharedPredictions.sort((a,b) => {
-         const priorityA = getStatusPriority(a.status.short);
-         const priorityB = getStatusPriority(b.status.short);
-         if (priorityA !== priorityB) return priorityA - priorityB;
-         return a.timestamp - b.timestamp;
-    });
-
-    // 6. Overwrite the KV store with the fresh list for today.
     await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify(finalPredictions));
     console.log(`[CRON] Successfully processed and stored ${finalPredictions.length} fresh predictions for ${sport}.`);
     return finalPredictions;
@@ -238,7 +207,6 @@ export async function runUpdateTask(env: Env) {
             }
         });
 
-        // After processing all individual sports, create the combined 'all' key
         const combinedPredictions: SharedPrediction[] = [];
         for(const sport of SPORTS_TO_PROCESS) {
             const sportPredictions = await env.BOT_STATE.get(`central_predictions:${sport}`, { type: 'json' }) as SharedPrediction[] | null;
@@ -254,10 +222,7 @@ export async function runUpdateTask(env: Env) {
     }
 }
 
-// CORRECT EXPORT for Cloudflare Pages scheduled functions
 export const onCron: PagesFunction<Env> = async ({ env, waitUntil }) => {
     waitUntil(runUpdateTask(env));
-    // Scheduled functions in Pages don't return a Response, but we return a simple one to satisfy the type.
-    // The platform ignores this response.
     return new Response('Cron task initiated.', { status: 202 });
 };
