@@ -3,8 +3,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const { GoogleGenAI } = require('@google/genai');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+const { runUpdate } = require('./server/prediction-updater');
+const { cache } = require('./server/prediction-updater');
+
 
 // --- INITIALIZATION ---
 const app = express();
@@ -15,80 +16,56 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // --- GEMINI SETUP ---
+let ai;
 if (!process.env.GEMINI_API_KEY) {
     console.error("GEMINI_API_KEY is not set in .env file. AI features will not work.");
+} else {
+    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 }
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 
 // --- WEB APP API ROUTES ---
 
-// Secure proxy endpoint for the web app to communicate with the Gemini API
+// Secure proxy endpoint for the web app
 app.post('/api/gemini', async (req, res) => {
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: 'API Key for Gemini is not configured on the server.' });
-  }
-
   try {
     const { endpoint, payload } = req.body;
 
-    let response;
-    switch (endpoint) {
-        case 'findMatches':
-             const mockMatches = [
-                { sport: 'Футбол', eventName: 'Лига Чемпионов', teams: 'Реал Мадрид vs. Бавария', date: new Date().toISOString().split('T')[0], time: '22:00', isHotMatch: true },
-                { sport: 'Теннис', eventName: 'ATP Finals', teams: 'Синнер vs. Алькарас', date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: '18:00', isHotMatch: false },
-             ];
-            return res.json({ events: mockMatches });
-        
-        case 'generateContent':
-        default:
-            const result = await ai.models.generateContent(payload);
-            response = { text: result.text, sources: result.candidates?.[0]?.groundingMetadata?.groundingChunks };
-            break;
+    if (endpoint === 'getAllPredictions') {
+        const allPredictions = cache.getPersistent('central_predictions:all') || [];
+        return res.json(allPredictions);
+    }
+    
+    if (endpoint === 'getMatchesWithPredictions') {
+        const { sport } = payload;
+        if (!sport) {
+            return res.status(400).json({ error: 'Sport parameter is required' });
+        }
+        const predictions = cache.getPersistent(`central_predictions:${sport}`) || [];
+        return res.json(predictions);
     }
 
+    if (!ai) {
+        return res.status(500).json({ error: 'API Key for Gemini is not configured on the server.' });
+    }
+    
+    // Default to Gemini proxy
+    const result = await ai.models.generateContent(payload);
+    const response = { text: result.text, sources: result.candidates?.[0]?.groundingMetadata?.groundingChunks };
     res.json(response);
 
   } catch (error) {
-    console.error('Gemini API proxy error:', error);
-    res.status(500).json({ error: 'Failed to fetch from Gemini API on the server.' });
+    console.error('API proxy error:', error);
+    res.status(500).json({ error: 'Failed to process API request on the server.' });
   }
 });
 
-
-// Mock endpoint for fetching matches WITH AI predictions for local dev
-app.get('/api/matches-with-predictions', (req, res) => {
-    const sport = req.query.sport;
-    console.log(`[LOCAL DEV] Serving mock shared predictions for sport: ${sport}`);
-    
-    let mockSharedPredictions = [];
-
-    if (sport === 'football') {
-        mockSharedPredictions = [
-            { 
-                sport: sport, eventName: 'Mock League', teams: 'Команда А vs. Команда Б', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' },
-                prediction: { id: 'pred1', createdAt: new Date().toISOString(), sport: sport, matchName: 'Команда А vs. Команда Б', prediction: JSON.stringify({ "probabilities": { "П1": 55, "X": 25, "П2": 20 }, "coefficients": { "П1": 1.8, "X": 3.5, "П2": 4.0 }, "recommended_outcome": "П1" }), status: 'pending' }
-            },
-            { 
-                sport: sport, eventName: 'Mock Finals', teams: 'Команда X vs. Команда Y', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '3 - 1', scores: { home: 3, away: 1 }, winner: 'home',
-                prediction: { id: 'pred2', createdAt: new Date().toISOString(), sport: sport, matchName: 'Команда X vs. Команда Y', prediction: JSON.stringify({ "probabilities": { "П1": 60, "X": 20, "П2": 20 }, "coefficients": { "П1": 1.6, "X": 4.0, "П2": 5.0 }, "recommended_outcome": "П1" }), status: 'correct' }
-            },
-        ];
-    } else if (sport === 'basketball' || sport === 'nba') {
-        mockSharedPredictions = [
-             { 
-                sport: sport, eventName: 'Mock NBA', teams: 'Лейкерс vs. Клипперс', date: '2024-07-28', time: '18:00', isHotMatch: true, status: { long: 'Not Started', short: 'NS', emoji: '⏳' },
-                prediction: { id: 'pred3', createdAt: new Date().toISOString(), sport: sport, matchName: 'Лейкерс vs. Клипперс', prediction: JSON.stringify({ "probabilities": { "П1 (с ОТ)": 52, "П2 (с ОТ)": 48 }, "coefficients": { "П1 (с ОТ)": 1.9, "П2 (с ОТ)": 1.9 }, "recommended_outcome": "П1 (с ОТ)" }), status: 'pending' }
-            },
-            { 
-                sport: sport, eventName: 'Mock Euroleague', teams: 'ЦСКА vs. Реал Мадрид', date: '2024-07-28', time: '16:00', isHotMatch: false, status: { long: 'Finished', short: 'FT', emoji: '🏁' }, score: '91 - 88', scores: { home: 91, away: 88 }, winner: 'home',
-                prediction: { id: 'pred4', createdAt: new Date().toISOString(), sport: sport, matchName: 'ЦСКА vs. Реал Мадрид', prediction: JSON.stringify({ "probabilities": { "П1 (с ОТ)": 65, "П2 (с ОТ)": 35 }, "coefficients": { "П1 (с ОТ)": 1.5, "П2 (с ОТ)": 2.5 }, "recommended_outcome": "П2 (с ОТ)" }), status: 'incorrect' }
-            },
-        ];
-    }
-
-    res.json(mockSharedPredictions);
+// Endpoint to manually trigger update
+app.post('/api/tasks/run-update', (req, res) => {
+    console.log('[API] Manual prediction update triggered.');
+    // Run in background, don't wait for it
+    runUpdate().catch(err => console.error('Manual update run failed:', err));
+    res.status(202).json({ message: 'Prediction update process has been started.' });
 });
 
 
@@ -161,4 +138,13 @@ app.post('/api/telegram/generate-code', (req, res) => {
 app.listen(port, () => {
   console.log(`API server for local development listening at http://localhost:${port}`);
   console.log("This server provides API proxying for the web app.");
+
+  // Run update on startup and then every hour
+  console.log('Running initial prediction update on startup...');
+  runUpdate().catch(err => console.error('Initial update run failed:', err));
+
+  setInterval(() => {
+    console.log('Running hourly prediction update...');
+    runUpdate().catch(err => console.error('Hourly update run failed:', err));
+  }, 3600 * 1000); // 1 hour
 });

@@ -13,6 +13,27 @@ type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics';
 const AdminPanel: React.FC = () => {
   const { users, allBets, analytics, isLoading, updateUserStatus } = useAdminData();
   const [activeTab, setActiveTab] = useState<AdminView>('stats');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
+  const handleForceUpdate = async () => {
+    setIsUpdating(true);
+    setUpdateMessage('Запускаю процесс обновления...');
+    try {
+        const response = await fetch('/api/tasks/run-update', { method: 'POST' });
+        const data = await response.json();
+        if (response.status === 202) {
+            setUpdateMessage(`${data.message} Это может занять несколько минут. Обновите страницы с прогнозами позже.`);
+        } else {
+            throw new Error(data.error || 'Не удалось запустить обновление.');
+        }
+    } catch (error) {
+        setUpdateMessage(error instanceof Error ? error.message : 'Произошла неизвестная ошибка.');
+    } finally {
+        setIsUpdating(false);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -38,6 +59,21 @@ const AdminPanel: React.FC = () => {
           case 'stats':
               return (
                  <div className="space-y-6">
+                    <Card>
+                        <h3 className="text-lg font-semibold">Обслуживание системы</h3>
+                        <p className="text-sm text-gray-400 mt-2">
+                            Если автоматическое ежечасное обновление прогнозов матчей не сработало, вы можете запустить его вручную.
+                        </p>
+                        <div className="mt-4">
+                            <Button onClick={handleForceUpdate} disabled={isUpdating} variant="secondary">
+                                {isUpdating ? 'Обновление...' : 'Запустить обновление прогнозов'}
+                            </Button>
+                        </div>
+                        {updateMessage && (
+                            <p className="mt-4 text-sm text-gray-300 bg-gray-900/50 p-3 rounded-md">{updateMessage}</p>
+                        )}
+                    </Card>
+
                     <h2 className="text-xl font-semibold">Глобальная статистика платформы</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <KpiCard title="Всего пользователей" value={String(analytics.totalUsers)} colorClass="text-indigo-500 dark:text-indigo-400" />
