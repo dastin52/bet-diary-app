@@ -225,7 +225,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
     return finalPredictions;
 }
 
-async function runUpdateTask(env: Env) {
+export async function runUpdateTask(env: Env) {
      try {
         console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
         
@@ -264,15 +264,4 @@ export const onCron: PagesFunction<Env> = async ({ env, waitUntil }) => {
     // Scheduled functions in Pages don't return a Response, but we return a simple one to satisfy the type.
     // The platform ignores this response.
     return new Response('Cron task initiated.', { status: 202 });
-};
-
-// This handles the manual trigger from the admin panel
-export const onRequestPost: PagesFunction<Env> = async ({ env, waitUntil }) => {
-    // Run the update in the background, don't wait for it to finish
-    waitUntil(runUpdateTask(env));
-    // Immediately respond to the client
-    return new Response(JSON.stringify({ message: 'Prediction update process has been started in the background.' }), {
-        status: 202,
-        headers: { 'Content-Type': 'application/json' },
-    });
 };
