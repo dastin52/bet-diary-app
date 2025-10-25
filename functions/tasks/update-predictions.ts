@@ -85,41 +85,46 @@ const getAiPayloadForSport = (sport: string, matchName: string): { prompt: strin
 };
 
 async function processSport(sport: string, env: Env): Promise<SharedPrediction[]> {
-    console.log(`[CRON] Starting processing for sport: ${sport}`);
-    
-    // 1. Fetch existing predictions and games
-    const centralPredictionsKey = `central_predictions:${sport}`;
-    const existingPredictions = (await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[]) || [];
-    const existingPredictionsMap = new Map<string, SharedPrediction>(existingPredictions.map(p => [p.teams, p]));
+    console.log(`[CRON] Starting a fresh update for sport: ${sport}`);
 
+    // 1. Fetch today's games. This is our source of truth for what should be displayed.
     let games = await getTodaysGamesBySport(sport, env);
+    const centralPredictionsKey = `central_predictions:${sport}`;
+
     if (games.length === 0) {
-        console.log(`[CRON] No games found for ${sport}.`);
+        console.log(`[CRON] No games found for ${sport} today. Clearing existing data.`);
+        await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify([]));
         return [];
     }
 
-    // 2. Translate names
+    // 2. Fetch existing predictions to avoid re-generating them.
+    const existingPredictions = (await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[]) || [];
+    const existingPredictionDataMap = new Map<string, AIPrediction | null>(existingPredictions.map(p => [p.teams, p.prediction]));
+
+    // 3. Translate names
     const teamNames = games.flatMap(g => [g?.teams?.home?.name, g?.teams?.away?.name]).filter((n): n is string => !!n);
     const uniqueTeamNames = Array.from(new Set(teamNames));
     const translationMap = await translateTeamNames(uniqueTeamNames, env);
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+    
+    // This will hold the final list for today.
+    const todaysSharedPredictions: SharedPrediction[] = [];
 
-    // 3. Process each game, updating existing predictions or creating new ones
+    // 4. Process each game for today
     for (const game of games) {
         const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
         const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
         const matchName = `${homeTeam} vs ${awayTeam}`;
         
-        const existingPrediction = existingPredictionsMap.get(matchName);
+        let prediction = existingPredictionDataMap.get(matchName) ?? null;
 
-        // A. If game is finished
+        // A. If game is finished and prediction was pending, resolve it.
         if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null && game.scores.away !== null) {
-            if (existingPrediction && existingPrediction.prediction && existingPrediction.prediction.status === AIPredictionStatus.Pending) {
-                // This prediction needs its status updated
+            if (prediction && prediction.status === AIPredictionStatus.Pending) {
                 let recommendedOutcome: string | null = null;
                 try {
-                    const data = JSON.parse(existingPrediction.prediction.prediction);
+                    const data = JSON.parse(prediction.prediction);
                     recommendedOutcome = data?.recommended_outcome || null;
                 } catch (e) { console.error(`Failed to parse prediction for ${matchName}`); }
 
@@ -127,25 +132,15 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                     const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
                     const result = resolveMarketOutcome(recommendedOutcome, game.scores, winner);
                     if (result !== 'unknown') {
-                        existingPrediction.prediction.status = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
-                        existingPrediction.prediction.matchResult = { winner, scores: game.scores };
+                        prediction.status = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
+                        prediction.matchResult = { winner, scores: game.scores };
                     }
                 }
             }
-             // Always update match data for finished games
-            if(existingPrediction) {
-                existingPrediction.status = { ...game.status, emoji: getMatchStatusEmoji(game.status) };
-                existingPrediction.score = `${game.scores.home} - ${game.scores.away}`;
-                existingPrediction.scores = game.scores;
-                existingPrediction.winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
-            }
-
-        // B. If game has not started and we don't have a prediction for it
-        } else if (game.status.short === 'NS' && !existingPrediction) {
-            let newPrediction: AIPrediction | null = null;
+        // B. If game has not started and we don't have a prediction for it, generate one.
+        } else if (game.status.short === 'NS' && !prediction) {
             try {
                 const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
-                // FIX: Use 'config' instead of 'generationConfig' and correct the model name
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
                     contents: [{ parts: [{ text: prompt }] }],
@@ -187,33 +182,41 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                         recommended_outcome: recommendedOutcome,
                     };
                     
-                    newPrediction = {
+                    prediction = {
                         id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
                         matchName: matchName, prediction: JSON.stringify(finalPredictionData), status: AIPredictionStatus.Pending,
                     };
-
-                    const newSharedPrediction: SharedPrediction = {
-                        ...(game as any), sport: sport, eventName: game.league.name, teams: matchName,
-                        date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
-                        time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow', timeZoneName: 'short' }),
-                        status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
-                        prediction: newPrediction,
-                    };
-                    existingPredictionsMap.set(matchName, newSharedPrediction);
                 }
             } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }
         }
+
+        // 5. Construct the final SharedPrediction object for today's list
+        const sharedPrediction: SharedPrediction = {
+            ...(game as any), // Cast to any to handle type diffs temporarily
+            sport: sport,
+            eventName: game.league.name,
+            teams: matchName,
+            date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
+            time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow', timeZoneName: 'short' }),
+            status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
+            prediction: prediction, // Use the existing, updated, or newly created prediction
+            score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : undefined,
+            scores: (game.scores && game.scores.home !== null) ? game.scores : undefined,
+            winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : undefined,
+        };
+        todaysSharedPredictions.push(sharedPrediction);
     }
 
-    const finalPredictions = Array.from(existingPredictionsMap.values()).sort((a,b) => {
+    const finalPredictions = todaysSharedPredictions.sort((a,b) => {
          const priorityA = getStatusPriority(a.status.short);
          const priorityB = getStatusPriority(b.status.short);
          if (priorityA !== priorityB) return priorityA - priorityB;
          return a.timestamp - b.timestamp;
     });
 
+    // 6. Overwrite the KV store with the fresh list for today.
     await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify(finalPredictions));
-    console.log(`[CRON] Successfully processed and stored ${finalPredictions.length} predictions for ${sport}.`);
+    console.log(`[CRON] Successfully processed and stored ${finalPredictions.length} fresh predictions for ${sport}.`);
     return finalPredictions;
 }
 

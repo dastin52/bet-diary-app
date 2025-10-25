@@ -67,7 +67,8 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                 if (activeSport === 'all') {
                     return true;
                 }
-                return p.sport === activeSport;
+                // Check against both the key and the mapped value
+                return p.sport === activeSport || SPORT_MAP[p.sport] === SPORT_MAP[activeSport];
             })
             .sort((a, b) => {
                 const priorityA = getStatusPriority(a.status.short);
@@ -75,7 +76,6 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                 if (priorityA !== priorityB) {
                     return priorityA - priorityB;
                 }
-                // FIX: This line is now valid because the `timestamp` property was added to the SharedPrediction type.
                 return a.timestamp - b.timestamp;
             });
     }, [allPredictions, activeSport]);
@@ -149,6 +149,9 @@ const SPORT_MAP: Record<string, string> = {
     basketball: 'Баскетбол',
     hockey: 'Хоккей',
     nba: 'NBA',
+    'Футбол': 'Футбол',
+    'Баскетбол': 'Баскетбол',
+    'Хоккей': 'Хоккей',
 };
 
 export default UpcomingMatches;
