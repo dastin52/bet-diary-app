@@ -34,24 +34,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         
         switch (endpoint) {
              case 'getAllPredictions': {
-                const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
-                
-                const promises = SPORTS_TO_PROCESS.map(sport => 
-                    env.BOT_STATE.get(`central_predictions:${sport}`, { type: 'json' })
-                );
-                const results = await Promise.all(promises);
-                
-                // Filter out null/non-array results and flatten into a single array
-                const combinedPredictions = results
-                    .filter((data): data is SharedPrediction[] => Array.isArray(data))
-                    .flat();
-                
-                responseData = combinedPredictions;
-                
-                // Asynchronously update the combined cache for subsequent fast retrievals.
-                // This won't block the response to the user.
-                waitUntil(env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions)));
-                
+                // CORRECTED LOGIC: Directly get the pre-combined data prepared by the cron job.
+                // This is the single source of truth.
+                const allPredictions = await env.BOT_STATE.get('central_predictions:all', { type: 'json' });
+                responseData = allPredictions || []; // Return data or an empty array if not found
                 break;
             }
             case 'getMatchesWithPredictions': {
