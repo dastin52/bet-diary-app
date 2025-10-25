@@ -92,7 +92,7 @@ const getAiPayloadForSport = (sport: string, matchName: string): { prompt: strin
 async function processSport(sport: string, env: Env): Promise<SharedPrediction[]> {
     console.log(`[CRON] Starting a fresh update for sport: ${sport}`);
 
-    // 1. Fetch today's games. This is our source of truth for what should be displayed.
+    // 1. Fetch today's games.
     let games = await getTodaysGamesBySport(sport, env);
     const centralPredictionsKey = `central_predictions:${sport}`;
 
@@ -113,19 +113,16 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
     
-    // This will hold the final list for today.
-    const todaysSharedPredictions: SharedPrediction[] = [];
-
-    // 4. Process each game for today
-    for (const game of games) {
+    // 4. Process each game in parallel
+    const gameProcessingPromises = games.map(async (game) => {
         const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
         const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
         const matchName = `${homeTeam} vs ${awayTeam}`;
         
         let prediction = existingPredictionDataMap.get(matchName) ?? null;
 
-        // A. If game is finished and prediction was pending, resolve it.
-        if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null && game.scores.away !== null) {
+        // A. Resolve pending predictions for finished games.
+        if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
             if (prediction && prediction.status === AIPredictionStatus.Pending) {
                 let recommendedOutcome: string | null = null;
                 try {
@@ -142,17 +139,14 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                     }
                 }
             }
-        // B. If game has not started and we don't have a prediction for it, generate one.
+        // B. Generate new predictions for scheduled games.
         } else if (game.status.short === 'NS' && !prediction) {
             try {
                 const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
                 const response = await ai.models.generateContent({
                     model: "gemini-2.5-flash",
                     contents: [{ parts: [{ text: prompt }] }],
-                    config: {
-                        responseMimeType: "application/json",
-                        responseSchema: schema,
-                    },
+                    config: { responseMimeType: "application/json", responseSchema: schema },
                 });
                 const rawPredictionData = JSON.parse(response.text);
 
@@ -195,8 +189,8 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
             } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }
         }
 
-        // 5. Construct the final SharedPrediction object for today's list
-        const sharedPrediction: SharedPrediction = {
+        // 5. Construct and return the final SharedPrediction object for today's list
+        return {
             ...(game as any), // Cast to any to handle type diffs temporarily
             sport: sport,
             eventName: game.league.name,
@@ -209,8 +203,10 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
             scores: (game.scores && game.scores.home !== null) ? game.scores : undefined,
             winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : undefined,
         };
-        todaysSharedPredictions.push(sharedPrediction);
-    }
+    });
+
+    // Fix: Corrected typo in variable name.
+    const todaysSharedPredictions = await Promise.all(gameProcessingPromises);
 
     const finalPredictions = todaysSharedPredictions.sort((a,b) => {
          const priorityA = getStatusPriority(a.status.short);

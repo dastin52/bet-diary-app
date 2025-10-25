@@ -1,5 +1,6 @@
 
 
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -36,6 +37,7 @@ export const useAdminData = (): UseAdminDataReturn => {
       // 1. Get all registered users
       const allUsers = getUsers();
       // FIX: Use .getTime() to perform arithmetic on Date objects for sorting.
+      // Fix: Use .getTime() to perform arithmetic on Date objects.
       setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
       // 2. Aggregate bets from all users
@@ -87,6 +89,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
+    // Fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     const popularSportsCounts = settledBets.reduce((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -97,6 +100,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .slice(0, 10);
 
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
+    // Fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
