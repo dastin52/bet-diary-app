@@ -10,6 +10,9 @@ const SPORT_API_CONFIG: SportApiConfig = {
     'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12&season=2023-2024' },
 };
 
+// FIX: Define the missing FINISHED_STATUSES constant.
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
+
 /**
  * Generates mock sports games for a given sport.
  * This is used as a fallback when the SPORT_API_KEY is not available.
@@ -17,62 +20,80 @@ const SPORT_API_CONFIG: SportApiConfig = {
  * @returns An array of mock SportGame objects.
  */
 function generateMockGames(sport: string): SportGame[] {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
     
     // Helper to create a game object, simplifying mock data creation.
-    const baseGame = (id: number, home: string, away: string, league: string, time: string, status: { long: string, short: string }): SportGame => {
+    const baseGame = (id: number, home: string, away: string, league: string, time: string, baseStatus: { long: string, short: string }): SportGame => {
         const gameDate = new Date(`${todayStr}T${time}:00Z`);
         const timestamp = Math.floor(gameDate.getTime() / 1000);
+        
+        let currentStatus = baseStatus;
+        let scores: { home: number | null, away: number | null } | undefined = undefined;
+        let winner: 'home' | 'away' | 'draw' | undefined = undefined;
+        const minutesSinceStart = (now.getTime() - gameDate.getTime()) / 60000;
+        
+        if (minutesSinceStart > 0) { // Game has started or finished
+            if (sport === 'football') {
+                 if (minutesSinceStart < 45) {
+                    currentStatus = { long: 'First Half', short: '1H' };
+                    scores = { home: Math.floor(minutesSinceStart / 20) % 2, away: Math.floor(minutesSinceStart / 25) % 2 };
+                } else if (minutesSinceStart < 65) {
+                    currentStatus = { long: 'Half Time', short: 'HT' };
+                    scores = { home: 1, away: 0 };
+                } else if (minutesSinceStart < 110) {
+                    currentStatus = { long: 'Second Half', short: '2H' };
+                    scores = { home: 1 + Math.floor((minutesSinceStart-60) / 40), away: Math.floor((minutesSinceStart-60) / 35) };
+                } else {
+                    currentStatus = { long: 'Finished', short: 'FT' };
+                    scores = { home: 2, away: 1 };
+                }
+            } else { // Simplified for other sports
+                 if (minutesSinceStart < 120) {
+                    currentStatus = { long: 'Live', short: 'LIVE' };
+                    scores = { home: 50 + Math.floor(minutesSinceStart/5), away: 50 + Math.floor(minutesSinceStart/6) };
+                } else {
+                    currentStatus = { long: 'Finished', short: 'FT' };
+                    scores = { home: 102, away: 98 };
+                }
+            }
+             if (scores) {
+                winner = scores.home > scores.away ? 'home' : scores.away > scores.home ? 'away' : 'draw';
+            }
+        }
 
         return {
-            id: id,
-            date: gameDate.toISOString(),
-            time: time,
-            timestamp: timestamp,
-            timezone: 'UTC',
-            status: status,
+            id: id, date: gameDate.toISOString(), time: time, timestamp: timestamp, timezone: 'UTC', 
+            status: currentStatus,
             league: { id: id * 10, name: league, country: 'World', logo: '', season: new Date().getFullYear() },
-            teams: {
-                home: { id: id * 100 + 1, name: home, logo: '' },
-                away: { id: id * 100 + 2, name: away, logo: '' },
-            },
+            teams: { home: { id: id * 100 + 1, name: home, logo: '' }, away: { id: id * 100 + 2, name: away, logo: '' } },
+            scores, winner
         };
     };
 
     switch (sport) {
         case 'hockey':
-            const finishedHockey = baseGame(103, 'Dynamo Moscow', 'Ak Bars Kazan', 'KHL', '13:00', { long: 'Finished', short: 'FT' });
-            finishedHockey.scores = { home: 3, away: 2 };
             return [
                 baseGame(101, 'CSKA Moscow', 'SKA St. Petersburg', 'KHL', '16:30', { long: 'Not Started', short: 'NS' }),
                 baseGame(102, 'Toronto Maple Leafs', 'Boston Bruins', 'NHL', '23:00', { long: 'Not Started', short: 'NS' }),
-                finishedHockey,
+                baseGame(103, 'Dynamo Moscow', 'Ak Bars Kazan', 'KHL', '13:00', { long: 'Not Started', short: 'NS' }),
             ];
         case 'football':
-             const finishedFootball = baseGame(204, 'Juventus', 'Inter', 'Serie A', '14:00', { long: 'Finished', short: 'FT' });
-             finishedFootball.scores = { home: 1, away: 1 };
             return [
                 baseGame(201, 'Real Madrid', 'FC Barcelona', 'La Liga', '19:00', { long: 'Not Started', short: 'NS' }),
                 baseGame(202, 'Manchester City', 'Liverpool', 'Premier League', '15:30', { long: 'Not Started', short: 'NS' }),
-                baseGame(203, 'Bayern Munich', 'Dortmund', 'Bundesliga', '16:00', { long: 'First Half', short: '1H' }),
-                finishedFootball,
+                baseGame(203, 'Bayern Munich', 'Dortmund', 'Bundesliga', '12:00', { long: 'Not Started', short: 'NS' }),
             ];
         case 'basketball':
-             const finishedBasketball = baseGame(303, 'Fenerbahce', 'CSKA Moscow', 'Euroleague', '17:00', { long: 'Finished', short: 'FT' });
-             finishedBasketball.scores = { home: 89, away: 85 };
              return [
                 baseGame(301, 'Anadolu Efes', 'Real Madrid', 'Euroleague', '18:45', { long: 'Not Started', short: 'NS' }),
                 baseGame(302, 'Olympiacos', 'FC Barcelona', 'Euroleague', '21:15', { long: 'Not Started', short: 'NS' }),
-                finishedBasketball,
+                baseGame(303, 'Fenerbahce', 'CSKA Moscow', 'Euroleague', '17:00', { long: 'Not Started', short: 'NS' }),
              ];
         case 'nba':
-             const finishedNba = baseGame(403, 'Denver Nuggets', 'Miami Heat', 'NBA', '00:30', { long: 'Finished', short: 'FT' });
-             finishedNba.scores = { home: 104, away: 93 };
              return [
-                baseGame(401, 'Los Angeles Lakers', 'Boston Celtics', 'NBA', '01:30', { long: 'Not Started', short: 'NS' }),
-                baseGame(402, 'Golden State Warriors', 'Phoenix Suns', 'NBA', '03:00', { long: 'Not Started', short: 'NS' }),
-                finishedNba,
+                baseGame(401, 'Los Angeles Lakers', 'Boston Celtics', 'NBA', '23:30', { long: 'Not Started', short: 'NS' }), 
+                baseGame(402, 'Golden State Warriors', 'Phoenix Suns', 'NBA', '22:00', { long: 'Not Started', short: 'NS' }),
              ];
         default:
             return [];
@@ -88,18 +109,17 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     const today = new Date().toISOString().split('T')[0];
     const cacheKey = `cache:${sport}:games:${today}`;
 
+    // For cron jobs, we want fresh data, so we don't cache mocks.
+    // However, for local dev, this check remains useful.
+    if (!env.SPORT_API_KEY) {
+        console.log(`[MOCK] SPORT_API_KEY not found. Generating dynamic mock games for ${sport}.`);
+        return generateMockGames(sport);
+    }
+
     const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
     if (Array.isArray(cachedData)) {
         console.log(`[Cache HIT] Serving ${sport} games for ${today} from cache.`);
         return cachedData as SportGame[];
-    }
-
-    if (!env.SPORT_API_KEY) {
-        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
-        const mockGames = generateMockGames(sport);
-        await env.BOT_STATE.put(cacheKey, JSON.stringify(mockGames), { expirationTtl: CACHE_TTL_SECONDS });
-        console.log(`[Cache WRITE] Stored ${mockGames.length} mock ${sport} games for ${today}.`);
-        return mockGames;
     }
 
     console.log(`[Cache MISS] Fetching ${sport} games for ${today} from API.`);
@@ -145,19 +165,34 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
                 };
                 if (goals && goals.home !== null) {
                     game.scores = { home: goals.home, away: goals.away };
+                     if (game.status.short === 'FT') {
+                        game.winner = goals.home > goals.away ? 'home' : goals.away > goals.home ? 'away' : 'draw';
+                    }
                 }
                 return game;
             } catch (e) { return null; }
         }).filter((game): game is SportGame => game !== null);
-    } else {
+    } else { // Basketball, Hockey
         games = (data.response || []).map((item: any): SportGame => {
             const game: SportGame = { ...item };
-            if (sport === 'basketball' || sport === 'nba') {
+            let homeScore: number | null = null;
+            let awayScore: number | null = null;
+
+             if (sport === 'basketball' || sport === 'nba') {
                  if (item.scores?.home?.total !== null && typeof item.scores?.home?.total !== 'undefined') {
-                    game.scores = { home: item.scores.home.total, away: item.scores.away.total };
+                    homeScore = item.scores.home.total;
+                    awayScore = item.scores.away.total;
                 }
             } else if (item.scores?.home !== null && typeof item.scores?.home !== 'undefined') { // Hockey, etc.
-                game.scores = { home: item.scores.home, away: item.scores.away };
+                homeScore = item.scores.home;
+                awayScore = item.scores.away;
+            }
+
+            if (homeScore !== null && awayScore !== null) {
+                game.scores = { home: homeScore, away: awayScore };
+                if (FINISHED_STATUSES.includes(game.status.short)) {
+                    game.winner = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
+                }
             }
             return game;
         }).filter((game: SportGame) => game?.teams?.home?.name && game?.teams?.away?.name);

@@ -220,43 +220,53 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
     return finalPredictions;
 }
 
+async function runUpdateTask(env: Env) {
+     try {
+        console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
+        
+        const allSportsResults = await Promise.allSettled(
+            SPORTS_TO_PROCESS.map(sport => processSport(sport, env))
+        );
+
+        allSportsResults.forEach((result, index) => {
+            const sport = SPORTS_TO_PROCESS[index];
+            if (result.status === 'rejected') {
+                console.error(`[Updater Task] A sport failed to process: ${sport}`, result.reason);
+            } else {
+                 console.log(`[Updater Task] Sport processed successfully: ${sport}`);
+            }
+        });
+
+        // After processing all individual sports, create the combined 'all' key
+        const combinedPredictions: SharedPrediction[] = [];
+        for(const sport of SPORTS_TO_PROCESS) {
+            const sportPredictions = await env.BOT_STATE.get(`central_predictions:${sport}`, { type: 'json' }) as SharedPrediction[] | null;
+            if(sportPredictions) {
+                combinedPredictions.push(...sportPredictions);
+            }
+        }
+        await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions));
+        console.log('[Updater Task] Combined "all" predictions key updated.');
+
+    } catch (error) {
+        console.error('[Updater Task] A critical error occurred during execution:', error);
+    }
+}
 
 // This is the entry point for the scheduled Cloudflare Worker
 export default {
     async scheduled(controller: any, env: Env, ctx: any): Promise<void> {
-        ctx.waitUntil(
-            (async () => {
-                try {
-                    console.log(`[CRON] Triggered at ${new Date().toISOString()}`);
-                    
-                    const allSportsResults = await Promise.allSettled(
-                        SPORTS_TO_PROCESS.map(sport => processSport(sport, env))
-                    );
-
-                    allSportsResults.forEach((result, index) => {
-                        const sport = SPORTS_TO_PROCESS[index];
-                        if (result.status === 'rejected') {
-                            console.error(`[CRON] A sport failed to process: ${sport}`, result.reason);
-                        } else {
-                             console.log(`[CRON] Sport processed successfully: ${sport}`);
-                        }
-                    });
-
-                    // After processing all individual sports, create the combined 'all' key
-                    const combinedPredictions: SharedPrediction[] = [];
-                    for(const sport of SPORTS_TO_PROCESS) {
-                        const sportPredictions = await env.BOT_STATE.get(`central_predictions:${sport}`, { type: 'json' }) as SharedPrediction[] | null;
-                        if(sportPredictions) {
-                            combinedPredictions.push(...sportPredictions);
-                        }
-                    }
-                    await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions));
-                    console.log('[CRON] Combined "all" predictions key updated.');
-
-                } catch (error) {
-                    console.error('[CRON] A critical error occurred during execution:', error);
-                }
-            })()
-        );
+        ctx.waitUntil(runUpdateTask(env));
     }
+};
+
+// This handles the manual trigger from the admin panel
+export const onRequestPost: (context: EventContext) => Promise<Response> = async ({ env, waitUntil }) => {
+    // Run the update in the background, don't wait for it to finish
+    waitUntil(runUpdateTask(env));
+    // Immediately respond to the client
+    return new Response(JSON.stringify({ message: 'Prediction update process has been started in the background.' }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+    });
 };
