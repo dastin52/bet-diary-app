@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useAuthContext } from '../contexts/AuthContext';
 import Input from './ui/Input';
@@ -22,6 +23,13 @@ const BankIcon = () => (
     </svg>
 );
 
+const CompetitionIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+    </svg>
+);
+
 const AdminIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -30,7 +38,7 @@ const AdminIcon = () => (
 
 const SettingsIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
 );
@@ -81,7 +89,7 @@ const SimulatorIcon = () => (
 
 
 
-type View = 'dashboard' | 'log' | 'admin' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
+type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 
 interface SidebarProps {
   currentView: View;
@@ -122,7 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMo
   const [copied, setCopied] = useState(false);
 
   const handleSetView = (view: View) => {
-    const allowedDemoViews: View[] = ['dashboard'];
+    const allowedDemoViews: View[] = ['dashboard', 'competition'];
     if (isDemoMode && !allowedDemoViews.includes(view)) {
         onAuthRequired();
         return;
@@ -152,6 +160,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMo
                 <NavItem icon={<DashboardIcon />} label="Дашборд" view="dashboard" currentView={currentView} onClick={setCurrentView} />
                 <NavItem icon={<LogIcon />} label="Журнал ставок" view="log" currentView={currentView} onClick={handleSetView} />
                 <NavItem icon={<BankIcon />} label="История банка" view="bank_history" currentView={currentView} onClick={handleSetView} />
+                <NavItem icon={<CompetitionIcon />} label="Соревнования" view="competition" currentView={currentView} onClick={setCurrentView} />
             </nav>
             
             <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">

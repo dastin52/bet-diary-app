@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useBetContext } from '../contexts/BetContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';

@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -34,10 +35,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     try {
       // 1. Get all registered users
       const allUsers = getUsers();
-      // @ts-ignore - Assuming this is a mock file and we are fixing the error
-      // FIX: Use .getTime() to perform arithmetic on Date objects for sorting.
-      // Fix: Use .getTime() to perform arithmetic on Date objects.
-      // FIX: Corrected date subtraction by calling .getTime() on both Date objects.
+      // FIX: Use .getTime() to perform arithmetic on Date objects.
       setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
       // 2. Aggregate bets from all users
@@ -89,8 +87,6 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    // Fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    // FIX: Explicitly typed the accumulator for the reduce function to resolve incorrect type inference.
     const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -101,8 +97,6 @@ export const useAdminData = (): UseAdminDataReturn => {
         .slice(0, 10);
 
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    // Fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    // FIX: Explicitly typed the accumulator for the reduce function to resolve incorrect type inference.
     const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;

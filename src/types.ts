@@ -1,3 +1,4 @@
+
 // FIX: Add SharedPrediction type to be used by the prediction context and components.
 export interface SharedPrediction {
   sport: string;
@@ -6,7 +7,6 @@ export interface SharedPrediction {
   date: string;
   time: string;
   isHotMatch: boolean;
-  // FIX: Add the missing timestamp property to align with the data from the API.
   timestamp: number;
   status: {
     long: string;
@@ -101,6 +101,7 @@ export interface User {
   status: 'active' | 'blocked';
   telegramId?: number;
   telegramUsername?: string;
+  // FIX: Add 'source' property to track user origin (web or telegram).
   source?: 'web' | 'telegram';
 }
 

@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import Modal from './ui/Modal';
-import { GroundingSource, SharedPrediction } from '../types';
+import { SharedPrediction, GroundingSource } from '../types';
 import { fetchMatchAnalysis } from '../services/aiService';
 
 const LoadingSpinner = () => (
