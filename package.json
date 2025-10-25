@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "postbuild": "rm -f dist/_routes.json",
     "preview": "vite preview"
   },
   "dependencies": {
