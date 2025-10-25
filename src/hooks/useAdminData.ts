@@ -91,7 +91,6 @@ export const useAdminData = (): UseAdminDataReturn => {
         
         // @ts-ignore
         // FIX: Use .getTime() to perform arithmetic on Date objects for sorting.
-        // FIX: Use .getTime() to perform arithmetic on Date objects for sorting.
         setUsers(finalUsersWithTg.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
         // 4. Aggregate bets from all users that have data in localStorage
@@ -149,7 +148,6 @@ export const useAdminData = (): UseAdminDataReturn => {
     
     // @ts-ignore
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -160,7 +158,6 @@ export const useAdminData = (): UseAdminDataReturn => {
         .slice(0, 10);
 
     // @ts-ignore
-    // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
