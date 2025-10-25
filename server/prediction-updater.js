@@ -39,7 +39,7 @@ const cache = {
 // --- CONSTANTS & HELPERS ---
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
-const CACHE_TTL_SECONDS = 7200; // 2 hours
+const CACHE_TTL_SECONDS = 3600; // 1 hour, reduced from 2 to ensure hourly updates fetch new dynamic data
 
 const getStatusPriority = (statusShort) => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
@@ -70,29 +70,97 @@ const resolveMarketOutcome = (market, scores, winner) => {
 
 // --- MOCK & API SERVICES ---
 function generateMockGames(sport) {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const baseGame = (id, home, away, league, time, status) => ({
-        id, date: new Date(`${todayStr}T${time}:00Z`).toISOString(), time, timestamp: Math.floor(new Date(`${todayStr}T${time}:00Z`).getTime() / 1000), timezone: 'UTC', status,
-        league: { id: id * 10, name: league, country: 'World', logo: '', season: 2024 },
-        teams: { home: { id: id * 100 + 1, name: home, logo: '' }, away: { id: id * 100 + 2, name: away, logo: '' } },
-    });
-    if (sport === 'football') return [baseGame(201, 'Real Madrid', 'FC Barcelona', 'La Liga', '19:00', { long: 'Not Started', short: 'NS' })];
-    if (sport === 'hockey') return [baseGame(101, 'CSKA Moscow', 'SKA St. Petersburg', 'KHL', '16:30', { long: 'Not Started', short: 'NS' })];
-    return [];
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const currentUTCHour = now.getUTCHours();
+    const currentUTCMinutes = now.getUTCMinutes();
+
+    const baseGame = (id, home, away, league, time, baseStatus) => {
+        const gameDate = new Date(`${todayStr}T${time}:00Z`);
+        const gameUTCHour = gameDate.getUTCHours();
+        const timestamp = Math.floor(gameDate.getTime() / 1000);
+        
+        let currentStatus = baseStatus;
+        let scores = undefined;
+        const minutesSinceStart = (now.getTime() - gameDate.getTime()) / 60000;
+        
+        if (minutesSinceStart > 0) { // Game has started or finished
+            if (sport === 'football') {
+                 if (minutesSinceStart < 45) {
+                    currentStatus = { long: 'First Half', short: '1H' };
+                    scores = { home: Math.floor(minutesSinceStart / 20) % 2, away: Math.floor(minutesSinceStart / 25) % 2 };
+                } else if (minutesSinceStart < 65) {
+                    currentStatus = { long: 'Half Time', short: 'HT' };
+                    scores = { home: 1, away: 0 };
+                } else if (minutesSinceStart < 110) {
+                    currentStatus = { long: 'Second Half', short: '2H' };
+                    scores = { home: 1 + Math.floor((minutesSinceStart-60) / 40), away: Math.floor((minutesSinceStart-60) / 35) };
+                } else {
+                    currentStatus = { long: 'Finished', short: 'FT' };
+                    scores = { home: 2, away: 1 };
+                }
+            } else { // Simplified for other sports
+                 if (minutesSinceStart < 120) {
+                    currentStatus = { long: 'Live', short: 'LIVE' };
+                    scores = { home: 50 + Math.floor(minutesSinceStart/5), away: 50 + Math.floor(minutesSinceStart/6) };
+                } else {
+                    currentStatus = { long: 'Finished', short: 'FT' };
+                    scores = { home: 102, away: 98 };
+                }
+            }
+        }
+
+        return {
+            id, date: gameDate.toISOString(), time, timestamp, timezone: 'UTC', 
+            status: currentStatus,
+            league: { id: id * 10, name: league, country: 'World', logo: '', season: new Date().getFullYear() },
+            teams: { home: { id: id * 100 + 1, name: home, logo: '' }, away: { id: id * 100 + 2, name: away, logo: '' } },
+            scores,
+        };
+    };
+
+    switch (sport) {
+        case 'football':
+            return [
+                baseGame(201, 'Real Madrid', 'FC Barcelona', 'La Liga', '19:00', { long: 'Not Started', short: 'NS' }),
+                baseGame(202, 'Manchester City', 'Liverpool', 'Premier League', '15:30', { long: 'Not Started', short: 'NS' }),
+                baseGame(203, 'Bayern Munich', 'Dortmund', 'Bundesliga', '12:00', { long: 'Not Started', short: 'NS' }),
+            ];
+        case 'hockey':
+            return [
+                baseGame(101, 'CSKA Moscow', 'SKA St. Petersburg', 'KHL', '16:30', { long: 'Not Started', short: 'NS' }),
+                baseGame(102, 'Toronto Maple Leafs', 'Boston Bruins', 'NHL', '23:00', { long: 'Not Started', short: 'NS' }),
+                baseGame(103, 'Dynamo Moscow', 'Ak Bars Kazan', 'KHL', '13:00', { long: 'Not Started', short: 'NS' }),
+            ];
+        case 'basketball':
+             return [
+                baseGame(301, 'Anadolu Efes', 'Real Madrid', 'Euroleague', '18:45', { long: 'Not Started', short: 'NS' }),
+                baseGame(302, 'Olympiacos', 'FC Barcelona', 'Euroleague', '21:15', { long: 'Not Started', short: 'NS' }),
+                baseGame(303, 'Fenerbahce', 'CSKA Moscow', 'Euroleague', '17:00', { long: 'Not Started', short: 'NS' }),
+             ];
+        case 'nba':
+             return [
+                baseGame(401, 'Los Angeles Lakers', 'Boston Celtics', 'NBA', '23:30', { long: 'Not Started', short: 'NS' }), 
+                baseGame(402, 'Golden State Warriors', 'Phoenix Suns', 'NBA', '22:00', { long: 'Not Started', short: 'NS' }),
+             ];
+        default:
+            return [];
+    }
 }
 
 async function getTodaysGamesBySport(sport, env) {
-    // In local dev, we don't have Cloudflare KV, so we use the file cache.
     const today = new Date().toISOString().split('T')[0];
     const cacheKey = `games:${sport}:${today}`;
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
+    
+    // NOTE: The cache is now disabled for getTodaysGamesBySport to ensure dynamic data is always generated.
+    // The main prediction list is still cached.
+    // const cached = cache.get(cacheKey); 
+    // if (cached) return cached;
 
     if (!env.SPORT_API_KEY) {
-        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
+        console.log(`[MOCK] SPORT_API_KEY not found. Generating dynamic mock games for ${sport}.`);
         const mockGames = generateMockGames(sport);
-        cache.put(cacheKey, mockGames, CACHE_TTL_SECONDS);
+        // We don't cache the result of mock games anymore to ensure freshness on every run.
         return mockGames;
     }
     // Real API call logic would go here, for now we rely on mocks.
@@ -103,7 +171,6 @@ async function translateTeamNames(teamNames, env, ai) {
     if (!teamNames || teamNames.length === 0) return {};
     const translations = {};
     for (const name of teamNames) {
-        // Simple mock translation for local dev
         translations[name] = name; 
     }
     return translations;
