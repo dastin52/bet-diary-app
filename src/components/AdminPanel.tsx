@@ -12,7 +12,7 @@ import ActivityTimeline from './ActivityTimeline';
 type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics' | 'diagnostics' | 'api_activity';
 
 const AdminPanel: React.FC = () => {
-  const { users, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
+  const { users, allBets, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
   const [activeTab, setActiveTab] = useState<AdminView>('stats');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);

@@ -26,8 +26,9 @@ async function logApiActivity(env: Env, logEntry: Omit<ApiActivityLog, 'timestam
 }
 
 function generateMockGames(sport: string): SportGame[] {
-    // ... (mock generation logic remains the same)
-    return []; // For brevity, in a real scenario this function would be fully implemented
+    // This is a placeholder for local development.
+    // In a real scenario, this would generate mock data.
+    return [];
 }
 
 export async function getTodaysGamesBySport(sport: string, env: Env): Promise<SportGame[]> {
@@ -35,14 +36,23 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     const cacheKey = `cache:${sport}:games:${today}`;
 
     if (!env.SPORT_API_KEY) {
-        console.log(`[MOCK] SPORT_API_KEY not found. Generating dynamic mock games for ${sport}.`);
+        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
         await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_GENERATOR', status: 'success' });
         return generateMockGames(sport);
     }
     
-    // ... (rest of the function remains largely the same)
+    const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
+    if (cachedData) {
+        console.log(`[Cache HIT] Found cached games for ${sport} on ${today}.`);
+        return cachedData as SportGame[];
+    }
+    console.log(`[Cache MISS] Fetching fresh games for ${sport} on ${today}.`);
 
     const config = SPORT_API_CONFIG[sport];
+    if (!config) {
+         console.error(`No API config found for sport: ${sport}`);
+         return [];
+    }
     const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
 
     try {
@@ -55,28 +65,43 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             throw new Error(errorMessage);
         }
 
-        const data: any = await response.json();
+        const data: SportApiResponse = await response.json();
         const hasErrors = data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0);
-        if (hasErrors) {
+        
+        if (hasErrors || !data.response) {
             const errorMessage = `API returned logical error: ${JSON.stringify(data.errors)}`;
             await logApiActivity(env, { sport, endpoint: url, status: 'error', errorMessage });
             throw new Error(errorMessage);
         }
         
-        // Log success after parsing
         await logApiActivity(env, { sport, endpoint: url, status: 'success' });
         
-        // ... (parsing logic remains the same)
-        let games: SportGame[] = []; // Placeholder for actual parsing logic
-        // ...
+        const games: SportGame[] = data.response.map((item: any) => {
+            if(sport === 'football') {
+                return {
+                    id: item.fixture.id,
+                    date: item.fixture.date.split('T')[0],
+                    time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                    timestamp: item.fixture.timestamp,
+                    status: { long: item.fixture.status.long, short: item.fixture.status.short },
+                    league: item.league,
+                    teams: item.teams,
+                    scores: item.score.fulltime,
+                    winner: FINISHED_STATUSES.includes(item.fixture.status.short) ? (item.teams.home.winner ? 'home' : item.teams.away.winner ? 'away' : 'draw') : undefined,
+                };
+            }
+             return {
+                ...item,
+                winner: (item.scores?.home !== null && item.scores?.away !== null) ? (item.scores.home > item.scores.away ? 'home' : item.scores.away > item.scores.home ? 'away' : 'draw') : undefined,
+            };
+        });
         
         await env.BOT_STATE.put(cacheKey, JSON.stringify(games), { expirationTtl: CACHE_TTL_SECONDS });
         return games;
 
     } catch (error) {
-        console.error(`[FALLBACK] An error occurred while fetching ${sport} games, generating mock data instead. Error:`, error);
-        // Log the final failure before falling back
+        console.error(`[FALLBACK] An error occurred while fetching ${sport} games. Error:`, error);
         await logApiActivity(env, { sport, endpoint: url, status: 'error', errorMessage: error instanceof Error ? error.message : String(error) });
-        return generateMockGames(sport);
+        return [];
     }
 }

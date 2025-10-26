@@ -23,9 +23,6 @@ if (!process.env.GEMINI_API_KEY) {
     ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 }
 
-// In-memory store for API activity logs in local dev
-let apiActivityLog = [];
-
 
 // --- WEB APP API ROUTES ---
 
