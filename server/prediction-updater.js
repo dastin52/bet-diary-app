@@ -72,7 +72,7 @@ const resolveMarketOutcome = (market, scores, winner) => {
 function generateMockGames(sport) {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
-
+    
     const baseGame = (id, home, away, league, time, baseStatus) => {
         const gameDate = new Date(`${todayStr}T${time}:00Z`);
         const timestamp = Math.floor(gameDate.getTime() / 1000);
@@ -234,7 +234,7 @@ async function processSport(sport) {
             }
             
             const d = new Date(game.timestamp * 1000);
-            const formattedDate = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+            const formattedDate = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
 
 
             return {

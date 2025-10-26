@@ -39,16 +39,16 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
 
       // --- РЕЗЕРВНАЯ ЛОГИКА ---
       const today = new Date();
-      const todayDay = String(today.getDate()).padStart(2, '0');
-      const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
-      const todayYear = today.getFullYear();
+      const todayDay = String(today.getUTCDate()).padStart(2, '0');
+      const todayMonth = String(today.getUTCMonth() + 1).padStart(2, '0');
+      const todayYear = today.getUTCFullYear();
       const todayStr = `${todayDay}.${todayMonth}.${todayYear}`;
       
       const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowDay = String(tomorrow.getDate()).padStart(2, '0');
-      const tomorrowMonth = String(tomorrow.getMonth() + 1).padStart(2, '0');
-      const tomorrowYear = tomorrow.getFullYear();
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      const tomorrowDay = String(tomorrow.getUTCDate()).padStart(2, '0');
+      const tomorrowMonth = String(tomorrow.getUTCMonth() + 1).padStart(2, '0');
+      const tomorrowYear = tomorrow.getUTCFullYear();
       const tomorrowStr = `${tomorrowDay}.${tomorrowMonth}.${tomorrowYear}`;
 
 

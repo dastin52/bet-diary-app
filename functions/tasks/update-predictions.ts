@@ -175,7 +175,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
             }
 
             const d = new Date(game.timestamp * 1000);
-            const formattedDate = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+            const formattedDate = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
 
             return {
                 ...(game as any), sport: sport, eventName: game.league.name, teams: matchName,

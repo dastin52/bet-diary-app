@@ -46,7 +46,7 @@ const createMockMatch = (id: number, sport: string, eventName: string, home: str
         sport,
         eventName,
         teams: matchName,
-        date: gameDate.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric'}),
+        date: `${String(gameDate.getUTCDate()).padStart(2, '0')}.${String(gameDate.getUTCMonth() + 1).padStart(2, '0')}.${gameDate.getUTCFullYear()}`,
         time: gameDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
         timestamp: Math.floor(gameDate.getTime() / 1000),
         status,
