@@ -19,6 +19,8 @@ type PagesFunction<E = unknown> = (
 
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const BATCH_SIZE = 15; // Process 15 games in parallel at a time to avoid timeouts and rate limits
+// @google/genai-fix: Add a delay function to prevent API rate-limiting issues when processing sports sequentially.
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getStatusPriority = (statusShort: string): number => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
@@ -207,19 +209,26 @@ export async function runUpdateTask(env: Env) {
      try {
         console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
         
-        const allSportsResults = await Promise.allSettled(
-            SPORTS_TO_PROCESS.map(sport => processSport(sport, env))
-        );
+        // @google/genai-fix: Changed from parallel processing (Promise.allSettled) to a sequential loop with a delay to avoid hitting API rate limits.
+        const allSportsResults: PromiseSettledResult<SharedPrediction[]>[] = [];
 
-        allSportsResults.forEach((result, index) => {
-            const sport = SPORTS_TO_PROCESS[index];
-            if (result.status === 'rejected') {
-                console.error(`[Updater Task] A sport failed to process: ${sport}`, result.reason);
-            } else {
-                 console.log(`[Updater Task] Sport processed successfully: ${sport}`);
+        for (const sport of SPORTS_TO_PROCESS) {
+            try {
+                const result = await processSport(sport, env);
+                allSportsResults.push({ status: 'fulfilled', value: result });
+                console.log(`[Updater Task] Sport processed successfully: ${sport}`);
+            } catch (reason) {
+                allSportsResults.push({ status: 'rejected', reason });
+                console.error(`[Updater Task] A sport failed to process: ${sport}`, reason);
             }
-        });
 
+            // Add a delay after each sport except the last one.
+            if (SPORTS_TO_PROCESS.indexOf(sport) < SPORTS_TO_PROCESS.length - 1) {
+                console.log('[Updater Task] Waiting 61 seconds before next sport to avoid per-minute rate limits...');
+                await delay(61000); // 61-second delay
+            }
+        }
+        
         const combinedPredictions: SharedPrediction[] = [];
         for(const sport of SPORTS_TO_PROCESS) {
             const sportPredictions = await env.BOT_STATE.get(`central_predictions:${sport}`, { type: 'json' }) as SharedPrediction[] | null;

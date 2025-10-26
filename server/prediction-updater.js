@@ -238,8 +238,8 @@ async function runUpdate() {
         }
         
         if (SPORTS_TO_PROCESS.indexOf(sport) < SPORTS_TO_PROCESS.length - 1) {
-             console.log('[Updater] Waiting 15 seconds before next sport to avoid rate limits...');
-             await delay(15000);
+             console.log('[Updater] Waiting 61 seconds before next sport to avoid rate limits...');
+             await delay(61000);
         }
     }
     
