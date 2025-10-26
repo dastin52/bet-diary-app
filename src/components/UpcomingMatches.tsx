@@ -31,13 +31,6 @@ const sportTabs = [
     { key: 'nba', label: 'NBA' },
 ];
 
-const getStatusPriority = (statusShort: string): number => {
-    const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
-    if (live.includes(statusShort)) return 1;
-    if (['NS', 'TBD'].includes(statusShort)) return 2;
-    return 3;
-};
-
 const SPORT_MAP: Record<string, string> = {
     football: 'Футбол',
     basketball: 'Баскетбол',
@@ -49,42 +42,41 @@ const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => voi
     const [isExpanded, setIsExpanded] = useState(true);
     const [activeSport, setActiveSport] = useState('all');
 
-    const filteredAndSortedMatches = useMemo(() => {
+    const filteredMatches = useMemo(() => {
         return allPredictions
             .filter(p => {
+                const sportLower = p.sport.toLowerCase();
                 if (activeSport === 'all') return true;
                 if (activeSport === 'nba') {
-                    return p.sport.toLowerCase() === 'nba' || (p.sport.toLowerCase() === 'basketball' && p.eventName === 'NBA');
+                    return sportLower === 'nba' || (sportLower === 'basketball' && p.eventName.toUpperCase() === 'NBA');
                 }
                 if (activeSport === 'basketball') {
-                    return p.sport.toLowerCase() === 'basketball' && p.eventName !== 'NBA';
+                    return sportLower === 'basketball' && p.eventName.toUpperCase() !== 'NBA';
                 }
-                return p.sport.toLowerCase() === activeSport.toLowerCase();
-            })
-            .sort((a, b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || a.timestamp - b.timestamp);
+                return sportLower === activeSport;
+            });
     }, [allPredictions, activeSport]);
 
     const renderContent = () => {
         if (isLoading) {
             return <LoadingSkeleton />;
         }
-        if (filteredAndSortedMatches.length === 0 && !error) {
+        if (filteredMatches.length === 0 && !error) {
             return <p className="text-center text-gray-500 py-4">Нет матчей для выбранного фильтра.</p>;
         }
         return (
             <div className="space-y-2 max-h-96 overflow-y-auto pr-2 mt-4">
-                {filteredAndSortedMatches.map((match) => (
+                {filteredMatches.map((match) => (
                     <button
                         key={match.id}
                         onClick={() => onMatchClick(match)}
                         className="w-full text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors duration-200 flex justify-between items-center"
                     >
                         <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{SPORT_MAP[match.sport] || match.sport} &middot; {match.eventName}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{SPORT_MAP[match.sport.toLowerCase()] || match.sport} &middot; {match.eventName}</p>
                             <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                                 {match.status.emoji}
                                 {match.teams}
-                                {match.score && <span className="font-bold ml-2 text-indigo-400">{match.score}</span>}
                             </p>
                             <p className="text-sm text-indigo-500 dark:text-indigo-400">{match.date} &middot; {match.time}</p>
                         </div>

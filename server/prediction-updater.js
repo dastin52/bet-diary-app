@@ -232,10 +232,14 @@ async function processSport(sport) {
                     }
                 } catch (error) { console.error(`[Updater] Failed AI prediction for ${matchName}:`, error); }
             }
+            
+            const d = new Date(game.timestamp * 1000);
+            const formattedDate = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+
 
             return {
                 ...game, sport, eventName: game.league.name, teams: matchName,
-                date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                date: formattedDate,
                 time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
                 status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
                 prediction,
