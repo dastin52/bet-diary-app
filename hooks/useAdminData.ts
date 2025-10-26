@@ -88,7 +88,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     }
 
     const settledBets = allBets.filter(b => b.status !== BetStatus.Pending);
-    // @google/genai-fix: Ensure bet.stake is treated as a number.
+    // FIX: Ensure bet.stake is treated as a number to prevent arithmetic errors.
     const totalStaked = settledBets.reduce((acc, bet) => acc + (Number(bet.stake) || 0), 0);
     const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
     const platformRoi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
@@ -99,7 +99,7 @@ export const useAdminData = (): UseAdminDataReturn => {
             acc[sport] = { profit: 0, staked: 0 };
         }
         acc[sport].profit += bet.profit ?? 0;
-        // @google/genai-fix: Ensure bet.stake is treated as a number.
+        // FIX: Ensure bet.stake is treated as a number to prevent arithmetic errors.
         acc[sport].staked += Number(bet.stake) || 0;
         return acc;
     }, {});

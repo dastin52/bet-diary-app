@@ -36,7 +36,7 @@ app.get('/api/health', (req, res) => {
         timestamp: new Date().toISOString(),
         apiKeys: {
             gemini: process.env.GEMINI_API_KEY ? 'CONFIGURED' : 'MISSING',
-            sportsApi: process.env.SPORT_API_KEY ? 'CONFIGURED' : 'NOT_APPLICABLE_IN_LOCAL_DEV (uses mocks)',
+            sportsApi: process.env.SPORT_API_KEY ? 'CONFIGURED (will use real API)' : 'MISSING (will use mocks)',
         },
         kvBinding: 'NOT_APPLICABLE_IN_LOCAL_DEV (uses file cache)',
         lastTriggered,

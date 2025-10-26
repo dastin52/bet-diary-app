@@ -111,11 +111,84 @@ function generateMockGames(sport) {
     });
 }
 
+const SPORT_API_CONFIG = {
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12&season=2023-2024' },
+};
 
 async function getTodaysGamesBySport(sport) {
-    logApiActivity({ sport, endpoint: 'MOCK_SPORTS_API', status: 'success' });
-    return generateMockGames(sport);
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (!process.env.SPORT_API_KEY) {
+        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
+        logApiActivity({ sport, endpoint: 'MOCK_SPORTS_API', status: 'success' });
+        return generateMockGames(sport);
+    }
+    
+    console.log(`[API] Fetching fresh games for ${sport} on ${today}.`);
+
+    const config = SPORT_API_CONFIG[sport];
+    if (!config) {
+         console.error(`No API config found for sport: ${sport}`);
+         return [];
+    }
+    const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
+
+    try {
+        const response = await fetch(url, { headers: { [config.keyName]: process.env.SPORT_API_KEY } });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            const errorMessage = `API responded with status ${response.status}: ${errorBody}`;
+            logApiActivity({ sport, endpoint: url, status: 'error', errorMessage });
+            throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        const hasErrors = data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0);
+        
+        if (hasErrors || !data.response) {
+            const errorMessage = `API returned logical error: ${JSON.stringify(data.errors)}`;
+            logApiActivity({ sport, endpoint: url, status: 'error', errorMessage });
+            throw new Error(errorMessage);
+        }
+        
+        logApiActivity({ sport, endpoint: url, status: 'success' });
+        
+        const games = data.response.map((item) => {
+            if (sport === 'football') {
+                return {
+                    id: item.fixture.id, date: item.fixture.date.split('T')[0],
+                    time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                    timestamp: item.fixture.timestamp, timezone: item.fixture.timezone,
+                    status: { long: item.fixture.status.long, short: item.fixture.status.short },
+                    league: item.league, teams: item.teams, scores: item.score.fulltime,
+                    winner: FINISHED_STATUSES.includes(item.fixture.status.short)
+                        ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw'))
+                        : undefined,
+                };
+            }
+            return {
+                id: item.id, date: item.date.split('T')[0], time: item.time, timestamp: item.timestamp,
+                timezone: item.timezone, status: { long: item.status.long, short: item.status.short },
+                league: item.league, teams: item.teams, scores: item.scores,
+                winner: (item.scores?.home !== null && item.scores?.away !== null && item.scores.home !== undefined && item.scores.away !== undefined)
+                    ? (item.scores.home > item.scores.away ? 'home' : (item.scores.away > item.scores.home ? 'away' : 'draw'))
+                    : undefined,
+            };
+        });
+        
+        return games;
+
+    } catch (error) {
+        console.error(`[FALLBACK] An error occurred while fetching ${sport} games. Falling back to mocks. Error:`, error);
+        logApiActivity({ sport, endpoint: url, status: 'error', errorMessage: error instanceof Error ? error.message : String(error) });
+        return generateMockGames(sport); // Fallback to mocks on error
+    }
 }
+
 
 // ... (rest of the file remains the same, including getAiPayloadForSport, processSport, and runUpdate)
 
