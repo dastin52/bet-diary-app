@@ -113,21 +113,21 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // @google/genai-fix: Add explicit type to initial value of reduce to fix type inference issue.
-    const popularSportsCounts = settledBets.reduce((acc, bet) => {
+    // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
+    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularSports = Object.entries(popularSportsCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // @google/genai-fix: Add explicit type to initial value of reduce to fix type inference issue.
-    const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
+    // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
+    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
@@ -150,8 +150,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         const range = oddsRanges.find(r => bet.odds >= r.min && bet.odds < r.max);
         if (range) {
             const bucket = performanceByOddsAcc[range.label];
-            // @google/genai-fix: Ensure bet.stake is treated as a number.
-            bucket.staked += Number(bet.stake);
+            // FIX: Safely add to the staked amount by converting `bet.stake` to a number and providing a fallback of 0 to prevent `NaN` values.
+            bucket.staked += Number(bet.stake) || 0;
             bucket.profit += bet.profit ?? 0;
             if (bet.status === BetStatus.Won) {
                 bucket.wins += 1;
@@ -191,8 +191,8 @@ export const useAdminData = (): UseAdminDataReturn => {
                 // @google/genai-fix: Ensure bet.stake is treated as a number.
                 teamData.staked += Number(bet.stake) || 0;
                 teamData.profit += bet.profit ?? 0;
-                // @google/genai-fix: Ensure bet.odds is treated as a number.
-                teamData.oddsSum += Number(bet.odds);
+                // FIX: Safely add to the odds sum by converting `bet.odds` to a number and providing a fallback of 0 to prevent `NaN` values.
+                teamData.oddsSum += Number(bet.odds) || 0;
                 if (bet.status === BetStatus.Won) teamData.wins += 1;
                 else if (bet.status === BetStatus.Lost) teamData.losses += 1;
             }

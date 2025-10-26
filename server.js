@@ -31,7 +31,8 @@ let apiActivityLog = [];
 
 // Health check endpoint for diagnostics
 app.get('/api/health', (req, res) => {
-    const lastRun = cache.getPersistent('last_successful_run_timestamp') || 'Not run yet';
+    const lastTriggered = cache.getPersistent('last_run_triggered_timestamp') || null;
+    const lastRun = cache.getPersistent('last_successful_run_timestamp') || null;
     const lastError = cache.getPersistent('last_run_error') || null;
     const healthStatus = {
         status: "ok",
@@ -41,6 +42,7 @@ app.get('/api/health', (req, res) => {
             sportsApi: process.env.SPORT_API_KEY ? 'CONFIGURED' : 'NOT_APPLICABLE_IN_LOCAL_DEV (uses mocks)',
         },
         kvBinding: 'NOT_APPLICABLE_IN_LOCAL_DEV (uses file cache)',
+        lastTriggered,
         lastSuccessfulUpdate: lastRun,
         lastUpdateError: lastError,
     };

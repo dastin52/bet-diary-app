@@ -201,6 +201,9 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 }
 
 export async function runUpdateTask(env: Env) {
+     // Heartbeat: Immediately log that the task was triggered.
+     await env.BOT_STATE.put('last_run_triggered_timestamp', new Date().toISOString());
+
      try {
         console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
         

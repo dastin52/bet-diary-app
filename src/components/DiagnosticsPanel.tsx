@@ -29,6 +29,7 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
     const [log, setLog] = useState('');
     const [connectivity, setConnectivity] = useState<CheckResult | null>(null);
     const [apiKeys, setApiKeys] = useState<CheckResult | null>(null);
+    const [lastTriggered, setLastTriggered] = useState<CheckResult | null>(null);
     const [lastUpdate, setLastUpdate] = useState<CheckResult | null>(null);
     const [lastError, setLastError] = useState<CheckResult | null>(null);
     const [cacheStatus, setCacheStatus] = useState<Record<string, CacheCheckResult>>({});
@@ -36,14 +37,11 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
 
     const runDiagnostics = useCallback(async () => {
         setIsLoading(true);
-        setConnectivity(null);
-        setApiKeys(null);
-        setLastUpdate(null);
-        setLastError(null);
-        setCacheStatus({});
+        // Reset states
+        setConnectivity(null); setApiKeys(null); setLastTriggered(null); setLastUpdate(null); setLastError(null); setCacheStatus({});
         let fullLog = `--- DIAGNOSTICS LOG @ ${new Date().toISOString()} ---\n\n`;
 
-        // 1. Connectivity, API Keys & Last Update Time
+        // 1. Health Endpoint Check
         setConnectivity({ status: 'pending', message: 'Проверка связи с бэкендом...' });
         try {
             const healthRes = await fetch('/api/health');
@@ -58,94 +56,84 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
             // API Keys
             const geminiOk = healthData.apiKeys?.gemini === 'CONFIGURED';
             const keysOk = geminiOk;
-            let apiKeyMessage = `Gemini: ${healthData.apiKeys?.gemini}, Sports API: ${healthData.apiKeys?.sportsApi}`;
+            const apiKeyMessage = `Gemini: ${healthData.apiKeys?.gemini}, Sports API: ${healthData.apiKeys?.sportsApi}`;
             setApiKeys({ status: keysOk ? 'success' : 'error', message: apiKeyMessage });
             fullLog += `[${keysOk ? 'SUCCESS' : 'ERROR'}] API Keys: ${apiKeyMessage}\n`;
 
-            // Last Update Error
-            const errorData = healthData.lastUpdateError;
-            if (errorData) {
-                const errorMsg = `Последний запуск обновления завершился ошибкой в ${new Date(errorData.timestamp).toLocaleString('ru-RU')}.
-Причина: ${errorData.message}`;
+            // Last Triggered (Heartbeat)
+            const lastTriggeredTimestamp = healthData.lastTriggered;
+            if (lastTriggeredTimestamp) {
+                const triggerDate = new Date(lastTriggeredTimestamp);
+                const hoursAgo = (new Date().getTime() - triggerDate.getTime()) / (1000 * 60 * 60);
+                const status: Status = hoursAgo > 3 ? 'warning' : 'success';
+                const message = `Последний вызов задачи: ${triggerDate.toLocaleString('ru-RU')} (${hoursAgo.toFixed(1)} ч. назад)`;
+                setLastTriggered({ status, message });
+                fullLog += `[${status.toUpperCase()}] Last Trigger Check: ${message}\n`;
+            } else {
+                 const message = 'Информация о вызове фоновой задачи отсутствует. Возможно, планировщик не работает.';
+                 setLastTriggered({ status: 'error', message });
+                 fullLog += `[ERROR] Last Trigger Check: ${message}\n`;
+            }
+
+            // Last Error
+            if (healthData.lastUpdateError) {
+                const errorData = healthData.lastUpdateError;
+                const errorMsg = `Последний запуск обновления завершился ошибкой в ${new Date(errorData.timestamp).toLocaleString('ru-RU')}. Причина: ${errorData.message}`;
                 setLastError({ status: 'error', message: errorMsg });
-                fullLog += `\n--- LAST UPDATE ERROR ---\n[ERROR] ${errorMsg}\n`;
-                if (errorData.stack) {
-                    fullLog += `Stack Trace: ${errorData.stack}\n`;
-                }
+                fullLog += `\n--- LAST UPDATE ERROR ---\n[ERROR] ${errorMsg}\n${errorData.stack ? `Stack Trace: ${errorData.stack}\n` : ''}`;
             } else {
                 setLastError(null);
             }
 
-            // Last Update
+            // Last Successful Update
             const lastRunTimestamp = healthData.lastSuccessfulUpdate;
             let lastUpdateStatus: Status = 'error';
-            let lastUpdateMessage = 'Информация о последнем запуске фонового обновления отсутствует.';
-            if (lastRunTimestamp && lastRunTimestamp !== 'Not run yet') {
+            let lastUpdateMessage = 'Информация о последнем успешном обновлении отсутствует.';
+            if (lastRunTimestamp) {
                 const lastRunDate = new Date(lastRunTimestamp);
                 const hoursAgo = (new Date().getTime() - lastRunDate.getTime()) / (1000 * 60 * 60);
-                if (hoursAgo > 3) {
-                    lastUpdateStatus = 'warning';
-                    lastUpdateMessage = `Последнее обновление было ${lastRunDate.toLocaleString('ru-RU')} (${hoursAgo.toFixed(1)} ч. назад). Данные могут быть неактуальными.`;
-                } else {
-                    lastUpdateStatus = 'success';
-                    lastUpdateMessage = `Последнее успешное обновление: ${lastRunDate.toLocaleString('ru-RU')}`;
-                }
+                lastUpdateStatus = hoursAgo > 3 ? 'warning' : 'success';
+                lastUpdateMessage = `Последнее успешное обновление: ${lastRunDate.toLocaleString('ru-RU')}`;
             }
             setLastUpdate({ status: lastUpdateStatus, message: lastUpdateMessage });
-            fullLog += `[${lastUpdateStatus.toUpperCase()}] Last Update Check: ${lastUpdateMessage}\n`;
+            fullLog += `[${lastUpdateStatus.toUpperCase()}] Last Success Check: ${lastUpdateMessage}\n`;
 
         } catch (e) {
-            const errorMsg = `Не удалось подключиться к бэкенду. Убедитесь, что сервер запущен. Ошибка: ${e instanceof Error ? e.message : String(e)}`;
+            const errorMsg = `Не удалось подключиться к бэкенду. Ошибка: ${e instanceof Error ? e.message : String(e)}`;
             setConnectivity({ status: 'error', message: errorMsg });
-            setApiKeys({ status: 'error', message: 'Проверка невозможна из-за ошибки подключения.' });
-            setLastUpdate({ status: 'error', message: 'Проверка невозможна.' });
-            fullLog += `[ERROR] Connectivity: ${errorMsg}\n`;
+            setLog(fullLog + `[ERROR] Connectivity: ${errorMsg}\n`);
             setIsLoading(false);
-            setLog(fullLog);
             return;
         }
+
         fullLog += '\n--- CACHE STATUS ---\n';
 
-        // 2. Cache Status
-        for (const sport of SPORTS_TO_CHECK) {
+        // 2. Cache Status Check
+        await Promise.all(SPORTS_TO_CHECK.map(async (sport) => {
             setCacheStatus(prev => ({ ...prev, [sport]: { status: 'pending', message: `Проверка кэша для '${sport}'...` } }));
             try {
                 const endpoint = sport === 'all' ? 'getAllPredictions' : 'getMatchesWithPredictions';
                 const payload = sport === 'all' ? {} : { sport };
-
-                const cacheRes = await fetch('/api/gemini', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ endpoint, payload }),
-                });
-
+                const cacheRes = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint, payload }) });
                 if (!cacheRes.ok) throw new Error(`Server returned status ${cacheRes.status}`);
                 const data = await cacheRes.json();
                 
-                if (!Array.isArray(data)) throw new Error('Response is not an array.');
-
-                const latestTimestamp = data.length > 0 ? Math.max(...data.map(p => p.timestamp || 0)) : 0;
+                const latestTimestamp = data.length > 0 ? Math.max(...data.map((p: any) => p.timestamp || 0)) : 0;
                 const latestDate = latestTimestamp > 0 ? new Date(latestTimestamp * 1000).toLocaleString('ru-RU') : 'N/A';
-                const todayStr = new Date().toISOString().split('T')[0];
-                const isDataStale = latestTimestamp > 0 && !new Date(latestTimestamp * 1000).toISOString().startsWith(todayStr);
+                const isStale = latestTimestamp > 0 && !new Date(latestTimestamp * 1000).toISOString().startsWith(new Date().toISOString().split('T')[0]);
 
-                let status: Status = data.length > 0 ? 'success' : 'warning';
-                let finalMessage = data.length > 0 ? `Найдено ${data.length} записей.` : `Кэш пуст или устарел.`;
+                let status: Status = data.length > 0 ? (isStale ? 'warning' : 'success') : 'warning';
+                let message = data.length > 0 ? `Найдено ${data.length} записей.` : `Кэш пуст или устарел.`;
+                if (isStale) message += ` Данные устарели (от ${new Date(latestTimestamp * 1000).toLocaleDateString('ru-RU')}).`;
 
-                if (isDataStale) {
-                    status = 'warning';
-                    finalMessage += ` Данные устарели (от ${new Date(latestTimestamp * 1000).toLocaleDateString('ru-RU')}).`;
-                }
-
-                setCacheStatus(prev => ({ ...prev, [sport]: { status, message: finalMessage, count: data.length, latest: latestDate, isStale: isDataStale } }));
-                fullLog += `[${status.toUpperCase()}] Cache '${sport}': ${finalMessage} Latest: ${latestDate}\n`;
-
+                setCacheStatus(prev => ({ ...prev, [sport]: { status, message, count: data.length, latest: latestDate, isStale } }));
+                fullLog += `[${status.toUpperCase()}] Cache '${sport}': ${message} Latest: ${latestDate}\n`;
             } catch (e) {
-                const errorMsg = `Ошибка при проверке кэша '${sport}'. ${e instanceof Error ? e.message : String(e)}`;
+                const errorMsg = `Ошибка: ${e instanceof Error ? e.message : String(e)}`;
                 setCacheStatus(prev => ({ ...prev, [sport]: { status: 'error', message: errorMsg } }));
                 fullLog += `[ERROR] Cache '${sport}': ${errorMsg}\n`;
             }
-        }
+        }));
 
         setIsLoading(false);
         setLog(fullLog);
@@ -178,10 +166,7 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
                         <Button onClick={handleCopyLog}>{copySuccess ? 'Скопировано!' : 'Копировать лог'}</Button>
                     </div>
                 </div>
-                <p className="text-sm text-gray-400 mt-2">
-                    Эта панель проверяет ключевые компоненты системы для выявления проблем. Если матчи не отображаются,
-                    скопируйте лог и отправьте его для анализа.
-                </p>
+                <p className="text-sm text-gray-400 mt-2">Эта панель проверяет ключевые компоненты системы. Если матчи не обновляются, скопируйте лог и отправьте его для анализа.</p>
             </Card>
 
             {lastError && (
@@ -209,14 +194,21 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
                      <div className="flex items-start gap-3 p-2 rounded-lg bg-gray-900/30">
                         {apiKeys && <StatusIcon status={apiKeys.status} />}
                         <div>
-                            <p className="font-semibold">Конфигурация API ключей на бэкенде</p>
+                            <p className="font-semibold">Конфигурация API ключей</p>
                             <p className="text-sm text-gray-400">{apiKeys?.message || 'Ожидание...'}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-2 rounded-lg bg-gray-900/30">
+                        {lastTriggered && <StatusIcon status={lastTriggered.status} />}
+                        <div>
+                            <p className="font-semibold">Последний вызов фоновой задачи (Heartbeat)</p>
+                            <p className="text-sm text-gray-400">{lastTriggered?.message || 'Ожидание...'}</p>
                         </div>
                     </div>
                      <div className="flex items-start gap-3 p-2 rounded-lg bg-gray-900/30">
                         {lastUpdate && <StatusIcon status={lastUpdate.status} />}
                         <div>
-                            <p className="font-semibold">Последнее фоновое обновление</p>
+                            <p className="font-semibold">Последнее успешное обновление</p>
                             <p className="text-sm text-gray-400">{lastUpdate?.message || 'Ожидание...'}</p>
                         </div>
                     </div>

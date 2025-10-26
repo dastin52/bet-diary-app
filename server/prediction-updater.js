@@ -91,6 +91,8 @@ async function getTodaysGamesBySport(sport, env) {
 // ... (rest of the file remains the same, including getAiPayloadForSport, processSport, and runUpdate)
 
 async function runUpdate() {
+    // Heartbeat: Immediately log that the task was triggered.
+    cache.putPersistent('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
     try {
         const allSportsResults = await Promise.allSettled(
