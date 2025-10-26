@@ -197,9 +197,9 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         }).filter((game: SportGame) => game?.teams?.home?.name && game?.teams?.away?.name);
     }
     
-    // Fallback if the API returns a valid but empty response
-    if (games.length === 0 && data.results === 0) {
-        console.log(`[FALLBACK] Sports API returned 0 results for ${sport}. Falling back to mock data.`);
+    // Fallback if the API returns a valid response but no valid games were parsed
+    if (games.length === 0) {
+        console.log(`[FALLBACK] Sports API returned 0 valid/parsable games for ${sport}. Falling back to mock data.`);
         return generateMockGames(sport);
     }
 

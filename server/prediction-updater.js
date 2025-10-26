@@ -133,6 +133,10 @@ const getAiPayloadForSport = (sport, matchName) => {
             addOutcome('total_under_215_5', 'Тотал Меньше 215.5');
             addOutcome('total_over_225_5', 'Тотал Больше 225.5');
             addOutcome('total_under_225_5', 'Тотал Меньше 225.5');
+            addOutcome('handicap_home_plus_5_5', 'Фора 1 (+5.5)');
+            addOutcome('handicap_home_minus_5_5', 'Фора 1 (-5.5)');
+            addOutcome('handicap_away_plus_5_5', 'Фора 2 (+5.5)');
+            addOutcome('handicap_away_minus_5_5', 'Фора 2 (-5.5)');
             break;
         case 'hockey':
             addOutcome('p1_main', 'П1 (осн. время)');
@@ -142,6 +146,8 @@ const getAiPayloadForSport = (sport, matchName) => {
             addOutcome('p2_final', 'П2 (вкл. ОТ и буллиты)');
             addOutcome('total_over_5_5', 'Тотал Больше 5.5');
             addOutcome('total_under_5_5', 'Тотал Меньше 5.5');
+            addOutcome('total_over_4_5', 'Тотал Больше 4.5');
+            addOutcome('total_under_4_5', 'Тотал Меньше 4.5');
             break;
         default: // football
             addOutcome('p1', 'П1');
@@ -152,6 +158,7 @@ const getAiPayloadForSport = (sport, matchName) => {
             addOutcome('total_over_2_5', 'Тотал Больше 2.5');
             addOutcome('total_under_2_5', 'Тотал Меньше 2.5');
             addOutcome('both_to_score_yes', 'Обе забьют - Да');
+            addOutcome('both_to_score_no', 'Обе забьют - Нет');
             break;
     }
 
@@ -218,7 +225,7 @@ async function processSport(sport) {
                                  if (value > maxValue) { maxValue = value; bestOutcomeKey = key; }
                              }
                          }
-                         const recommendedOutcome = keyMapping[bestOutcomeKey] || 'Нет выгодной ставки';
+                         const recommendedOutcome = maxValue > 0 ? (keyMapping[bestOutcomeKey] || 'Нет выгодной ставки') : 'Нет выгодной ставки';
                          
                          const finalData = { probabilities: remappedProbabilities, coefficients: remappedCoefficients, recommended_outcome: recommendedOutcome };
                          prediction = { id: `${game.id}-${Date.now()}`, createdAt: new Date().toISOString(), sport, matchName, prediction: JSON.stringify(finalData), status: 'pending' };
