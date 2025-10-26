@@ -1,4 +1,11 @@
-// FIX: Add SharedPrediction type to be used by the prediction context and components.
+// @google/genai-fix: Add SharedPrediction type to be used by the prediction context and components.
+export interface SportLeague {
+  id: number;
+  name: string;
+  country: string;
+  logo: string;
+  season: number;
+}
 export interface SharedPrediction {
   id: number;
   sport: string;
@@ -8,6 +15,7 @@ export interface SharedPrediction {
   time: string;
   isHotMatch: boolean;
   timestamp: number;
+  league: SportLeague;
   status: {
     long: string;
     short: string;
@@ -101,7 +109,7 @@ export interface User {
   status: 'active' | 'blocked';
   telegramId?: number;
   telegramUsername?: string;
-  // FIX: Add 'source' property to track user origin (web or telegram).
+  // @google/genai-fix: Add 'source' property to track user origin (web or telegram).
   source?: 'web' | 'telegram';
 }
 
@@ -199,7 +207,7 @@ export interface AIPrediction {
     matchName: string;
     prediction: string;
     status: AIPredictionStatus;
-    // FIX: Add optional matchResult property to store final scores and winner.
+    // @google/genai-fix: Add optional matchResult property to store final scores and winner.
     matchResult?: {
         winner: 'home' | 'away' | 'draw';
         scores: { home: number; away: number; };

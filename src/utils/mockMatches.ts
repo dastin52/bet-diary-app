@@ -34,7 +34,7 @@ const createMockPrediction = (gameId: number, sport: string, matchName: string):
     };
 };
 
-const createMockMatch = (id: number, sport: string, eventName: string, home: string, away: string, time: string): SharedPrediction => {
+const createMockMatch = (id: number, sportKey: string, sportName: string, eventName: string, home: string, away: string, time: string): SharedPrediction => {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const gameDate = new Date(`${todayStr}T${time}:00.000Z`);
@@ -43,34 +43,31 @@ const createMockMatch = (id: number, sport: string, eventName: string, home: str
 
     return {
         id,
-        sport,
+        sport: sportKey,
         eventName,
         teams: matchName,
         date: `${String(gameDate.getUTCDate()).padStart(2, '0')}.${String(gameDate.getUTCMonth() + 1).padStart(2, '0')}.${gameDate.getUTCFullYear()}`,
         time: gameDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
         timestamp: Math.floor(gameDate.getTime() / 1000),
+        league: {id: 1, name: eventName, country: '', logo: '', season: 2024 },
         status,
         score,
         isHotMatch: Math.random() > 0.7,
-        prediction: sport !== 'nba' ? createMockPrediction(id, sport, matchName) : null,
+        prediction: sportKey !== 'nba' ? createMockPrediction(id, sportName, matchName) : null,
     };
 };
 
 export const generateClientSideMocks = (): SharedPrediction[] => {
     const football = [
-        createMockMatch(201, 'football', 'La Liga', 'Реал Мадрид', 'Барселона', '19:00'),
-        createMockMatch(202, 'football', 'Premier League', 'Манчестер Сити', 'Ливерпуль', '18:30'),
+        createMockMatch(202, 'football', 'Футбол', 'Premier League', 'Манчестер Сити', 'Ливерпуль', '21:30'),
+        createMockMatch(201, 'football', 'Футбол', 'La Liga', 'Реал Мадрид', 'Барселона', '22:00'),
     ];
     const hockey = [
-        createMockMatch(101, 'hockey', 'КХЛ', 'ЦСКА', 'СКА', '16:30'),
-        createMockMatch(102, 'hockey', 'NHL', 'Торонто', 'Бостон', '23:00'),
+        createMockMatch(101, 'hockey', 'Хоккей', 'КХЛ', 'ЦСКА', 'СКА', '19:30'),
     ];
     const basketball = [
-        createMockMatch(301, 'basketball', 'Euroleague', 'Анадолу Эфес', 'Реал Мадрид', '21:45'),
-    ];
-    const nba = [
-        createMockMatch(401, 'nba', 'NBA', 'Лейкерс', 'Бостон Селтикс', '23:30'),
+        createMockMatch(301, 'basketball', 'Баскетбол', 'Euroleague', 'Анадолу Эфес', 'Реал Мадрид', '22:00'),
     ];
     
-    return [...football, ...hockey, ...basketball, ...nba].sort((a,b) => a.timestamp - b.timestamp);
+    return [...football, ...hockey, ...basketball].sort((a,b) => a.timestamp - b.timestamp);
 };

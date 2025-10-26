@@ -1,4 +1,4 @@
-// functions/utils/predictionUtils.ts
+// src/utils/predictionUtils.ts
 
 /**
  * Resolves the outcome of a bet market based on match scores and winner.

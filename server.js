@@ -26,6 +26,21 @@ if (!process.env.GEMINI_API_KEY) {
 
 // --- WEB APP API ROUTES ---
 
+// Health check endpoint for diagnostics
+app.get('/api/health', (req, res) => {
+    const healthStatus = {
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        apiKeys: {
+            gemini: process.env.GEMINI_API_KEY ? 'CONFIGURED' : 'MISSING',
+            sportsApi: process.env.SPORT_API_KEY ? 'CONFIGURED' : 'NOT_APPLICABLE_IN_LOCAL_DEV (uses mocks)',
+        },
+        kvBinding: 'NOT_APPLICABLE_IN_LOCAL_DEV (uses file cache)',
+    };
+    res.json(healthStatus);
+});
+
+
 // Secure proxy endpoint for the web app
 app.post('/api/gemini', async (req, res) => {
   try {

@@ -11,7 +11,7 @@ const ChevronIcon = ({ isOpen }: { isOpen: boolean }) => (
 
 const LoadingSkeleton: React.FC = () => (
     <div className="space-y-3 p-2">
-        {[...Array(3)].map((_, i) => (
+        {[...Array(4)].map((_, i) => (
             <div key={i} className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg animate-pulse">
                 <div className="w-3/4 space-y-2">
                     <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-1/2"></div>
@@ -35,9 +35,17 @@ const SPORT_MAP: Record<string, string> = {
     football: 'Футбол',
     basketball: 'Баскетбол',
     hockey: 'Хоккей',
+    nba: 'NBA',
+    Футбол: 'Футбол',
+    Баскетбол: 'Баскетбол',
+    Хоккей: 'Хоккей',
 };
 
-const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => void; }> = ({ onMatchClick }) => {
+interface UpcomingMatchesProps {
+    onMatchClick: (match: SharedPrediction) => void;
+}
+
+const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
     const { allPredictions, isLoading, error } = usePredictionContext();
     const [isExpanded, setIsExpanded] = useState(true);
     const [activeSport, setActiveSport] = useState('all');
@@ -53,7 +61,6 @@ const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => voi
                 if (activeSport === 'basketball') {
                     return sportLower === 'basketball' && p.eventName.toUpperCase() !== 'NBA';
                 }
-                // Match both 'football' and 'Футбол'
                 return sportLower === activeSport || (SPORT_MAP[sportLower] && SPORT_MAP[sportLower].toLowerCase() === activeSport);
             });
     }, [allPredictions, activeSport]);
@@ -62,7 +69,7 @@ const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => voi
         if (isLoading) {
             return <LoadingSkeleton />;
         }
-        if (filteredMatches.length === 0) {
+        if (filteredMatches.length === 0 && !error) {
             return <p className="text-center text-gray-500 py-4">Нет матчей для выбранного фильтра.</p>;
         }
         return (
@@ -78,7 +85,7 @@ const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => voi
                             <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                                {match.status.emoji} {match.teams}
                             </p>
-                            <p className="text-sm text-indigo-500 dark:text-indigo-400">{match.date} &middot; {match.time}</p>
+                            <p className="text-sm text-indigo-500 dark:text-indigo-400">{new Date(match.timestamp * 1000).toLocaleDateString('ru-RU')} &middot; {match.time}</p>
                         </div>
                         <div className="text-sm text-gray-400 hover:text-white flex-shrink-0 ml-2">
                            Анализ &rarr;

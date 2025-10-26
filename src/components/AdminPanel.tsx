@@ -7,8 +7,9 @@ import { BarChartTooltip } from './charts/ChartTooltip';
 import Button from './ui/Button';
 import MLModelPanel from './MLModelPanel';
 import TeamAnalyticsPanel from './TeamAnalyticsPanel';
+import DiagnosticsPanel from './DiagnosticsPanel';
 
-type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics';
+type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics' | 'diagnostics';
 
 const AdminPanel: React.FC = () => {
   const { users, allBets, analytics, isLoading, updateUserStatus } = useAdminData();
@@ -209,6 +210,8 @@ const AdminPanel: React.FC = () => {
               return <MLModelPanel allBets={allBets} performanceByOdds={analytics.performanceByOdds} />;
           case 'team_analytics':
               return <TeamAnalyticsPanel teamStats={analytics.teamAnalytics} />;
+          case 'diagnostics':
+              return <DiagnosticsPanel />;
       }
   }
 
@@ -216,9 +219,10 @@ const AdminPanel: React.FC = () => {
     <div className="space-y-6">
         <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-3">
             <Button variant={activeTab === 'stats' ? 'primary' : 'secondary'} onClick={() => setActiveTab('stats')}>Статистика</Button>
-            <Button variant={activeTab === 'users' ? 'primary' : 'secondary'} onClick={() => setActiveTab('users')}>Управление пользователями</Button>
+            <Button variant={activeTab === 'users' ? 'primary' : 'secondary'} onClick={() => setActiveTab('users')}>Пользователи</Button>
             <Button variant={activeTab === 'ml_model' ? 'primary' : 'secondary'} onClick={() => setActiveTab('ml_model')}>ML Модель</Button>
             <Button variant={activeTab === 'team_analytics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('team_analytics')}>Аналитика команд</Button>
+            <Button variant={activeTab === 'diagnostics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('diagnostics')}>Диагностика</Button>
         </div>
         <div>
             {renderContent()}
