@@ -33,7 +33,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     try {
       // 1. Get all registered users
       const allUsers = getUsers();
-      // FIX: Use .getTime() to perform arithmetic on Date objects.
+      // @google/genai-fix: Use .getTime() to perform arithmetic on Date objects.
       setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
       // 2. Aggregate bets from all users
@@ -84,7 +84,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
+    // @google/genai-fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     const popularSportsCounts = settledBets.reduce((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -94,7 +94,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
+    // @google/genai-fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
     const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;

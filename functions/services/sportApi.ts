@@ -108,8 +108,6 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     const today = new Date().toISOString().split('T')[0];
     const cacheKey = `cache:${sport}:games:${today}`;
 
-    // For cron jobs, we want fresh data, so we don't cache mocks.
-    // However, for local dev, this check remains useful.
     if (!env.SPORT_API_KEY) {
         console.log(`[MOCK] SPORT_API_KEY not found. Generating dynamic mock games for ${sport}.`);
         return generateMockGames(sport);
@@ -124,89 +122,90 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     console.log(`[Cache MISS] Fetching ${sport} games for ${today} from API.`);
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
-        throw new Error(`Конфигурация для спорта "${sport}" не найдена.`);
-    }
-    
-    const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
-    const response = await fetch(url, { headers: { [config.keyName]: env.SPORT_API_KEY } });
-
-    if (!response.ok) {
-        const errorBody = await response.text();
-        console.error(`Sports API error: ${response.status} ${response.statusText}. Body: ${errorBody}`);
-        throw new Error(`Ошибка API (${response.status}): ${errorBody}`);
-    }
-
-    const data: any = await response.json();
-    const hasErrors = data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0);
-    if (hasErrors) {
-        console.error(`Sports API returned logical error: ${JSON.stringify(data.errors)}`);
-        console.log(`[FALLBACK] Falling back to mock data for ${sport} due to API error.`);
+        console.error(`Configuration for sport "${sport}" not found. Falling back to mocks.`);
         return generateMockGames(sport);
     }
 
-    let games: SportGame[];
+    try {
+        const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
+        const response = await fetch(url, { headers: { [config.keyName]: env.SPORT_API_KEY } });
 
-    if (sport === 'football') {
-        games = (data.response || []).map((item: any): SportGame | null => {
-            try {
-                const { fixture, league, teams, goals } = item || {};
-                if (!fixture?.id || !fixture.timestamp || !teams?.home?.name || !teams?.away?.name || !league) return null;
-                
-                const game: SportGame = {
-                    id: fixture.id,
-                    date: fixture.date,
-                    time: new Date(fixture.timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-                    timestamp: fixture.timestamp,
-                    timezone: fixture.timezone || 'UTC',
-                    status: { long: fixture.status?.long || 'Scheduled', short: fixture.status?.short || 'NS' },
-                    league: league,
-                    teams: teams,
-                };
-                if (goals && goals.home !== null) {
-                    game.scores = { home: goals.home, away: goals.away };
-                     if (game.status.short === 'FT') {
-                        game.winner = goals.home > goals.away ? 'home' : goals.away > goals.home ? 'away' : 'draw';
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`API responded with status ${response.status}: ${errorBody}`);
+        }
+
+        const data: any = await response.json();
+        const hasErrors = data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0);
+        if (hasErrors) {
+            throw new Error(`API returned logical error: ${JSON.stringify(data.errors)}`);
+        }
+
+        let games: SportGame[];
+
+        if (sport === 'football') {
+            games = (data.response || []).map((item: any): SportGame | null => {
+                try {
+                    const { fixture, league, teams, goals } = item || {};
+                    if (!fixture?.id || !fixture.timestamp || !teams?.home?.name || !teams?.away?.name || !league) return null;
+                    
+                    const game: SportGame = {
+                        id: fixture.id,
+                        date: fixture.date,
+                        time: new Date(fixture.timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+                        timestamp: fixture.timestamp,
+                        timezone: fixture.timezone || 'UTC',
+                        status: { long: fixture.status?.long || 'Scheduled', short: fixture.status?.short || 'NS' },
+                        league: league,
+                        teams: teams,
+                    };
+                    if (goals && goals.home !== null) {
+                        game.scores = { home: goals.home, away: goals.away };
+                         if (game.status.short === 'FT') {
+                            game.winner = goals.home > goals.away ? 'home' : goals.away > goals.home ? 'away' : 'draw';
+                        }
+                    }
+                    return game;
+                } catch (e) { return null; }
+            }).filter((game): game is SportGame => game !== null);
+        } else { // Basketball, Hockey
+            games = (data.response || []).map((item: any): SportGame => {
+                const game: SportGame = { ...item };
+                let homeScore: number | null = null;
+                let awayScore: number | null = null;
+
+                 if (sport === 'basketball' || sport === 'nba') {
+                     if (item.scores?.home?.total !== null && typeof item.scores?.home?.total !== 'undefined') {
+                        homeScore = item.scores.home.total;
+                        awayScore = item.scores.away.total;
+                    }
+                } else if (item.scores?.home !== null && typeof item.scores?.home !== 'undefined') { // Hockey, etc.
+                    homeScore = item.scores.home;
+                    awayScore = item.scores.away;
+                }
+
+                if (homeScore !== null && awayScore !== null) {
+                    game.scores = { home: homeScore, away: awayScore };
+                    if (FINISHED_STATUSES.includes(game.status.short)) {
+                        game.winner = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
                     }
                 }
                 return game;
-            } catch (e) { return null; }
-        }).filter((game): game is SportGame => game !== null);
-    } else { // Basketball, Hockey
-        games = (data.response || []).map((item: any): SportGame => {
-            const game: SportGame = { ...item };
-            let homeScore: number | null = null;
-            let awayScore: number | null = null;
+            }).filter((game: SportGame) => game?.teams?.home?.name && game?.teams?.away?.name);
+        }
+        
+        if (games.length === 0) {
+            console.log(`[FALLBACK] Sports API returned 0 valid/parsable games for ${sport}. Falling back to mock data.`);
+            return generateMockGames(sport);
+        }
 
-             if (sport === 'basketball' || sport === 'nba') {
-                 if (item.scores?.home?.total !== null && typeof item.scores?.home?.total !== 'undefined') {
-                    homeScore = item.scores.home.total;
-                    awayScore = item.scores.away.total;
-                }
-            } else if (item.scores?.home !== null && typeof item.scores?.home !== 'undefined') { // Hockey, etc.
-                homeScore = item.scores.home;
-                awayScore = item.scores.away;
-            }
-
-            if (homeScore !== null && awayScore !== null) {
-                game.scores = { home: homeScore, away: awayScore };
-                if (FINISHED_STATUSES.includes(game.status.short)) {
-                    game.winner = homeScore > awayScore ? 'home' : awayScore > homeScore ? 'away' : 'draw';
-                }
-            }
-            return game;
-        }).filter((game: SportGame) => game?.teams?.home?.name && game?.teams?.away?.name);
-    }
-    
-    // Fallback if the API returns a valid response but no valid games were parsed
-    if (games.length === 0) {
-        console.log(`[FALLBACK] Sports API returned 0 valid/parsable games for ${sport}. Falling back to mock data.`);
-        return generateMockGames(sport);
-    }
-
-    if (games.length > 0) {
         await env.BOT_STATE.put(cacheKey, JSON.stringify(games), { expirationTtl: CACHE_TTL_SECONDS });
         console.log(`[Cache WRITE] Stored ${games.length} ${sport} games for ${today}.`);
-    }
+        
+        return games;
 
-    return games;
+    } catch (error) {
+        console.error(`[FALLBACK] An error occurred while fetching ${sport} games, generating mock data instead. Error:`, error);
+        return generateMockGames(sport);
+    }
 }
