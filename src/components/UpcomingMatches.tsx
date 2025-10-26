@@ -73,7 +73,13 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
         return allPredictions
             .filter(p => {
                 if (activeSport === 'all') return true;
-                return p.sport.toLowerCase() === activeSport.toLowerCase() || (activeSport === 'nba' && p.eventName === 'NBA');
+                if (activeSport === 'nba') {
+                    return p.sport.toLowerCase() === 'basketball' && p.eventName === 'NBA';
+                }
+                if (activeSport === 'basketball') {
+                    return p.sport.toLowerCase() === 'basketball' && p.eventName !== 'NBA';
+                }
+                return p.sport.toLowerCase() === activeSport.toLowerCase();
             })
             .sort((a, b) => {
                 const priorityA = getStatusPriority(a.status.short);
@@ -89,9 +95,6 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
         if (isLoading) {
             return <LoadingSkeleton />;
         }
-        if (error) {
-            return <p className="text-center text-red-400">{error}</p>;
-        }
         if (filteredAndSortedMatches.length === 0) {
             return <p className="text-center text-gray-500 py-4">Нет матчей для выбранного фильтра.</p>;
         }
@@ -99,7 +102,7 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
             <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
                 {filteredAndSortedMatches.map((match, index) => (
                     <button
-                        key={index}
+                        key={`${match.id}-${index}`}
                         onClick={() => onMatchClick(match)}
                         className="w-full text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors duration-200 flex justify-between items-center"
                     >
@@ -128,6 +131,7 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                 <ChevronIcon isOpen={isExpanded} />
             </div>
             <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[500px] opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
+                 {error && <p className="text-center text-xs text-yellow-500 dark:text-yellow-400 mb-3 p-2 bg-yellow-100 dark:bg-yellow-900/50 rounded-md">{error}</p>}
                  <div className="flex space-x-1 sm:space-x-2 border-b border-gray-200 dark:border-gray-700 mb-4 pb-2 overflow-x-auto">
                     {sportTabs.map(tab => (
                         <button

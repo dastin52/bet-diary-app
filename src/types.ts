@@ -1,5 +1,6 @@
 // FIX: Add SharedPrediction type to be used by the prediction context and components.
 export interface SharedPrediction {
+  id: number;
   sport: string;
   eventName: string;
   teams: string;

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { SharedPrediction } from '../types';
+import { generateClientSideMocks } from '../utils/mockMatches';
 
 interface PredictionContextType {
   allPredictions: SharedPrediction[];
@@ -17,14 +18,15 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const fetchAllPredictions = useCallback(async (force: boolean = false) => {
     setIsLoading(true);
-    setError(null);
+    // Не сбрасываем ошибку сразу, чтобы показать ее во время перезагрузки
+    // setError(null); 
     try {
       const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           endpoint: 'getAllPredictions',
-          payload: {} // No payload needed for this optimized endpoint
+          payload: {} // Для этого эндпоинта payload не нужен
         }),
       });
       
@@ -33,11 +35,32 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
         throw new Error(errorData.error || 'Не удалось загрузить прогнозы с сервера.');
       }
 
-      const predictions: SharedPrediction[] = await response.json();
+      let predictions: SharedPrediction[] = await response.json();
+
+      // --- РЕЗЕРВНАЯ ЛОГИКА ---
+      const today = new Date();
+      const todayStr = today.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric'});
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric'});
+
+      const hasValidMatches = predictions.length > 0 && predictions.some(p => p.date === todayStr || p.date === tomorrowStr);
+
+      if (!hasValidMatches) {
+          console.warn("Fetched predictions are empty or outdated. Falling back to client-side mocks.");
+          setError("Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня.");
+          predictions = generateClientSideMocks();
+      } else {
+          setError(null); // Очищаем ошибку, если загрузка успешна
+      }
+
       setAllPredictions(predictions);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Произошла неизвестная ошибка при загрузке прогнозов.');
+      const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная ошибка при загрузке прогнозов.';
+      setError(errorMessage);
+      console.error("Fetch error, falling back to client-side mocks.", err);
+      setAllPredictions(generateClientSideMocks());
     } finally {
       setIsLoading(false);
     }
