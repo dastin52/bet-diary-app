@@ -1,5 +1,3 @@
-
-
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bet, User, BetStatus, TeamStats } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
@@ -32,83 +30,24 @@ export const useAdminData = (): UseAdminDataReturn => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadAllData = async () => {
-      setIsLoading(true);
-      try {
-        // 1. Get all registered web users from localStorage
-        const webUsers = getUsers().map(user => ({...user, source: 'web' as const}));
+    try {
+      // 1. Get all registered users
+      const allUsers = getUsers();
+      // FIX: Use .getTime() to perform arithmetic on Date objects.
+      setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
-        // 2. Fetch users registered via Telegram bot from the server
-        let botUsers: User[] = [];
-        try {
-          const response = await fetch('/api/admin/users');
-          if (response.ok) {
-            const data = await response.json();
-            botUsers = data.users || [];
-          } else {
-            console.warn("Could not fetch bot users for admin panel.");
-          }
-        } catch (fetchError) {
-          console.error("Failed to fetch bot users:", fetchError);
-        }
-
-        // 3. Combine and de-duplicate users
-        const allUsersMap = new Map<string, User>();
-        
-        // Add web users first
-        for (const user of webUsers) {
-          allUsersMap.set(user.email, user);
-        }
-
-        // Add/overwrite with bot users. A user could be in both if they linked their account.
-        // We assume the server-side data (from bot) is more authoritative for Telegram details.
-        for (const botUser of botUsers) {
-           const existingUser = allUsersMap.get(botUser.email);
-           if (existingUser) {
-               // Merge: keep web data but add/overwrite telegram data
-               allUsersMap.set(botUser.email, { ...existingUser, ...botUser });
-           } else {
-               // New user from bot
-               allUsersMap.set(botUser.email, botUser);
-           }
-        }
-        
-        const combinedUsers = Array.from(allUsersMap.values());
-        
-        // Link web users to mock telegram for demo purposes if they don't have real data
-        const finalUsersWithTg = combinedUsers.map((user, index) => {
-            if (user.source === 'web' && !user.telegramId && user.email !== 'admin@example.com') {
-                 if (index % 3 === 0) { // Keep some mock logic for unlinked accounts for demo
-                    return {
-                        ...user,
-                        telegramId: 100000000 + (user.email.length * 12345) + index,
-                        telegramUsername: user.nickname.toLowerCase().replace(/\s/g, '_'),
-                    };
-                }
-            }
-            return user;
-        });
-        
-        // FIX: Use .getTime() to perform arithmetic on Date objects.
-        setUsers(finalUsersWithTg.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
-
-        // 4. Aggregate bets from all users that have data in localStorage
-        // Note: We can't get bets for bot-only users on the client. This is a limitation.
-        let collectedBets: Bet[] = [];
-        for (const user of webUsers) { // Only iterate webUsers as they are the only ones with local bet data
-          const { bets } = loadUserData(user.email);
-          collectedBets = [...collectedBets, ...bets];
-        }
-        setAllBets(collectedBets);
-
-      } catch (error) {
-        console.error("Failed to load admin data", error);
-      } finally {
-        setIsLoading(false);
+      // 2. Aggregate bets from all users
+      let collectedBets: Bet[] = [];
+      for (const user of allUsers) {
+        const { bets } = loadUserData(user.email);
+        collectedBets = [...collectedBets, ...bets];
       }
-    };
-    
-    loadAllData();
+      setAllBets(collectedBets);
+    } catch (error) {
+      console.error("Failed to load admin data", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
   
   const updateUserStatusInState = useCallback((email: string, status: 'active' | 'blocked') => {
@@ -146,7 +85,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
+    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
     }, {});
@@ -156,7 +95,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .slice(0, 10);
 
     // FIX: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
+    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
     }, {});

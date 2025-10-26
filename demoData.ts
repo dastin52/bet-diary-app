@@ -1,4 +1,4 @@
-import { Bet, BetStatus, BetType, BankTransaction, BankTransactionType } from './types';
+import { Bet, BetStatus, BetType, BankTransaction, BankTransactionType, AIPrediction } from './types';
 import { generateEventString } from './utils/betUtils';
 
 // A local, simplified version for pre-calculating demo profits.

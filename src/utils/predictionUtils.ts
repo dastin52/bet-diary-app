@@ -1,4 +1,3 @@
-
 // functions/utils/predictionUtils.ts
 
 /**

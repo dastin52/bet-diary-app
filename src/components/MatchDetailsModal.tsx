@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Modal from './ui/Modal';
 import { SharedPrediction, GroundingSource } from '../types';

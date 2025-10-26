@@ -1,4 +1,3 @@
-
 // DEPRECATED: Прямые вызовы к Gemini API с фронтенда небезопасны.
 // API-ключ будет виден всем пользователям.
 // import { GoogleGenAI, Type } from "@google/genai";
