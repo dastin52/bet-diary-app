@@ -153,7 +153,6 @@ const AdminPanel: React.FC = () => {
                         <tr>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Никнейм</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
-                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Telegram</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Дата регистрации</th>
                             <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Статус</th>
                             <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Действия</th>
@@ -165,26 +164,6 @@ const AdminPanel: React.FC = () => {
                             <tr key={user.email} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                 <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{user.nickname}</td>
                                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{user.email}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                                    {user.telegramUsername ? (
-                                        <span>
-                                            <a 
-                                                href={`https://t.me/${user.telegramUsername}`} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer" 
-                                                className="text-sky-400 hover:text-sky-300"
-                                            >
-                                                @{user.telegramUsername}
-                                            </a>
-                                            <p className="text-xs text-gray-500">ID: {user.telegramId}</p>
-                                            {user.source === 'telegram' && (
-                                                <p className="text-xs text-blue-400 font-semibold">(Bot)</p>
-                                            )}
-                                        </span>
-                                    ) : (
-                                        <span className="text-gray-500">-</span>
-                                    )}
-                                </td>
                                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{new Date(user.registeredAt).toLocaleString('ru-RU')}</td>
                                 <td className="px-4 py-3 text-sm text-center">
                                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${user.status === 'active' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'}`}>
@@ -192,9 +171,7 @@ const AdminPanel: React.FC = () => {
                                     </span>
                                 </td>
                                 <td className="px-4 py-3 text-sm text-center">
-                                    {user.source === 'telegram' ? (
-                                        <span className="text-xs text-gray-500">N/A</span>
-                                    ) : user.status === 'active' ? (
+                                    {user.status === 'active' ? (
                                         <Button variant="secondary" className="!bg-red-100 dark:!bg-red-500/20 hover:!bg-red-200 dark:hover:!bg-red-500/40 !text-red-600 dark:!text-red-300 text-xs py-1 px-2" onClick={() => updateUserStatus(user.email, 'blocked')}>
                                             Заблокировать
                                         </Button>
@@ -208,7 +185,7 @@ const AdminPanel: React.FC = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={6} className="text-center py-10 text-gray-500">
+                                <td colSpan={5} className="text-center py-10 text-gray-500">
                                     Пользователи не найдены.
                                 </td>
                             </tr>
@@ -231,7 +208,7 @@ const AdminPanel: React.FC = () => {
     <div className="space-y-6">
         <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-3">
             <Button variant={activeTab === 'stats' ? 'primary' : 'secondary'} onClick={() => setActiveTab('stats')}>Статистика</Button>
-            <Button variant={activeTab === 'users' ? 'primary' : 'secondary'} onClick={() => setActiveTab('users')}>Пользователи</Button>
+            <Button variant={activeTab === 'users' ? 'primary' : 'secondary'} onClick={() => setActiveTab('users')}>Управление пользователями</Button>
             <Button variant={activeTab === 'ml_model' ? 'primary' : 'secondary'} onClick={() => setActiveTab('ml_model')}>ML Модель</Button>
             <Button variant={activeTab === 'team_analytics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('team_analytics')}>Аналитика команд</Button>
             <Button variant={activeTab === 'diagnostics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('diagnostics')}>Диагностика</Button>

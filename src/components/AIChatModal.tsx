@@ -152,6 +152,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
             </div>
           )}
           {messages.map((msg, index) => {
+            if (showWelcomeScreen && index === 0) return null; // Hide initial prompt if welcome screen is shown
             return (
             <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row' : 'flex-row'}`}>
               {msg.role === 'user' ? <UserIcon /> : <ModelIcon />}
