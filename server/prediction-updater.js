@@ -43,6 +43,7 @@ const logApiActivity = (logEntry) => {
 // --- CONSTANTS & HELPERS ---
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const JOB_STATE_KEY = 'prediction_job_state';
+const CYCLE_COMPLETED_KEY = 'prediction_job_cycle_completed';
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
 
 const getStatusPriority = (statusShort) => {
@@ -212,13 +213,16 @@ async function runUpdate() {
     cache.putPersistent('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
     
-    try {
-        const jobState = cache.getPersistent(JOB_STATE_KEY) || { nextSportIndex: 0 };
-        const sportIndex = jobState.nextSportIndex || 0;
+    const jobState = cache.getPersistent(JOB_STATE_KEY) || { nextSportIndex: 0 };
+    const sportIndex = jobState.nextSportIndex || 0;
 
-        if (sportIndex === 0) {
+    try {
+        const isCycleCompleted = cache.getPersistent(CYCLE_COMPLETED_KEY) !== 'false';
+
+        if (sportIndex === 0 && isCycleCompleted) {
             console.log('[Updater Task] Starting new cycle. Clearing "all" predictions cache.');
             cache.putPersistent('central_predictions:all', []);
+            cache.putPersistent(CYCLE_COMPLETED_KEY, 'false');
         }
 
         const sport = SPORTS_TO_PROCESS[sportIndex];
@@ -228,9 +232,15 @@ async function runUpdate() {
 
         if (result && result.length > 0) {
              const currentAll = cache.getPersistent('central_predictions:all') || [];
-             const combined = [...currentAll, ...result];
-             cache.putPersistent('central_predictions:all', combined);
-             console.log(`[Updater Task] Sport '${sport}' processed successfully. Total predictions now: ${combined.length}`);
+             const existingIds = new Set(currentAll.map(p => p.id));
+             const newPredictions = result.filter(p => !existingIds.has(p.id));
+             if (newPredictions.length > 0) {
+                const combined = [...currentAll, ...newPredictions];
+                cache.putPersistent('central_predictions:all', combined);
+                console.log(`[Updater Task] Added ${newPredictions.length} new predictions for '${sport}'. Total in 'all': ${combined.length}`);
+             } else {
+                 console.log(`[Updater Task] Sport '${sport}' processed, but no new unique predictions to add.`);
+             }
         } else {
              console.log(`[Updater Task] Sport '${sport}' processed with no results.`);
         }
@@ -240,17 +250,20 @@ async function runUpdate() {
         console.log(`[Updater Task] Next sport to process will be index ${nextSportIndex}.`);
 
         if (nextSportIndex === 0) {
+            cache.putPersistent(CYCLE_COMPLETED_KEY, 'true');
             cache.putPersistent('last_successful_run_timestamp', new Date().toISOString());
             cache.putPersistent('last_run_error', null);
             console.log('[Updater Task] Full cycle complete. Successfully recorded run timestamp.');
         }
         return { success: true };
     } catch (error) {
-        console.error('[Updater Task] A critical error occurred during execution:', error);
+        console.error(`[Updater Task] A critical error occurred during execution for sport '${SPORTS_TO_PROCESS[sportIndex]}':`, error);
         cache.putPersistent('last_run_error', {
             timestamp: new Date().toISOString(),
+            sport: SPORTS_TO_PROCESS[sportIndex],
             message: error.message,
         });
+        // Do not advance the sport index on failure, so it retries next time.
         return { success: false, message: error.message };
     }
 }

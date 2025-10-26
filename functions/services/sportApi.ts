@@ -51,7 +51,8 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
          console.error(`No API config found for sport: ${sport}`);
-         return [];
+         // Throw an error instead of returning an empty array to signal failure
+         throw new Error(`No API config found for sport: ${sport}`);
     }
     const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
 
@@ -115,8 +116,9 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         return games;
 
     } catch (error) {
-        console.error(`[FALLBACK] An error occurred while fetching ${sport} games. Error:`, error);
+        console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
         await logApiActivity(env, { sport, endpoint: url, status: 'error', errorMessage: error instanceof Error ? error.message : String(error) });
-        return [];
+        // Re-throw the error to be caught by the calling task runner
+        throw error;
     }
 }

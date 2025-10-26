@@ -5,7 +5,6 @@ import { getTodaysGamesBySport } from '../services/sportApi';
 import { translateTeamNames } from '../services/translationService';
 import { resolveMarketOutcome } from '../utils/predictionUtils';
 
-// This defines the environment variables and bindings expected by this function
 interface EventContext<E> {
     request: Request;
     env: E;
@@ -18,8 +17,9 @@ type PagesFunction<E = unknown> = (
 
 
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
-const BATCH_SIZE = 15; // Process 15 games in parallel at a time to avoid timeouts and rate limits
+const BATCH_SIZE = 15;
 const JOB_STATE_KEY = 'prediction_job_state';
+const CYCLE_COMPLETED_KEY = 'prediction_job_cycle_completed';
 
 
 const getStatusPriority = (statusShort: string): number => {
@@ -120,7 +120,6 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
     
-    // BATCHED PROCESSING
     const todaysSharedPredictions: SharedPrediction[] = [];
     for (let i = 0; i < games.length; i += BATCH_SIZE) {
         const batch = games.slice(i, i + BATCH_SIZE);
@@ -143,7 +142,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                         const result = resolveMarketOutcome(recommendedOutcome, game.scores, winner);
                         if (result !== 'unknown') {
                             prediction.status = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
-                            prediction.matchResult = { winner, scores: game.scores };
+                            prediction.matchResult = { winner, scores: { home: game.scores.home, away: game.scores.away } };
                         }
                     }
                 }
@@ -205,16 +204,20 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 export async function runUpdateTask(env: Env) {
     await env.BOT_STATE.put('last_run_triggered_timestamp', new Date().toISOString());
 
-     try {
+    const jobState = await env.BOT_STATE.get(JOB_STATE_KEY, { type: 'json' }) as { nextSportIndex: number } || { nextSportIndex: 0 };
+    const sportIndex = jobState.nextSportIndex || 0;
+    let nextSportIndex = sportIndex;
+
+    try {
         console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
-        
-        const jobState = await env.BOT_STATE.get(JOB_STATE_KEY, { type: 'json' }) as { nextSportIndex: number } || { nextSportIndex: 0 };
-        const sportIndex = jobState.nextSportIndex || 0;
-        
-        // Clear 'all' predictions only on the first sport of a cycle
-        if (sportIndex === 0) {
-            console.log('[Updater Task] Starting new cycle. Clearing "all" predictions cache.');
+
+        const cycleCompletedStr = await env.BOT_STATE.get(CYCLE_COMPLETED_KEY);
+        const isCycleCompleted = cycleCompletedStr !== 'false'; // Default to true if not set
+
+        if (sportIndex === 0 && isCycleCompleted) {
+            console.log('[Updater Task] Starting new cycle. Clearing "all" predictions cache and marking cycle as incomplete.');
             await env.BOT_STATE.put('central_predictions:all', JSON.stringify([]));
+            await env.BOT_STATE.put(CYCLE_COMPLETED_KEY, 'false');
         }
 
         const sport = SPORTS_TO_PROCESS[sportIndex];
@@ -222,38 +225,51 @@ export async function runUpdateTask(env: Env) {
 
         const result = await processSport(sport, env);
 
-        // Incrementally add the results to the 'all' list
         if (result && result.length > 0) {
             const currentAll = (await env.BOT_STATE.get('central_predictions:all', { type: 'json' }) as SharedPrediction[]) || [];
-            const combined = [...currentAll, ...result];
-            await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combined));
-            console.log(`[Updater Task] Sport '${sport}' processed. Total predictions in 'all' list: ${combined.length}`);
+            
+            // De-duplicate: create a map of existing match IDs to avoid adding duplicates
+            const existingIds = new Set(currentAll.map(p => p.id));
+            const newPredictions = result.filter(p => !existingIds.has(p.id));
+
+            if (newPredictions.length > 0) {
+                const combined = [...currentAll, ...newPredictions];
+                await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combined));
+                console.log(`[Updater Task] Added ${newPredictions.length} new predictions for '${sport}'. Total in 'all': ${combined.length}`);
+            } else {
+                console.log(`[Updater Task] Sport '${sport}' processed, but no new unique predictions to add.`);
+            }
         } else {
-             console.log(`[Updater Task] Sport '${sport}' processed with no new results.`);
+             console.log(`[Updater Task] Sport '${sport}' processed with no results.`);
         }
 
-        // Prepare for the next run
-        const nextSportIndex = (sportIndex + 1) % SPORTS_TO_PROCESS.length;
+        nextSportIndex = (sportIndex + 1) % SPORTS_TO_PROCESS.length;
         await env.BOT_STATE.put(JOB_STATE_KEY, JSON.stringify({ nextSportIndex }));
         console.log(`[Updater Task] Next sport to process will be index ${nextSportIndex} (${SPORTS_TO_PROCESS[nextSportIndex]}).`);
-
-        // Only update the success timestamp once a full cycle is complete.
+        
+        // If we just finished the last sport, mark the cycle as complete and update success timestamp
         if (nextSportIndex === 0) {
+             await env.BOT_STATE.put(CYCLE_COMPLETED_KEY, 'true');
              await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
              await env.BOT_STATE.delete('last_run_error');
              console.log('[Updater Task] Full cycle complete. Successfully recorded run timestamp.');
         }
 
     } catch (error) {
-        console.error('[Updater Task] A critical error occurred during execution:', error);
+        // IMPORTANT: If an error occurs, we DO NOT advance the sport index.
+        // This forces the next run to retry the failed sport.
+        console.error(`[Updater Task] A critical error occurred during execution for sport '${SPORTS_TO_PROCESS[sportIndex]}':`, error);
         await env.BOT_STATE.put('last_run_error', JSON.stringify({
             timestamp: new Date().toISOString(),
+            sport: SPORTS_TO_PROCESS[sportIndex],
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
         }));
+        // We re-throw the error to ensure the serverless function execution is marked as failed.
         throw error;
     }
 }
+
 
 export const onCron: PagesFunction<Env> = async ({ env, waitUntil }) => {
     waitUntil(runUpdateTask(env));
