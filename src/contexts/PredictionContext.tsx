@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { SharedPrediction } from '../types';
-import { generateClientSideMocks } from '../utils/mockMatches';
 
 interface PredictionContextType {
   allPredictions: SharedPrediction[];
@@ -18,57 +17,36 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const fetchAllPredictions = useCallback(async (force: boolean = false) => {
     setIsLoading(true);
-    // Не сбрасываем ошибку сразу, чтобы показать ее во время перезагрузки
-    // setError(null); 
+    setError(null); // Clear previous errors on a new fetch attempt
     try {
       const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           endpoint: 'getAllPredictions',
-          payload: {} // Для этого эндпоинта payload не нужен
+          payload: {}
         }),
       });
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Не удалось загрузить прогнозы с сервера.');
+        throw new Error(errorData.error || 'Ошибка ответа сервера.');
       }
 
-      let predictions: SharedPrediction[] = await response.json();
+      const predictions: SharedPrediction[] = await response.json();
 
-      // --- РЕЗЕРВНАЯ ЛОГИКА ---
-      const today = new Date();
-      const todayDay = String(today.getUTCDate()).padStart(2, '0');
-      const todayMonth = String(today.getUTCMonth() + 1).padStart(2, '0');
-      const todayYear = today.getUTCFullYear();
-      const todayStr = `${todayDay}.${todayMonth}.${todayYear}`;
-      
-      const tomorrow = new Date(today);
-      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-      const tomorrowDay = String(tomorrow.getUTCDate()).padStart(2, '0');
-      const tomorrowMonth = String(tomorrow.getUTCMonth() + 1).padStart(2, '0');
-      const tomorrowYear = tomorrow.getUTCFullYear();
-      const tomorrowStr = `${tomorrowDay}.${tomorrowMonth}.${tomorrowYear}`;
-
-
-      const hasValidMatches = predictions.length > 0 && predictions.some(p => p.date === todayStr || p.date === tomorrowStr);
-
-      if (!hasValidMatches) {
-          console.warn("Fetched predictions are empty or outdated. Falling back to client-side mocks.");
-          setError("Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня.");
-          predictions = generateClientSideMocks();
-      } else {
-          setError(null); // Очищаем ошибку, если загрузка успешна
-      }
-
+      // The frontend now trusts the backend completely.
+      // If the backend returns an empty array, it means there are no matches, which is a valid state.
+      // The UI component (UpcomingMatches) will be responsible for displaying "No matches found."
       setAllPredictions(predictions);
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная ошибка при загрузке прогнозов.';
-      setError(errorMessage);
-      console.error("Fetch error, falling back to client-side mocks.", err);
-      setAllPredictions(generateClientSideMocks());
+      const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная сетевая ошибка.';
+      // Set an error message to be displayed in the UI.
+      setError(`Не удалось загрузить данные о матчах. Пожалуйста, попробуйте обновить страницу позже. Ошибка: ${errorMessage}`);
+      console.error("Failed to fetch predictions from the server:", err);
+      // Set predictions to an empty array to ensure the UI shows an empty state, not stale data.
+      setAllPredictions([]);
     } finally {
       setIsLoading(false);
     }

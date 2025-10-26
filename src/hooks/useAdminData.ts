@@ -33,7 +33,6 @@ export const useAdminData = (): UseAdminDataReturn => {
     try {
       // 1. Get all registered users
       const allUsers = getUsers();
-      // @google/genai-fix: Use .getTime() to perform arithmetic on Date objects.
       setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
       // 2. Aggregate bets from all users
@@ -61,8 +60,10 @@ export const useAdminData = (): UseAdminDataReturn => {
     }
 
     const settledBets = allBets.filter(b => b.status !== BetStatus.Pending);
-    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
-    const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
+    // FIX: Ensure stake is treated as a number to prevent type errors with arithmetic operations.
+    const totalStaked = settledBets.reduce((acc, bet) => acc + Number(bet.stake || 0), 0);
+    // FIX: Ensure profit is treated as a number to prevent type errors with arithmetic operations.
+    const totalProfit = settledBets.reduce((acc, bet) => acc + Number(bet.profit ?? 0), 0);
     const platformRoi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
 
     const statsBySport = settledBets.reduce((acc, bet) => {
@@ -70,8 +71,10 @@ export const useAdminData = (): UseAdminDataReturn => {
         if (!acc[sport]) {
             acc[sport] = { profit: 0, staked: 0 };
         }
-        acc[sport].profit += bet.profit ?? 0;
-        acc[sport].staked += bet.stake;
+        // FIX: Ensure profit is treated as a number to prevent type errors with arithmetic operations.
+        acc[sport].profit += Number(bet.profit ?? 0);
+        // FIX: Ensure stake is treated as a number to prevent type errors with arithmetic operations.
+        acc[sport].staked += Number(bet.stake || 0);
         return acc;
     }, {} as { [key: string]: { profit: number; staked: number } });
 
@@ -84,21 +87,21 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // @google/genai-fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    const popularSportsCounts = settledBets.reduce((acc, bet) => {
+    // FIX: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
+    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularSports = Object.entries(popularSportsCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // @google/genai-fix: Explicitly type the accumulator for the reduce function to resolve incorrect type inference.
-    const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
+    // FIX: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
+    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
@@ -121,8 +124,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         const range = oddsRanges.find(r => bet.odds >= r.min && bet.odds < r.max);
         if (range) {
             const bucket = performanceByOddsAcc[range.label];
-            bucket.staked += bet.stake;
-            bucket.profit += bet.profit ?? 0;
+            bucket.staked += Number(bet.stake || 0);
+            bucket.profit += Number(bet.profit ?? 0);
             if (bet.status === BetStatus.Won) {
                 bucket.wins += 1;
             } else if (bet.status === BetStatus.Lost) {
@@ -157,9 +160,9 @@ export const useAdminData = (): UseAdminDataReturn => {
                 }
                 const teamData = acc[teamName];
                 teamData.count += 1;
-                teamData.staked += bet.stake;
-                teamData.profit += bet.profit ?? 0;
-                teamData.oddsSum += bet.odds;
+                teamData.staked += Number(bet.stake || 0);
+                teamData.profit += Number(bet.profit ?? 0);
+                teamData.oddsSum += Number(bet.odds || 0);
                 if (bet.status === BetStatus.Won) teamData.wins += 1;
                 else if (bet.status === BetStatus.Lost) teamData.losses += 1;
             }
