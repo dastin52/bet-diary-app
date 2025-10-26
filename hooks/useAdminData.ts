@@ -86,25 +86,23 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // @google/genai-fix: Explicitly type the accumulator in the reduce function to fix type inference issues with Object.entries.
-    const popularSportsCounts = settledBets.reduce((acc, bet) => {
+    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularSports = Object.entries(popularSportsCounts)
         .map(([name, count]) => ({ name, count }))
-        // @google/genai-fix: Cast count to number to resolve sort error, as Object.entries can produce `unknown`.
-        .sort((a, b) => (b.count as number) - (a.count as number))
+        .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
     // @google/genai-fix: Explicitly type the accumulator in the reduce function to fix type inference issues with Object.entries.
-    const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
+    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {} as Record<string, number>);
+    }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
         .map(([name, count]) => ({ name, count }))
-        // @google/genai-fix: Cast count to number to resolve sort error, as Object.entries can produce `unknown`.
-        .sort((a, b) => (b.count as number) - (a.count as number))
+        .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     
     const oddsRanges = [

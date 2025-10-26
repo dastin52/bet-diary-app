@@ -291,7 +291,8 @@ async function runUpdate() {
             message: error.message,
             stack: error.stack,
         });
-        return { success: false, message: 'Update failed.' };
+        // Re-throw the error so the manual trigger endpoint can catch it and report it to the user.
+        throw error;
     }
 }
 

@@ -239,6 +239,8 @@ export async function runUpdateTask(env: Env) {
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
         }));
+        // Re-throw the error to ensure the Cloudflare environment knows the task failed.
+        throw error;
     }
 }
 
