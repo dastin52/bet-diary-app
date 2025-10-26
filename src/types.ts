@@ -213,3 +213,11 @@ export interface AIPrediction {
         scores: { home: number; away: number; };
     }
 }
+
+export interface ApiActivityLog {
+  timestamp: string;
+  endpoint: string;
+  sport: string;
+  status: 'success' | 'error';
+  errorMessage?: string;
+}

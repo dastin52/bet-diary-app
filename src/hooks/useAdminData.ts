@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Bet, User, BetStatus, TeamStats } from '../types';
+import { Bet, User, BetStatus, TeamStats, ApiActivityLog } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
 import { loadUserData } from '../data/betStore';
 
@@ -20,6 +20,7 @@ export interface UseAdminDataReturn {
   users: User[];
   allBets: Bet[];
   analytics: AdminAnalytics | null;
+  activityLog: ApiActivityLog[];
   isLoading: boolean;
   updateUserStatus: (email: string, status: 'active' | 'blocked') => void;
 }
@@ -27,6 +28,7 @@ export interface UseAdminDataReturn {
 export const useAdminData = (): UseAdminDataReturn => {
   const [users, setUsers] = useState<User[]>([]);
   const [allBets, setAllBets] = useState<Bet[]>([]);
+  const [activityLog, setActivityLog] = useState<ApiActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -35,17 +37,20 @@ export const useAdminData = (): UseAdminDataReturn => {
             // 1. Get all registered web users from localStorage
             const webUsers = getUsers();
             
-            // 2. In a real app, you would fetch bot users from a secure endpoint.
-            // For local dev, we use a mock endpoint. For production, this will hit a CF Worker.
+            // 2. Fetch bot users from our secure endpoint.
             const botUsersResponse = await fetch('/api/admin/users');
             const botUsersData = await botUsersResponse.json();
             const botUsers = botUsersData.users || [];
 
-            // 3. Combine and de-duplicate users
+            // 3. Fetch API activity log
+            const activityResponse = await fetch('/api/admin/activity');
+            const activityData = await activityResponse.json();
+            setActivityLog(Array.isArray(activityData) ? activityData : []);
+
+            // 4. Combine and de-duplicate users
             const allUsersMap = new Map<string, User>();
             [...webUsers, ...botUsers].forEach(user => {
                 if(user && user.email) {
-                    // Prioritize more complete records if duplicates exist
                     const existing = allUsersMap.get(user.email);
                     if (!existing || (user.source === 'web' && existing.source !== 'web')) {
                         allUsersMap.set(user.email, user);
@@ -53,10 +58,9 @@ export const useAdminData = (): UseAdminDataReturn => {
                 }
             });
             const allUniqueUsers = Array.from(allUsersMap.values());
-
             setUsers(allUniqueUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
-            // 4. Aggregate bets from all users
+            // 5. Aggregate bets from all users
             let collectedBets: Bet[] = [];
             for (const user of allUniqueUsers) {
                 const { bets } = loadUserData(user.email);
@@ -65,9 +69,6 @@ export const useAdminData = (): UseAdminDataReturn => {
             setAllBets(collectedBets);
         } catch (error) {
             console.error("Failed to load admin data", error);
-            // Fallback to only web users if API fails
-            const webUsers = getUsers();
-            setUsers(webUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
         } finally {
             setIsLoading(false);
         }
@@ -86,21 +87,21 @@ export const useAdminData = (): UseAdminDataReturn => {
     }
 
     const settledBets = allBets.filter(b => b.status !== BetStatus.Pending);
-    const totalStaked = settledBets.reduce((acc, bet) => acc + bet.stake, 0);
+    // @google/genai-fix: Ensure bet.stake is treated as a number.
+    const totalStaked = settledBets.reduce((acc, bet) => acc + (Number(bet.stake) || 0), 0);
     const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
     const platformRoi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
 
-    // @google/genai-fix: Correctly type the initial value of the reduce function's accumulator.
-    const statsBySport = settledBets.reduce((acc, bet) => {
+    const statsBySport = settledBets.reduce<Record<string, { profit: number; staked: number }>>((acc, bet) => {
         const sport = bet.sport;
         if (!acc[sport]) {
             acc[sport] = { profit: 0, staked: 0 };
         }
         acc[sport].profit += bet.profit ?? 0;
-        // @google/genai-fix: Corrected arithmetic operation by ensuring operand is a number. This fixes the error on line 118.
-        acc[sport].staked += bet.stake || 0;
+        // @google/genai-fix: Ensure bet.stake is treated as a number.
+        acc[sport].staked += Number(bet.stake) || 0;
         return acc;
-    }, {} as Record<string, { profit: number; staked: number }>);
+    }, {});
 
     const profitBySport = Object.keys(statsBySport).map((sport) => {
         const data = statsBySport[sport];
@@ -111,21 +112,23 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    // @google/genai-fix: Add explicit type to initial value of reduce to fix type inference issue.
+    const popularSportsCounts = settledBets.reduce((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
-    }, {});
+    }, {} as Record<string, number>);
     const popularSports = Object.entries(popularSportsCounts)
-        .map(([name, count]) => ({ name, count: count as number }))
+        .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    // @google/genai-fix: Add explicit type to initial value of reduce to fix type inference issue.
+    const popularBookmakersCounts = settledBets.reduce((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
-    }, {});
+    }, {} as Record<string, number>);
     const popularBookmakers = Object.entries(popularBookmakersCounts)
-        .map(([name, count]) => ({ name, count: count as number }))
+        .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     
@@ -146,7 +149,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         const range = oddsRanges.find(r => bet.odds >= r.min && bet.odds < r.max);
         if (range) {
             const bucket = performanceByOddsAcc[range.label];
-            bucket.staked += bet.stake;
+            // @google/genai-fix: Ensure bet.stake is treated as a number.
+            bucket.staked += Number(bet.stake);
             bucket.profit += bet.profit ?? 0;
             if (bet.status === BetStatus.Won) {
                 bucket.wins += 1;
@@ -170,7 +174,8 @@ export const useAdminData = (): UseAdminDataReturn => {
 
     type TeamStatAccumulator = { [key: string]: { sport: string; count: number; wins: number; losses: number; staked: number; profit: number, oddsSum: number } };
 
-    const teamStatsAggregator = settledBets.reduce((acc: TeamStatAccumulator, bet) => {
+    // @google/genai-fix: Add explicit type to initial value of reduce to fix type inference issue.
+    const teamStatsAggregator = settledBets.reduce((acc, bet) => {
         bet.legs.forEach(leg => {
             const processTeam = (teamName: string) => {
                 if (!teamName) return;
@@ -182,10 +187,11 @@ export const useAdminData = (): UseAdminDataReturn => {
                 }
                 const teamData = acc[teamName];
                 teamData.count += 1;
-                // @google/genai-fix: Corrected arithmetic operation by ensuring operand is a number. This fixes the error on line 127.
-                teamData.staked += (bet.stake || 0);
+                // @google/genai-fix: Ensure bet.stake is treated as a number.
+                teamData.staked += Number(bet.stake) || 0;
                 teamData.profit += bet.profit ?? 0;
-                teamData.oddsSum += bet.odds;
+                // @google/genai-fix: Ensure bet.odds is treated as a number.
+                teamData.oddsSum += Number(bet.odds);
                 if (bet.status === BetStatus.Won) teamData.wins += 1;
                 else if (bet.status === BetStatus.Lost) teamData.losses += 1;
             }
@@ -219,13 +225,12 @@ export const useAdminData = (): UseAdminDataReturn => {
       totalProfit,
       platformRoi,
       profitBySport,
-      // @google/genai-fix: Cast result to the correct type to satisfy the compiler. This fixes errors on lines 219 and 220.
-      popularSports: popularSports as { name: string; count: number; }[],
-      popularBookmakers: popularBookmakers as { name: string; count: number; }[],
+      popularSports,
+      popularBookmakers,
       performanceByOdds,
       teamAnalytics,
     };
   }, [allBets, users, isLoading]);
 
-  return { users, allBets, analytics, isLoading, updateUserStatus: updateUserStatusInState };
+  return { users, allBets, analytics, activityLog, isLoading, updateUserStatus: updateUserStatusInState };
 };

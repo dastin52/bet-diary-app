@@ -23,6 +23,9 @@ if (!process.env.GEMINI_API_KEY) {
     ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 }
 
+// In-memory store for API activity logs in local dev
+let apiActivityLog = [];
+
 
 // --- WEB APP API ROUTES ---
 
@@ -42,6 +45,12 @@ app.get('/api/health', (req, res) => {
         lastUpdateError: lastError,
     };
     res.json(healthStatus);
+});
+
+// Admin endpoint to get API activity
+app.get('/api/admin/activity', (req, res) => {
+    const logs = cache.getPersistent('api_activity_log') || [];
+    res.json(logs);
 });
 
 
@@ -87,7 +96,6 @@ app.post('/api/tasks/run-update', async (req, res) => {
         if (result.success) {
             res.status(200).json({ message: 'Обновление прогнозов успешно завершено.' });
         } else {
-            // This case might not be hit if runUpdate throws, but it's good practice.
             res.status(500).json({ error: result.message || 'Произошла неизвестная ошибка во время обновления.' });
         }
     } catch (err) {
@@ -102,31 +110,12 @@ app.post('/api/tasks/run-update', async (req, res) => {
 app.get('/api/admin/users', (req, res) => {
     console.log('[LOCAL DEV] Serving mock bot users for admin panel.');
     
-    // This mocks the data that would be fetched from Cloudflare KV in production.
     const mockBotOnlyUsers = [
         {
-            email: 'botuser1@telegram.bot',
-            nickname: 'TelegramFan',
-            password_hash: '', 
+            email: 'botuser1@telegram.bot', nickname: 'TelegramFan', password_hash: '', 
             registeredAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            referralCode: 'BOTREF123',
-            buttercups: 0,
-            status: 'active',
-            telegramId: 987654321,
-            telegramUsername: 'telegramfan',
-            source: 'telegram',
-        },
-        {
-            email: 'botuser2@telegram.bot',
-            nickname: 'SuperCapper',
-            password_hash: '',
-            registeredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            referralCode: 'CAPPERXYZ',
-            buttercups: 0,
-            status: 'active',
-            telegramId: 123456789,
-            telegramUsername: 'supercapper',
-            source: 'telegram',
+            referralCode: 'BOTREF123', buttercups: 0, status: 'active',
+            telegramId: 987654321, telegramUsername: 'telegramfan', source: 'telegram',
         }
     ];
 
@@ -135,7 +124,6 @@ app.get('/api/admin/users', (req, res) => {
 
 
 // --- TELEGRAM BOT LOCAL DEV ROUTES ---
-// This temporary store is for local development only. In production, Cloudflare KV is used.
 const tempAuthCodes = new Map();
 
 app.post('/api/telegram/generate-code', (req, res) => {
@@ -144,20 +132,9 @@ app.post('/api/telegram/generate-code', (req, res) => {
         return res.status(400).json({ error: 'Email and userData are required.' });
     }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Store with an expiry
     const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
     tempAuthCodes.set(code, { userData, expiry });
     
-    // Cleanup expired codes periodically (simple approach)
-    setTimeout(() => {
-        for (const [key, value] of tempAuthCodes.entries()) {
-            if (Date.now() > value.expiry) {
-                tempAuthCodes.delete(key);
-            }
-        }
-    }, 6 * 60 * 1000);
-
     console.log(`[LOCAL DEV] Generated Telegram code ${code} for ${email}`);
     res.json({ code });
 });
@@ -167,7 +144,7 @@ app.post('/api/telegram/generate-code', (req, res) => {
 const startServer = async () => {
   console.log('Running initial prediction update on startup...');
   try {
-    await runUpdate(); // Await the first run to ensure cache is populated
+    await runUpdate();
     console.log('Initial prediction update complete. Server is ready.');
   } catch (err) {
     console.error('Initial update run failed:', err);
@@ -177,11 +154,10 @@ const startServer = async () => {
     console.log(`API server for local development listening at http://localhost:${port}`);
     console.log("This server provides API proxying for the web app.");
 
-    // Run update every hour
     setInterval(() => {
       console.log('Hourly prediction update...');
       runUpdate().catch(err => console.error('Hourly update run failed:', err));
-    }, 3600 * 1000); // 1 hour
+    }, 3600 * 1000);
   });
 };
 

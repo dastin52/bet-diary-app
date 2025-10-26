@@ -309,3 +309,11 @@ export interface SharedPrediction extends Omit<SportGame, 'teams' | 'status'> {
     emoji: string;
   };
 }
+// @google/genai-fix: Add and export ApiActivityLog interface.
+export interface ApiActivityLog {
+  timestamp: string;
+  endpoint: string;
+  sport: string;
+  status: 'success' | 'error';
+  errorMessage?: string;
+}
