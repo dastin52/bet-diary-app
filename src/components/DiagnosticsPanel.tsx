@@ -15,6 +15,7 @@ interface CheckResult {
 interface CacheCheckResult extends CheckResult {
     count?: number;
     latest?: string;
+    isStale?: boolean;
 }
 
 const SPORTS_TO_CHECK = ['football', 'hockey', 'basketball', 'nba', 'all'];
@@ -24,6 +25,7 @@ const DiagnosticsPanel: React.FC = () => {
     const [log, setLog] = useState('');
     const [connectivity, setConnectivity] = useState<CheckResult | null>(null);
     const [apiKeys, setApiKeys] = useState<CheckResult | null>(null);
+    const [lastUpdate, setLastUpdate] = useState<CheckResult | null>(null);
     const [cacheStatus, setCacheStatus] = useState<Record<string, CacheCheckResult>>({});
     const [copySuccess, setCopySuccess] = useState(false);
 
@@ -31,33 +33,53 @@ const DiagnosticsPanel: React.FC = () => {
         setIsLoading(true);
         setConnectivity(null);
         setApiKeys(null);
+        setLastUpdate(null);
         setCacheStatus({});
         let fullLog = `--- DIAGNOSTICS LOG @ ${new Date().toISOString()} ---\n\n`;
 
-        // 1. Connectivity & API Keys
+        // 1. Connectivity, API Keys & Last Update Time
         setConnectivity({ status: 'pending', message: 'Проверка связи с бэкендом...' });
         try {
             const healthRes = await fetch('/api/health');
             if (!healthRes.ok) throw new Error(`Server returned status ${healthRes.status}`);
             const healthData = await healthRes.json();
             
+            // Connectivity
             const connSuccessMsg = `Успешное соединение с бэкендом. (${healthData.timestamp})`;
             setConnectivity({ status: 'success', message: connSuccessMsg });
             fullLog += `[SUCCESS] Connectivity: ${connSuccessMsg}\n`;
 
+            // API Keys
             const geminiOk = healthData.apiKeys?.gemini === 'CONFIGURED';
-            const sportsApiOk = healthData.apiKeys?.sportsApi === 'CONFIGURED';
-            const keysOk = geminiOk; // sportsApi is optional for local dev with mocks
+            const keysOk = geminiOk;
             let apiKeyMessage = `Gemini: ${healthData.apiKeys?.gemini}, Sports API: ${healthData.apiKeys?.sportsApi}`;
-            if (!sportsApiOk) apiKeyMessage += ' (Бэкенд будет использовать демонстрационные данные матчей)';
-            
             setApiKeys({ status: keysOk ? 'success' : 'error', message: apiKeyMessage });
             fullLog += `[${keysOk ? 'SUCCESS' : 'ERROR'}] API Keys: ${apiKeyMessage}\n`;
+
+            // Last Update
+            const lastRunTimestamp = healthData.lastSuccessfulUpdate;
+            let lastUpdateStatus: Status = 'error';
+            let lastUpdateMessage = 'Информация о последнем запуске фонового обновления отсутствует.';
+            if (lastRunTimestamp && lastRunTimestamp !== 'Not run yet') {
+                const lastRunDate = new Date(lastRunTimestamp);
+                const hoursAgo = (new Date().getTime() - lastRunDate.getTime()) / (1000 * 60 * 60);
+                if (hoursAgo > 3) {
+                    lastUpdateStatus = 'warning';
+                    lastUpdateMessage = `Последнее обновление было ${lastRunDate.toLocaleString('ru-RU')} (${hoursAgo.toFixed(1)} ч. назад). Данные могут быть неактуальными.`;
+                } else {
+                    lastUpdateStatus = 'success';
+                    lastUpdateMessage = `Последнее успешное обновление: ${lastRunDate.toLocaleString('ru-RU')}`;
+                }
+            }
+            setLastUpdate({ status: lastUpdateStatus, message: lastUpdateMessage });
+            fullLog += `[${lastUpdateStatus.toUpperCase()}] Last Update Check: ${lastUpdateMessage}\n`;
+
 
         } catch (e) {
             const errorMsg = `Не удалось подключиться к бэкенду. Убедитесь, что сервер запущен. Ошибка: ${e instanceof Error ? e.message : String(e)}`;
             setConnectivity({ status: 'error', message: errorMsg });
             setApiKeys({ status: 'error', message: 'Проверка невозможна из-за ошибки подключения.' });
+            setLastUpdate({ status: 'error', message: 'Проверка невозможна.' });
             fullLog += `[ERROR] Connectivity: ${errorMsg}\n`;
             setIsLoading(false);
             setLog(fullLog);
@@ -83,13 +105,21 @@ const DiagnosticsPanel: React.FC = () => {
                 
                 if (!Array.isArray(data)) throw new Error('Response is not an array.');
 
-                const message = data.length > 0 ? `Найдено ${data.length} записей.` : `Кэш пуст или устарел.`;
-                const status: Status = data.length > 0 ? 'success' : 'warning';
                 const latestTimestamp = data.length > 0 ? Math.max(...data.map(p => p.timestamp || 0)) : 0;
                 const latestDate = latestTimestamp > 0 ? new Date(latestTimestamp * 1000).toLocaleString('ru-RU') : 'N/A';
-                
-                setCacheStatus(prev => ({ ...prev, [sport]: { status, message, count: data.length, latest: latestDate } }));
-                fullLog += `[${status.toUpperCase()}] Cache '${sport}': ${message} Latest: ${latestDate}\n`;
+                const todayStr = new Date().toISOString().split('T')[0];
+                const isDataStale = latestTimestamp > 0 && !new Date(latestTimestamp * 1000).toISOString().startsWith(todayStr);
+
+                let status: Status = data.length > 0 ? 'success' : 'warning';
+                let finalMessage = data.length > 0 ? `Найдено ${data.length} записей.` : `Кэш пуст или устарел.`;
+
+                if (isDataStale) {
+                    status = 'warning';
+                    finalMessage += ` Данные устарели (от ${new Date(latestTimestamp * 1000).toLocaleDateString('ru-RU')}).`;
+                }
+
+                setCacheStatus(prev => ({ ...prev, [sport]: { status, message: finalMessage, count: data.length, latest: latestDate, isStale: isDataStale } }));
+                fullLog += `[${status.toUpperCase()}] Cache '${sport}': ${finalMessage} Latest: ${latestDate}\n`;
 
             } catch (e) {
                 const errorMsg = `Ошибка при проверке кэша '${sport}'. ${e instanceof Error ? e.message : String(e)}`;
@@ -150,6 +180,13 @@ const DiagnosticsPanel: React.FC = () => {
                         <div>
                             <p className="font-semibold">Конфигурация API ключей на бэкенде</p>
                             <p className="text-sm text-gray-400">{apiKeys?.message || 'Ожидание...'}</p>
+                        </div>
+                    </div>
+                     <div className="flex items-start gap-3 p-2 rounded-lg bg-gray-900/30">
+                        {lastUpdate && <StatusIcon status={lastUpdate.status} />}
+                        <div>
+                            <p className="font-semibold">Последнее фоновое обновление</p>
+                            <p className="text-sm text-gray-400">{lastUpdate?.message || 'Ожидание...'}</p>
                         </div>
                     </div>
                     {SPORTS_TO_CHECK.map(sport => (

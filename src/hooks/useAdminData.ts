@@ -60,9 +60,9 @@ export const useAdminData = (): UseAdminDataReturn => {
     }
 
     const settledBets = allBets.filter(b => b.status !== BetStatus.Pending);
-    // @google/genai-fix: Ensure stake is treated as a number to prevent type errors with arithmetic operations.
+    // FIX: Ensure stake is treated as a number to prevent type errors with arithmetic operations.
     const totalStaked = settledBets.reduce((acc, bet) => acc + Number(bet.stake || 0), 0);
-    // @google/genai-fix: Ensure profit is treated as a number to prevent type errors with arithmetic operations.
+    // FIX: Ensure profit is treated as a number to prevent type errors with arithmetic operations.
     const totalProfit = settledBets.reduce((acc, bet) => acc + Number(bet.profit ?? 0), 0);
     const platformRoi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
 
@@ -71,9 +71,9 @@ export const useAdminData = (): UseAdminDataReturn => {
         if (!acc[sport]) {
             acc[sport] = { profit: 0, staked: 0 };
         }
-        // @google/genai-fix: Ensure profit is treated as a number to prevent type errors with arithmetic operations.
+        // FIX: Ensure profit is treated as a number to prevent type errors with arithmetic operations.
         acc[sport].profit += Number(bet.profit ?? 0);
-        // @google/genai-fix: Ensure stake is treated as a number to prevent type errors with arithmetic operations.
+        // FIX: Ensure stake is treated as a number to prevent type errors with arithmetic operations.
         acc[sport].staked += Number(bet.stake || 0);
         return acc;
     }, {} as { [key: string]: { profit: number; staked: number } });
@@ -87,7 +87,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // @google/genai-fix: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
+    // FIX: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -97,7 +97,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // @google/genai-fix: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
+    // FIX: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;

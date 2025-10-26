@@ -227,6 +227,10 @@ export async function runUpdateTask(env: Env) {
         await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions));
         console.log('[Updater Task] Combined "all" predictions key updated.');
 
+        // Record the successful run
+        await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
+        console.log('[Updater Task] Successfully recorded run timestamp.');
+
     } catch (error) {
         console.error('[Updater Task] A critical error occurred during execution:', error);
     }

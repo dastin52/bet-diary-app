@@ -277,6 +277,11 @@ async function runUpdate() {
         }
         cache.putPersistent('central_predictions:all', combinedPredictions);
         console.log('[Updater] Combined "all" predictions key updated.');
+        
+        // Record successful run
+        cache.putPersistent('last_successful_run_timestamp', new Date().toISOString());
+        console.log('[Updater Task] Successfully recorded run timestamp.');
+
         return { success: true, message: 'Update finished.' };
     } catch (error) {
         console.error('[Updater Task] Critical error:', error);

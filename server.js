@@ -28,6 +28,7 @@ if (!process.env.GEMINI_API_KEY) {
 
 // Health check endpoint for diagnostics
 app.get('/api/health', (req, res) => {
+    const lastRun = cache.getPersistent('last_successful_run_timestamp') || 'Not run yet';
     const healthStatus = {
         status: "ok",
         timestamp: new Date().toISOString(),
@@ -36,6 +37,7 @@ app.get('/api/health', (req, res) => {
             sportsApi: process.env.SPORT_API_KEY ? 'CONFIGURED' : 'NOT_APPLICABLE_IN_LOCAL_DEV (uses mocks)',
         },
         kvBinding: 'NOT_APPLICABLE_IN_LOCAL_DEV (uses file cache)',
+        lastSuccessfulUpdate: lastRun,
     };
     res.json(healthStatus);
 });
