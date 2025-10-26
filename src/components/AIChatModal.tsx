@@ -91,6 +91,7 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
               text: 'Здравствуйте! Я ваш AI-Аналитик. Чем могу помочь? Вы можете задать вопрос о своей статистике или запросить анализ предстоящего матча.'
           }]);
       }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bet]);
 
   const handleSubmit = (e: React.FormEvent) => {
