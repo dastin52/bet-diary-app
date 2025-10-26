@@ -23,16 +23,12 @@ const cache = {
     put: (key, value, ttlSeconds) => {
         const expiry = Date.now() + ttlSeconds * 1000;
         cacheStore[key] = { value, expiry };
-        fs.writeFile(cacheFilePath, JSON.stringify(cacheStore, null, 2), (err) => {
-            if (err) console.error('Error writing to cache file:', err);
-        });
+        fs.writeFileSync(cacheFilePath, JSON.stringify(cacheStore, null, 2));
     },
     getPersistent: (key) => cacheStore[key] || null,
     putPersistent: (key, value) => {
         cacheStore[key] = value;
-        fs.writeFile(cacheFilePath, JSON.stringify(cacheStore, null, 2), (err) => {
-            if (err) console.error('Error writing to cache file:', err);
-        });
+        fs.writeFileSync(cacheFilePath, JSON.stringify(cacheStore, null, 2));
     },
 };
 
@@ -40,15 +36,15 @@ const cache = {
 const logApiActivity = (logEntry) => {
     const newLog = { ...logEntry, timestamp: new Date().toISOString() };
     const logs = cache.getPersistent('api_activity_log') || [];
-    const updatedLogs = [newLog, ...logs].slice(0, 100); // Keep last 100
+    const updatedLogs = [newLog, ...logs].slice(0, 100);
     cache.putPersistent('api_activity_log', updatedLogs);
 };
-
 
 // --- CONSTANTS & HELPERS ---
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
-const BATCH_SIZE = 15; // Process in batches
+const BATCH_SIZE = 15;
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getStatusPriority = (statusShort) => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
@@ -131,8 +127,7 @@ async function getTodaysGamesBySport(sport) {
 
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
-         console.error(`No API config found for sport: ${sport}`);
-         return [];
+         throw new Error(`No API config found for sport: ${sport}`);
     }
     const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
 
@@ -141,18 +136,14 @@ async function getTodaysGamesBySport(sport) {
 
         if (!response.ok) {
             const errorBody = await response.text();
-            const errorMessage = `API responded with status ${response.status}: ${errorBody}`;
-            logApiActivity({ sport, endpoint: url, status: 'error', errorMessage });
-            throw new Error(errorMessage);
+            throw new Error(`API responded with status ${response.status}: ${errorBody}`);
         }
 
         const data = await response.json();
         const hasErrors = data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0);
         
         if (hasErrors || !data.response) {
-            const errorMessage = `API returned logical error: ${JSON.stringify(data.errors)}`;
-            logApiActivity({ sport, endpoint: url, status: 'error', errorMessage });
-            throw new Error(errorMessage);
+            throw new Error(`API returned logical error: ${JSON.stringify(data.errors)}`);
         }
         
         logApiActivity({ sport, endpoint: url, status: 'success' });
@@ -183,48 +174,96 @@ async function getTodaysGamesBySport(sport) {
         return games;
 
     } catch (error) {
-        console.error(`[FALLBACK] An error occurred while fetching ${sport} games. Falling back to mocks. Error:`, error);
+        console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
         logApiActivity({ sport, endpoint: url, status: 'error', errorMessage: error instanceof Error ? error.message : String(error) });
-        return generateMockGames(sport); // Fallback to mocks on error
+        throw error; 
     }
 }
 
+async function processSport(sport) {
+    console.log(`[Updater] Starting a fresh update for sport: ${sport}`);
+    const games = await getTodaysGamesBySport(sport);
+    const centralPredictionsKey = `central_predictions:${sport}`;
 
-// ... (rest of the file remains the same, including getAiPayloadForSport, processSport, and runUpdate)
+    if (games.length === 0) {
+        console.log(`[Updater] No games found for ${sport} today. Clearing existing data.`);
+        cache.putPersistent(centralPredictionsKey, []);
+        return [];
+    }
+    
+    // For local dev, we assume no complex translation or prediction logic is needed.
+    // We will just format the data.
+    const finalPredictions = games.map(game => {
+        const homeTeam = game.teams.home.name;
+        const awayTeam = game.teams.away.name;
+        const matchName = `${homeTeam} vs ${awayTeam}`;
+        
+        const d = new Date(game.timestamp * 1000);
+        const formattedDate = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
+
+        return {
+            ...(game),
+            id: game.id,
+            sport: sport,
+            eventName: game.league.name,
+            teams: matchName,
+            date: formattedDate,
+            time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
+            status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
+            prediction: null, // AI predictions can be added here in a more complex setup
+            score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : undefined,
+        }
+    }).sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || a.timestamp - b.timestamp);
+
+    cache.putPersistent(centralPredictionsKey, finalPredictions);
+    console.log(`[Updater] Successfully processed and stored ${finalPredictions.length} matches for ${sport}.`);
+    return finalPredictions;
+}
 
 async function runUpdate() {
-    // Heartbeat: Immediately log that the task was triggered.
     cache.putPersistent('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
-    try {
-        const allSportsResults = await Promise.allSettled(
-            SPORTS_TO_PROCESS.map(sport => processSport(sport))
-        );
-        allSportsResults.forEach((res, i) => {
-            if (res.status === 'rejected') console.error(`[Updater] Sport failed: ${SPORTS_TO_PROCESS[i]}`, res.reason);
-        });
+    let overallSuccess = true;
+    let errors = [];
 
-        const combinedPredictions = [];
-        for (const sport of SPORTS_TO_PROCESS) {
-            const preds = cache.getPersistent(`central_predictions:${sport}`);
-            if (preds) combinedPredictions.push(...preds);
+    for (const sport of SPORTS_TO_PROCESS) {
+        try {
+            console.log(`[Updater] Processing sport: ${sport}`);
+            await processSport(sport);
+            console.log(`[Updater] Successfully processed ${sport}.`);
+        } catch (sportError) {
+            console.error(`[Updater] Failed to process sport: ${sport}`, sportError.message);
+            overallSuccess = false;
+            errors.push({ sport, error: sportError.message });
         }
-        cache.putPersistent('central_predictions:all', combinedPredictions);
-        console.log('[Updater] Combined "all" predictions key updated.');
         
+        if (SPORTS_TO_PROCESS.indexOf(sport) < SPORTS_TO_PROCESS.length - 1) {
+             console.log('[Updater] Waiting 15 seconds before next sport to avoid rate limits...');
+             await delay(15000);
+        }
+    }
+    
+    const combinedPredictions = [];
+    for (const sport of SPORTS_TO_PROCESS) {
+        const preds = cache.getPersistent(`central_predictions:${sport}`);
+        if (preds) combinedPredictions.push(...preds);
+    }
+    cache.putPersistent('central_predictions:all', combinedPredictions);
+    console.log('[Updater] Combined "all" predictions key updated.');
+
+    if (overallSuccess) {
         cache.putPersistent('last_successful_run_timestamp', new Date().toISOString());
         cache.putPersistent('last_run_error', null);
         console.log('[Updater Task] Successfully recorded run timestamp.');
-
-        return { success: true, message: 'Update finished.' };
-    } catch (error) {
-        console.error('[Updater Task] Critical error:', error);
-        cache.putPersistent('last_run_error', {
+        return { success: true, message: 'Update finished successfully.' };
+    } else {
+         const errorMessage = `Update completed with failures for sports: ${errors.map(e => e.sport).join(', ')}.`;
+         cache.putPersistent('last_run_error', {
             timestamp: new Date().toISOString(),
-            message: error.message,
-            stack: error.stack,
-        });
-        throw error;
+            message: errorMessage,
+            details: errors,
+         });
+         return { success: false, message: errorMessage };
     }
 }
 

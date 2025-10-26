@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 // @google/genai-fix: Import ApiActivityLog type.
 import { Bet, User, BetStatus, TeamStats, ApiActivityLog } from '../types';
@@ -120,7 +121,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         return acc;
     }, {});
     const popularSports = Object.entries(popularSportsCounts)
-        .map(([name, count]) => ({ name, count }))
+        // FIX: Explicitly cast count to a number to satisfy strict type checking, resolving potential 'unknown' type errors.
+        .map(([name, count]) => ({ name, count: Number(count) || 0 }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
@@ -130,7 +132,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         return acc;
     }, {});
     const popularBookmakers = Object.entries(popularBookmakersCounts)
-        .map(([name, count]) => ({ name, count }))
+        // FIX: Explicitly cast count to a number to satisfy strict type checking, resolving potential 'unknown' type errors.
+        .map(([name, count]) => ({ name, count: Number(count) || 0 }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     
