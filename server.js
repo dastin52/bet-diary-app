@@ -80,11 +80,21 @@ app.post('/api/gemini', async (req, res) => {
 });
 
 // Endpoint to manually trigger update
-app.post('/api/tasks/run-update', (req, res) => {
+app.post('/api/tasks/run-update', async (req, res) => {
     console.log('[API] Manual prediction update triggered.');
-    // Run in background, don't wait for it
-    runUpdate().catch(err => console.error('Manual update run failed:', err));
-    res.status(202).json({ message: 'Prediction update process has been started.' });
+    try {
+        const result = await runUpdate();
+        if (result.success) {
+            res.status(200).json({ message: 'Обновление прогнозов успешно завершено.' });
+        } else {
+            // This case might not be hit if runUpdate throws, but it's good practice.
+            res.status(500).json({ error: result.message || 'Произошла неизвестная ошибка во время обновления.' });
+        }
+    } catch (err) {
+        console.error('Manual update run failed:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная ошибка на сервере.';
+        res.status(500).json({ error: `Не удалось завершить обновление. ${errorMessage}` });
+    }
 });
 
 

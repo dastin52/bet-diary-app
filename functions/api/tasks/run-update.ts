@@ -18,13 +18,25 @@ type PagesFunction<E = unknown> = (
  * to force a refresh of the prediction data.
  */
 export const onRequestPost: PagesFunction<Env> = async ({ env, waitUntil }) => {
-    // Run the update in the background without waiting for it to finish
-    // This provides an immediate response to the client.
-    waitUntil(runUpdateTask(env));
-    
-    // Immediately respond to the client with a 202 Accepted status
-    return new Response(JSON.stringify({ message: 'Prediction update process has been started in the background.' }), {
-        status: 202,
-        headers: { 'Content-Type': 'application/json' },
-    });
+    try {
+        // We still use waitUntil to allow the task to complete even if the client disconnects,
+        // but we await the task to provide synchronous feedback to the admin.
+        const updatePromise = runUpdateTask(env);
+        waitUntil(updatePromise);
+        await updatePromise;
+        
+        // Respond with success after the task has completed
+        return new Response(JSON.stringify({ message: 'Обновление прогнозов успешно завершено.' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+    } catch (err) {
+        console.error('Manual update run failed:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная ошибка на сервере.';
+        return new Response(JSON.stringify({ error: `Не удалось завершить обновление. ${errorMessage}` }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
 };

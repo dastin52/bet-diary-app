@@ -83,8 +83,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
-    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    // @google/genai-fix: Explicitly type the accumulator in the reduce function to fix type inference issues with Object.entries.
+    const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
     }, {});
@@ -93,8 +93,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
-    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    // @google/genai-fix: Explicitly type the accumulator in the reduce function to fix type inference issues with Object.entries.
+    const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
     }, {});
@@ -120,10 +120,10 @@ export const useAdminData = (): UseAdminDataReturn => {
         const range = oddsRanges.find(r => bet.odds >= r.min && bet.odds < r.max);
         if (range) {
             const bucket = performanceByOddsAcc[range.label];
-            // FIX: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
-            bucket.staked += Number(bet.stake || 0);
-            // FIX: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
-            bucket.profit += Number(bet.profit ?? 0);
+            // @google/genai-fix: Removed redundant Number() conversion and unnecessary null check on `bet.stake`.
+            bucket.staked += bet.stake;
+            // @google/genai-fix: Use nullish coalescing for optional `bet.profit`.
+            bucket.profit += bet.profit ?? 0;
             if (bet.status === BetStatus.Won) {
                 bucket.wins += 1;
             } else if (bet.status === BetStatus.Lost) {
@@ -158,11 +158,10 @@ export const useAdminData = (): UseAdminDataReturn => {
                 }
                 const teamData = acc[teamName];
                 teamData.count += 1;
-                // FIX: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
-                // FIX: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
-                teamData.staked += Number(bet.stake || 0);
-                teamData.profit += Number(bet.profit ?? 0);
-                teamData.oddsSum += Number(bet.odds || 0);
+                // @google/genai-fix: Removed redundant Number() conversions and unnecessary null checks on properties that are already numbers.
+                teamData.staked += bet.stake;
+                teamData.profit += bet.profit ?? 0;
+                teamData.oddsSum += bet.odds;
                 if (bet.status === BetStatus.Won) teamData.wins += 1;
                 else if (bet.status === BetStatus.Lost) teamData.losses += 1;
             }

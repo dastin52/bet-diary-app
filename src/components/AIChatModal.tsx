@@ -94,26 +94,26 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bet]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+ const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    let userMessageForUi: Message;
-    let historyForApi: Message[];
+    const userMessage: Message = { role: 'user', text: input };
+    setMessages(prev => [...prev, userMessage]);
 
-    if (chatState === 'awaiting_match_name' && tempMatchData.sport) {
-        const fullPrompt = `Анализ матча: ${input} ${tempMatchData.sport}`;
-        userMessageForUi = { role: 'user', text: `Анализ матча: ${input}` };
-        historyForApi = [...messages, { role: 'user', text: fullPrompt }];
+    if (chatState === 'awaiting_sport') {
+        setTempMatchData({ sport: input });
+        setChatState('awaiting_match_name');
+        setMessages(prev => [...prev, { role: 'model', text: 'Отлично. Теперь введите название матча (например, "Реал Мадрид - Барселона").' }]);
+    } else if (chatState === 'awaiting_match_name' && tempMatchData.sport) {
+        const fullPrompt = `Проанализируй матч: ${input} (спорт: ${tempMatchData.sport})`;
+        callAI([...messages, { role: 'user', text: fullPrompt }]);
         setChatState('idle');
         setTempMatchData({});
     } else {
-        userMessageForUi = { role: 'user', text: input };
-        historyForApi = [...messages, userMessageForUi];
+        callAI([...messages, userMessage]);
     }
-    
-    setMessages(prev => [...prev, userMessageForUi]);
-    callAI(historyForApi);
+
     setInput('');
   };
 
@@ -124,16 +124,17 @@ const AIChatModal: React.FC<AIChatModalProps> = ({ bet, analytics, onClose }) =>
           setMessages(newHistory);
           callAI(newHistory);
       } else if (type === 'match_analysis') {
-          setChatState('awaiting_match_name');
-          setTempMatchData({ sport: 'футбол' });
-          setMessages(prev => [...prev, { role: 'model', text: 'Пожалуйста, введите название матча (например, "Реал Мадрид - Барселона").' }]);
+          setChatState('awaiting_sport');
+          setMessages(prev => [...prev, { role: 'model', text: 'Какой вид спорта вас интересует (например, "футбол")?' }]);
       }
   };
 
   const modalTitle = bet ? "AI-Анализ Ставки" : "AI-Аналитик";
-  const inputPlaceholder = chatState === 'awaiting_match_name' 
-    ? "Введите название матча..." 
-    : (bet ? "Задайте вопрос по этой ставке..." : "Спросите про вашу статистику...");
+  
+  let inputPlaceholder = "Спросите про вашу статистику...";
+  if (bet) inputPlaceholder = "Задайте вопрос по этой ставке...";
+  if (chatState === 'awaiting_sport') inputPlaceholder = "Введите вид спорта...";
+  if (chatState === 'awaiting_match_name') inputPlaceholder = "Введите название матча...";
 
   const showWelcomeScreen = messages.length <= 1 && !bet;
 

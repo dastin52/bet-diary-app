@@ -20,7 +20,11 @@ interface CacheCheckResult extends CheckResult {
 
 const SPORTS_TO_CHECK = ['football', 'hockey', 'basketball', 'nba', 'all'];
 
-const DiagnosticsPanel: React.FC = () => {
+interface DiagnosticsPanelProps {
+    refreshKey: number;
+}
+
+const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [log, setLog] = useState('');
     const [connectivity, setConnectivity] = useState<CheckResult | null>(null);
@@ -149,7 +153,7 @@ const DiagnosticsPanel: React.FC = () => {
 
     useEffect(() => {
         runDiagnostics();
-    }, [runDiagnostics]);
+    }, [runDiagnostics, refreshKey]);
 
     const handleCopyLog = () => {
         navigator.clipboard.writeText(log);

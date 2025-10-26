@@ -15,23 +15,26 @@ const AdminPanel: React.FC = () => {
   const { users, allBets, analytics, isLoading, updateUserStatus } = useAdminData();
   const [activeTab, setActiveTab] = useState<AdminView>('stats');
   const [isUpdating, setIsUpdating] = useState(false);
-  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  const [diagnosticsRefreshKey, setDiagnosticsRefreshKey] = useState(0);
+
 
   const handleForceUpdate = async () => {
     setIsUpdating(true);
-    setUpdateMessage('Запускаю процесс обновления...');
+    setUpdateMessage({ type: 'info', text: 'Запускаю процесс обновления... Это может занять до минуты.' });
     try {
         const response = await fetch('/api/tasks/run-update', { method: 'POST' });
         const data = await response.json();
-        if (response.status === 202) {
-            setUpdateMessage(`${data.message} Это может занять несколько минут. Обновите страницы с прогнозами позже.`);
-        } else {
-            throw new Error(data.error || 'Не удалось запустить обновление.');
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось запустить обновление. Ответ сервера не OK.');
         }
+        setUpdateMessage({ type: 'success', text: data.message });
     } catch (error) {
-        setUpdateMessage(error instanceof Error ? error.message : 'Произошла неизвестная ошибка.');
+        setUpdateMessage({ type: 'error', text: error instanceof Error ? error.message : 'Произошла неизвестная ошибка.' });
     } finally {
         setIsUpdating(false);
+        // Trigger a refresh of the diagnostics panel to show the new state
+        setTimeout(() => setDiagnosticsRefreshKey(key => key + 1), 1000);
     }
   };
 
@@ -55,6 +58,15 @@ const AdminPanel: React.FC = () => {
   const profitColor = analytics.totalProfit >= 0 ? 'text-green-500' : 'text-red-500';
   const roiColor = analytics.platformRoi >= 0 ? 'text-green-500' : 'text-red-500';
 
+  const getMessageColor = () => {
+    if (!updateMessage) return '';
+    switch (updateMessage.type) {
+        case 'success': return 'text-green-300 bg-green-900/50';
+        case 'error': return 'text-red-300 bg-red-900/50';
+        default: return 'text-gray-300 bg-gray-900/50';
+    }
+  }
+
   const renderContent = () => {
       switch (activeTab) {
           case 'stats':
@@ -71,7 +83,7 @@ const AdminPanel: React.FC = () => {
                             </Button>
                         </div>
                         {updateMessage && (
-                            <p className="mt-4 text-sm text-gray-300 bg-gray-900/50 p-3 rounded-md">{updateMessage}</p>
+                            <p className={`mt-4 text-sm p-3 rounded-md ${getMessageColor()}`}>{updateMessage.text}</p>
                         )}
                     </Card>
 
@@ -211,7 +223,7 @@ const AdminPanel: React.FC = () => {
           case 'team_analytics':
               return <TeamAnalyticsPanel teamStats={analytics.teamAnalytics} />;
           case 'diagnostics':
-              return <DiagnosticsPanel />;
+              return <DiagnosticsPanel refreshKey={diagnosticsRefreshKey} />;
       }
   }
 
