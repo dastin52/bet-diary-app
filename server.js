@@ -135,13 +135,18 @@ app.post('/api/telegram/generate-code', (req, res) => {
 
 
 // --- START EXPRESS SERVER ---
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`API server for local development listening at http://localhost:${port}`);
   console.log("This server provides API proxying for the web app.");
 
   // Run update on startup and then every hour
   console.log('Running initial prediction update on startup...');
-  runUpdate().catch(err => console.error('Initial update run failed:', err));
+  try {
+    await runUpdate(); // Await the first run to ensure cache is populated
+    console.log('Initial prediction update complete. Server is ready.');
+  } catch (err) {
+    console.error('Initial update run failed:', err);
+  }
 
   setInterval(() => {
     console.log('Running hourly prediction update...');

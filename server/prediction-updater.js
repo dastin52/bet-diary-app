@@ -121,12 +121,44 @@ async function translateTeamNames(teamNames, env, ai) {
 }
 
 const getAiPayloadForSport = (sport, matchName) => {
-    const outcomes = {}; const keyMapping = {};
-    const addOutcome = (key, desc) => { outcomes[key] = { type: 'NUMBER', description: desc }; keyMapping[key] = desc; };
-    if (sport === 'football') { addOutcome('p1', 'П1'); addOutcome('x', 'X'); addOutcome('p2', 'П2'); }
-    else { addOutcome('p1_final', 'П1 (вкл. ОТ и буллиты)'); addOutcome('p2_final', 'П2 (вкл. ОТ и буллиты)'); }
-    const prompt = `Calculate probabilities and coefficients for the sports match: ${matchName} (${sport})...`;
-    return { prompt, schema: { type: 'OBJECT', properties: { probabilities: { type: 'OBJECT', properties: outcomes }, coefficients: { type: 'OBJECT', properties: outcomes } } }, keyMapping };
+    const outcomes = {};
+    const keyMapping = {};
+    const addOutcome = (key, description) => { outcomes[key] = { type: 'NUMBER', description }; keyMapping[key] = description; };
+
+    switch (sport) {
+        case 'basketball': case 'nba':
+            addOutcome('p1_ot', 'П1 (с ОТ)');
+            addOutcome('p2_ot', 'П2 (с ОТ)');
+            addOutcome('total_over_215_5', 'Тотал Больше 215.5');
+            addOutcome('total_under_215_5', 'Тотал Меньше 215.5');
+            addOutcome('total_over_225_5', 'Тотал Больше 225.5');
+            addOutcome('total_under_225_5', 'Тотал Меньше 225.5');
+            break;
+        case 'hockey':
+            addOutcome('p1_main', 'П1 (осн. время)');
+            addOutcome('x_main', 'X (осн. время)');
+            addOutcome('p2_main', 'П2 (осн. время)');
+            addOutcome('p1_final', 'П1 (вкл. ОТ и буллиты)');
+            addOutcome('p2_final', 'П2 (вкл. ОТ и буллиты)');
+            addOutcome('total_over_5_5', 'Тотал Больше 5.5');
+            addOutcome('total_under_5_5', 'Тотал Меньше 5.5');
+            break;
+        default: // football
+            addOutcome('p1', 'П1');
+            addOutcome('x', 'X');
+            addOutcome('p2', 'П2');
+            addOutcome('one_x', '1X');
+            addOutcome('x_two', 'X2');
+            addOutcome('total_over_2_5', 'Тотал Больше 2.5');
+            addOutcome('total_under_2_5', 'Тотал Меньше 2.5');
+            addOutcome('both_to_score_yes', 'Обе забьют - Да');
+            break;
+    }
+
+    const prompt = `Calculate probabilities and coefficients for the sports match: ${matchName} (${sport}). Use the provided schema keys. The description for each key specifies the exact market name.`;
+    const schema = { type: 'OBJECT', properties: { probabilities: { type: 'OBJECT', properties: outcomes }, coefficients: { type: 'OBJECT', properties: outcomes } }, required: ["probabilities", "coefficients"] };
+
+    return { prompt, schema, keyMapping };
 };
 
 // --- CORE UPDATER LOGIC ---
@@ -174,8 +206,21 @@ async function processSport(sport) {
                     
                     if (rawPredictionData?.probabilities) {
                          const remap = (obj, map) => Object.entries(obj).reduce((acc, [key, val]) => ({...acc, [map[key] || key]: val }), {});
-                         let bestOutcomeKey = Object.keys(rawPredictionData.probabilities).reduce((a, b) => rawPredictionData.probabilities[a] > rawPredictionData.probabilities[b] ? a : b);
-                         const finalData = { probabilities: remap(rawPredictionData.probabilities, keyMapping), coefficients: remap(rawPredictionData.coefficients, keyMapping), recommended_outcome: keyMapping[bestOutcomeKey] };
+                         const remappedProbabilities = remap(rawPredictionData.probabilities, keyMapping);
+                         const remappedCoefficients = remap(rawPredictionData.coefficients, keyMapping);
+
+                         let bestOutcomeKey = ''; let maxValue = -Infinity;
+                         for (const key in rawPredictionData.probabilities) {
+                             const prob = parseFloat(rawPredictionData.probabilities[key]);
+                             const coeff = parseFloat(rawPredictionData.coefficients[key]);
+                             if (!isNaN(prob) && !isNaN(coeff) && coeff > 1) {
+                                 const value = (prob / 100) * coeff - 1;
+                                 if (value > maxValue) { maxValue = value; bestOutcomeKey = key; }
+                             }
+                         }
+                         const recommendedOutcome = keyMapping[bestOutcomeKey] || 'Нет выгодной ставки';
+                         
+                         const finalData = { probabilities: remappedProbabilities, coefficients: remappedCoefficients, recommended_outcome: recommendedOutcome };
                          prediction = { id: `${game.id}-${Date.now()}`, createdAt: new Date().toISOString(), sport, matchName, prediction: JSON.stringify(finalData), status: 'pending' };
                     }
                 } catch (error) { console.error(`[Updater] Failed AI prediction for ${matchName}:`, error); }

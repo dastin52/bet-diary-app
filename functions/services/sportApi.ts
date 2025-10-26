@@ -10,7 +10,6 @@ const SPORT_API_CONFIG: SportApiConfig = {
     'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12&season=2023-2024' },
 };
 
-// FIX: Define the missing FINISHED_STATUSES constant.
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
 
 /**
@@ -196,6 +195,12 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             }
             return game;
         }).filter((game: SportGame) => game?.teams?.home?.name && game?.teams?.away?.name);
+    }
+    
+    // Fallback if the API returns a valid but empty response
+    if (games.length === 0 && data.results === 0) {
+        console.log(`[FALLBACK] Sports API returned 0 results for ${sport}. Falling back to mock data.`);
+        return generateMockGames(sport);
     }
 
     if (games.length > 0) {
