@@ -3,38 +3,25 @@ import Card from './ui/Card';
 import { SharedPrediction } from '../types';
 import { usePredictionContext } from '../contexts/PredictionContext';
 
-const FireIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-400" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM10 4a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
-        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm0 2a10 10 0 100-20 10 10 0 000 20z" />
-    </svg>
-);
-
 const ChevronIcon = ({ isOpen }: { isOpen: boolean }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 text-gray-400 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
 );
 
-
 const LoadingSkeleton: React.FC = () => (
-    <div className="space-y-3">
+    <div className="space-y-3 p-2">
         {[...Array(3)].map((_, i) => (
             <div key={i} className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg animate-pulse">
                 <div className="w-3/4 space-y-2">
                     <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-1/2"></div>
                     <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
                 </div>
-                <div className="h-8 w-20 bg-gray-200 dark:bg-gray-600 rounded-md"></div>
+                <div className="h-5 w-20 bg-gray-200 dark:bg-gray-600 rounded-md"></div>
             </div>
         ))}
     </div>
 );
-
-
-interface UpcomingMatchesProps {
-    onMatchClick: (match: SharedPrediction) => void;
-}
 
 const sportTabs = [
     { key: 'all', label: 'Все' },
@@ -46,25 +33,18 @@ const sportTabs = [
 
 const getStatusPriority = (statusShort: string): number => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
-    const scheduled = ['NS', 'TBD'];
-    
     if (live.includes(statusShort)) return 1;
-    if (scheduled.includes(statusShort)) return 2;
-    return 3; // Finished and others
+    if (['NS', 'TBD'].includes(statusShort)) return 2;
+    return 3;
 };
 
 const SPORT_MAP: Record<string, string> = {
     football: 'Футбол',
     basketball: 'Баскетбол',
     hockey: 'Хоккей',
-    nba: 'NBA',
-    'Футбол': 'Футбол',
-    'Баскетбол': 'Баскетбол',
-    'Хоккей': 'Хоккей',
 };
 
-
-const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
+const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => void; }> = ({ onMatchClick }) => {
     const { allPredictions, isLoading, error } = usePredictionContext();
     const [isExpanded, setIsExpanded] = useState(true);
     const [activeSport, setActiveSport] = useState('all');
@@ -74,35 +54,28 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
             .filter(p => {
                 if (activeSport === 'all') return true;
                 if (activeSport === 'nba') {
-                    return p.sport.toLowerCase() === 'basketball' && p.eventName === 'NBA';
+                    return p.sport.toLowerCase() === 'nba' || (p.sport.toLowerCase() === 'basketball' && p.eventName === 'NBA');
                 }
                 if (activeSport === 'basketball') {
                     return p.sport.toLowerCase() === 'basketball' && p.eventName !== 'NBA';
                 }
                 return p.sport.toLowerCase() === activeSport.toLowerCase();
             })
-            .sort((a, b) => {
-                const priorityA = getStatusPriority(a.status.short);
-                const priorityB = getStatusPriority(b.status.short);
-                if (priorityA !== priorityB) {
-                    return priorityA - priorityB;
-                }
-                return a.timestamp - b.timestamp;
-            });
+            .sort((a, b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || a.timestamp - b.timestamp);
     }, [allPredictions, activeSport]);
 
     const renderContent = () => {
         if (isLoading) {
             return <LoadingSkeleton />;
         }
-        if (filteredAndSortedMatches.length === 0) {
+        if (filteredAndSortedMatches.length === 0 && !error) {
             return <p className="text-center text-gray-500 py-4">Нет матчей для выбранного фильтра.</p>;
         }
         return (
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                {filteredAndSortedMatches.map((match, index) => (
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-2 mt-4">
+                {filteredAndSortedMatches.map((match) => (
                     <button
-                        key={`${match.id}-${index}`}
+                        key={match.id}
                         onClick={() => onMatchClick(match)}
                         className="w-full text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors duration-200 flex justify-between items-center"
                     >
@@ -130,9 +103,13 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                 <h3 className="text-lg font-semibold">Ближайшие Матчи</h3>
                 <ChevronIcon isOpen={isExpanded} />
             </div>
-            <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[500px] opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
-                 {error && <p className="text-center text-xs text-yellow-500 dark:text-yellow-400 mb-3 p-2 bg-yellow-100 dark:bg-yellow-900/50 rounded-md">{error}</p>}
-                 <div className="flex space-x-1 sm:space-x-2 border-b border-gray-200 dark:border-gray-700 mb-4 pb-2 overflow-x-auto">
+            <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[600px] opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
+                {error && (
+                    <div className="bg-amber-900/50 border border-amber-800 text-amber-300 text-sm rounded-lg p-3 my-4">
+                       {error}
+                    </div>
+                )}
+                <div className="flex space-x-1 sm:space-x-2 border-b border-gray-200 dark:border-gray-700 pb-2 overflow-x-auto">
                     {sportTabs.map(tab => (
                         <button
                             key={tab.key}

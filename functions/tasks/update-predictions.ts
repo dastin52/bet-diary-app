@@ -176,7 +176,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
             return {
                 ...(game as any), sport: sport, eventName: game.league.name, teams: matchName,
-                date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU'),
+                date: new Date(game.timestamp * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
                 time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
                 status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
                 prediction: prediction,
