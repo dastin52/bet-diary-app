@@ -209,7 +209,6 @@ export async function runUpdateTask(env: Env) {
      try {
         console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
         
-        // @google/genai-fix: Changed from parallel processing (Promise.allSettled) to a sequential loop with a delay to avoid hitting API rate limits.
         const allSportsResults: PromiseSettledResult<SharedPrediction[]>[] = [];
 
         for (const sport of SPORTS_TO_PROCESS) {
@@ -222,7 +221,6 @@ export async function runUpdateTask(env: Env) {
                 console.error(`[Updater Task] A sport failed to process: ${sport}`, reason);
             }
 
-            // Add a delay after each sport except the last one.
             if (SPORTS_TO_PROCESS.indexOf(sport) < SPORTS_TO_PROCESS.length - 1) {
                 console.log('[Updater Task] Waiting 61 seconds before next sport to avoid per-minute rate limits...');
                 await delay(61000); // 61-second delay
@@ -230,14 +228,14 @@ export async function runUpdateTask(env: Env) {
         }
         
         const combinedPredictions: SharedPrediction[] = [];
-        for(const sport of SPORTS_TO_PROCESS) {
-            const sportPredictions = await env.BOT_STATE.get(`central_predictions:${sport}`, { type: 'json' }) as SharedPrediction[] | null;
-            if(sportPredictions) {
-                combinedPredictions.push(...sportPredictions);
+        allSportsResults.forEach(result => {
+            if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+                combinedPredictions.push(...result.value);
             }
-        }
+        });
+
         await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions));
-        console.log('[Updater Task] Combined "all" predictions key updated.');
+        console.log(`[Updater Task] Combined "all" predictions key updated with ${combinedPredictions.length} total entries.`);
 
         // Record the successful run
         await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
