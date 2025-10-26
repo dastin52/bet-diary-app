@@ -207,15 +207,21 @@ export async function runUpdateTask(env: Env) {
      try {
         console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
         
-        const allSportsResults: SharedPrediction[] = [];
+        // Start with an empty list for all predictions.
+        await env.BOT_STATE.put('central_predictions:all', JSON.stringify([]));
 
         for (const sport of SPORTS_TO_PROCESS) {
             try {
                 const result = await processSport(sport, env);
                 if (result && result.length > 0) {
-                    allSportsResults.push(...result);
+                    // Incrementally add to the 'all' list.
+                    const currentAll = (await env.BOT_STATE.get('central_predictions:all', { type: 'json' }) as SharedPrediction[]) || [];
+                    const combined = [...currentAll, ...result];
+                    await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combined));
+                    console.log(`[Updater Task] Sport '${sport}' processed successfully. Total predictions now: ${combined.length}`);
+                } else {
+                     console.log(`[Updater Task] Sport '${sport}' processed with no results.`);
                 }
-                console.log(`[Updater Task] Sport processed successfully: ${sport}`);
             } catch (reason) {
                 console.error(`[Updater Task] A sport failed to process: ${sport}`, reason);
             }
@@ -225,9 +231,6 @@ export async function runUpdateTask(env: Env) {
                 await delay(61000);
             }
         }
-        
-        await env.BOT_STATE.put('central_predictions:all', JSON.stringify(allSportsResults));
-        console.log(`[Updater Task] Combined "all" predictions key updated with ${allSportsResults.length} total entries.`);
 
         await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
         await env.BOT_STATE.delete('last_run_error');
