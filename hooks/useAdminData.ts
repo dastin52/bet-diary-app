@@ -114,7 +114,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     });
     
     // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
-    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
     }, {});
@@ -124,7 +124,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .slice(0, 10);
 
     // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
-    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
+    const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
     }, {});
@@ -176,7 +176,8 @@ export const useAdminData = (): UseAdminDataReturn => {
     type TeamStatAccumulator = { [key: string]: { sport: string; count: number; wins: number; losses: number; staked: number; profit: number, oddsSum: number } };
 
     // @google/genai-fix: Add explicit type to initial value of reduce to fix type inference issue.
-    const teamStatsAggregator = settledBets.reduce((acc, bet) => {
+    // FIX: Changed type assertion on initial value to explicitly typing the accumulator parameter for more reliable type inference.
+    const teamStatsAggregator = settledBets.reduce((acc: TeamStatAccumulator, bet) => {
         bet.legs.forEach(leg => {
             const processTeam = (teamName: string) => {
                 if (!teamName) return;
@@ -200,7 +201,7 @@ export const useAdminData = (): UseAdminDataReturn => {
             processTeam(leg.awayTeam);
         });
         return acc;
-    }, {} as TeamStatAccumulator);
+    }, {});
 
     const teamAnalytics: TeamStats[] = Object.keys(teamStatsAggregator)
         .map((name) => {

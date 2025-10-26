@@ -76,23 +76,38 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         
         await logApiActivity(env, { sport, endpoint: url, status: 'success' });
         
-        const games: SportGame[] = data.response.map((item: any) => {
-            if(sport === 'football') {
+        const games: SportGame[] = data.response.map((item: any): SportGame => {
+            if (sport === 'football') {
                 return {
                     id: item.fixture.id,
                     date: item.fixture.date.split('T')[0],
                     time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
                     timestamp: item.fixture.timestamp,
+                    timezone: item.fixture.timezone,
                     status: { long: item.fixture.status.long, short: item.fixture.status.short },
                     league: item.league,
                     teams: item.teams,
                     scores: item.score.fulltime,
-                    winner: FINISHED_STATUSES.includes(item.fixture.status.short) ? (item.teams.home.winner ? 'home' : item.teams.away.winner ? 'away' : 'draw') : undefined,
+                    winner: FINISHED_STATUSES.includes(item.fixture.status.short)
+                        ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw'))
+                        : undefined,
                 };
             }
-             return {
-                ...item,
-                winner: (item.scores?.home !== null && item.scores?.away !== null) ? (item.scores.home > item.scores.away ? 'home' : item.scores.away > item.scores.home ? 'away' : 'draw') : undefined,
+            // For hockey and basketball, the structure is already close to SportGame
+            return {
+                id: item.id,
+                date: item.date.split('T')[0],
+                time: item.time,
+                timestamp: item.timestamp,
+                timezone: item.timezone,
+                status: { long: item.status.long, short: item.status.short },
+                league: item.league,
+                teams: item.teams,
+                scores: item.scores,
+                // Calculate winner based on scores if not provided
+                winner: (item.scores?.home !== null && item.scores?.away !== null)
+                    ? (item.scores.home > item.scores.away ? 'home' : (item.scores.away > item.scores.home ? 'away' : 'draw'))
+                    : undefined,
             };
         });
         
