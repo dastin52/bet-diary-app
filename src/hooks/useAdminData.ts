@@ -34,6 +34,7 @@ export const useAdminData = (): UseAdminDataReturn => {
       // 1. Get all registered users
       const allUsers = getUsers();
       // FIX: Use .getTime() to perform arithmetic on Date objects.
+      // @ts-ignore
       setUsers(allUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
       // 2. Aggregate bets from all users

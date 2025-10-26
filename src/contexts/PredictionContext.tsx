@@ -39,10 +39,18 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
 
       // --- РЕЗЕРВНАЯ ЛОГИКА ---
       const today = new Date();
-      const todayStr = today.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric'});
+      const todayDay = String(today.getDate()).padStart(2, '0');
+      const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
+      const todayYear = today.getFullYear();
+      const todayStr = `${todayDay}.${todayMonth}.${todayYear}`;
+      
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric'});
+      const tomorrowDay = String(tomorrow.getDate()).padStart(2, '0');
+      const tomorrowMonth = String(tomorrow.getMonth() + 1).padStart(2, '0');
+      const tomorrowYear = tomorrow.getFullYear();
+      const tomorrowStr = `${tomorrowDay}.${tomorrowMonth}.${tomorrowYear}`;
+
 
       const hasValidMatches = predictions.length > 0 && predictions.some(p => p.date === todayStr || p.date === tomorrowStr);
 
