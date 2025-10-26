@@ -229,10 +229,16 @@ export async function runUpdateTask(env: Env) {
 
         // Record the successful run
         await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
+        await env.BOT_STATE.delete('last_run_error'); // Clear any previous error on success
         console.log('[Updater Task] Successfully recorded run timestamp.');
 
     } catch (error) {
         console.error('[Updater Task] A critical error occurred during execution:', error);
+        await env.BOT_STATE.put('last_run_error', JSON.stringify({
+            timestamp: new Date().toISOString(),
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+        }));
     }
 }
 

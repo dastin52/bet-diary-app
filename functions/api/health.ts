@@ -12,6 +12,7 @@ type PagesFunction<E = unknown> = (
 
 export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
     const lastRun = await env.BOT_STATE.get('last_successful_run_timestamp') || 'Not run yet';
+    const lastError = await env.BOT_STATE.get('last_run_error', { type: 'json' }) || null;
     const healthStatus = {
         status: "ok",
         timestamp: new Date().toISOString(),
@@ -21,6 +22,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
         },
         kvBinding: env.BOT_STATE ? 'BOUND' : 'MISSING',
         lastSuccessfulUpdate: lastRun,
+        lastUpdateError: lastError,
     };
 
     return new Response(JSON.stringify(healthStatus), {

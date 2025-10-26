@@ -87,7 +87,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
+    // @google/genai-fix: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
     const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -97,7 +97,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
+    // @google/genai-fix: Use a generic type on reduce to correctly type the accumulator and prevent type inference issues.
     const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
@@ -124,7 +124,9 @@ export const useAdminData = (): UseAdminDataReturn => {
         const range = oddsRanges.find(r => bet.odds >= r.min && bet.odds < r.max);
         if (range) {
             const bucket = performanceByOddsAcc[range.label];
+            // @google/genai-fix: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
             bucket.staked += Number(bet.stake || 0);
+            // @google/genai-fix: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
             bucket.profit += Number(bet.profit ?? 0);
             if (bet.status === BetStatus.Won) {
                 bucket.wins += 1;
@@ -160,6 +162,8 @@ export const useAdminData = (): UseAdminDataReturn => {
                 }
                 const teamData = acc[teamName];
                 teamData.count += 1;
+                // @google/genai-fix: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+                // @google/genai-fix: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
                 teamData.staked += Number(bet.stake || 0);
                 teamData.profit += Number(bet.profit ?? 0);
                 teamData.oddsSum += Number(bet.odds || 0);

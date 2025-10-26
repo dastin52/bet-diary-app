@@ -26,6 +26,7 @@ const DiagnosticsPanel: React.FC = () => {
     const [connectivity, setConnectivity] = useState<CheckResult | null>(null);
     const [apiKeys, setApiKeys] = useState<CheckResult | null>(null);
     const [lastUpdate, setLastUpdate] = useState<CheckResult | null>(null);
+    const [lastError, setLastError] = useState<CheckResult | null>(null);
     const [cacheStatus, setCacheStatus] = useState<Record<string, CacheCheckResult>>({});
     const [copySuccess, setCopySuccess] = useState(false);
 
@@ -34,6 +35,7 @@ const DiagnosticsPanel: React.FC = () => {
         setConnectivity(null);
         setApiKeys(null);
         setLastUpdate(null);
+        setLastError(null);
         setCacheStatus({});
         let fullLog = `--- DIAGNOSTICS LOG @ ${new Date().toISOString()} ---\n\n`;
 
@@ -56,6 +58,20 @@ const DiagnosticsPanel: React.FC = () => {
             setApiKeys({ status: keysOk ? 'success' : 'error', message: apiKeyMessage });
             fullLog += `[${keysOk ? 'SUCCESS' : 'ERROR'}] API Keys: ${apiKeyMessage}\n`;
 
+            // Last Update Error
+            const errorData = healthData.lastUpdateError;
+            if (errorData) {
+                const errorMsg = `Последний запуск обновления завершился ошибкой в ${new Date(errorData.timestamp).toLocaleString('ru-RU')}.
+Причина: ${errorData.message}`;
+                setLastError({ status: 'error', message: errorMsg });
+                fullLog += `\n--- LAST UPDATE ERROR ---\n[ERROR] ${errorMsg}\n`;
+                if (errorData.stack) {
+                    fullLog += `Stack Trace: ${errorData.stack}\n`;
+                }
+            } else {
+                setLastError(null);
+            }
+
             // Last Update
             const lastRunTimestamp = healthData.lastSuccessfulUpdate;
             let lastUpdateStatus: Status = 'error';
@@ -73,7 +89,6 @@ const DiagnosticsPanel: React.FC = () => {
             }
             setLastUpdate({ status: lastUpdateStatus, message: lastUpdateMessage });
             fullLog += `[${lastUpdateStatus.toUpperCase()}] Last Update Check: ${lastUpdateMessage}\n`;
-
 
         } catch (e) {
             const errorMsg = `Не удалось подключиться к бэкенду. Убедитесь, что сервер запущен. Ошибка: ${e instanceof Error ? e.message : String(e)}`;
@@ -164,6 +179,18 @@ const DiagnosticsPanel: React.FC = () => {
                     скопируйте лог и отправьте его для анализа.
                 </p>
             </Card>
+
+            {lastError && (
+                <Card className="!bg-red-900/50 border-red-700">
+                    <div className="flex items-start gap-3">
+                        <ExclamationCircleIcon />
+                        <div>
+                            <h3 className="text-lg font-semibold text-red-300">Критическая ошибка обновления</h3>
+                            <p className="text-sm text-red-200 whitespace-pre-wrap">{lastError.message}</p>
+                        </div>
+                    </div>
+                </Card>
+            )}
 
             <Card>
                 <h3 className="text-lg font-semibold mb-4">Результаты Проверки</h3>

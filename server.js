@@ -29,6 +29,7 @@ if (!process.env.GEMINI_API_KEY) {
 // Health check endpoint for diagnostics
 app.get('/api/health', (req, res) => {
     const lastRun = cache.getPersistent('last_successful_run_timestamp') || 'Not run yet';
+    const lastError = cache.getPersistent('last_run_error') || null;
     const healthStatus = {
         status: "ok",
         timestamp: new Date().toISOString(),
@@ -38,6 +39,7 @@ app.get('/api/health', (req, res) => {
         },
         kvBinding: 'NOT_APPLICABLE_IN_LOCAL_DEV (uses file cache)',
         lastSuccessfulUpdate: lastRun,
+        lastUpdateError: lastError,
     };
     res.json(healthStatus);
 });
@@ -167,7 +169,7 @@ const startServer = async () => {
 
     // Run update every hour
     setInterval(() => {
-      console.log('Running hourly prediction update...');
+      console.log('Hourly prediction update...');
       runUpdate().catch(err => console.error('Hourly update run failed:', err));
     }, 3600 * 1000); // 1 hour
   });
