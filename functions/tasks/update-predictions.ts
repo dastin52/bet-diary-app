@@ -19,7 +19,6 @@ type PagesFunction<E = unknown> = (
 
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const BATCH_SIZE = 15; // Process 15 games in parallel at a time to avoid timeouts and rate limits
-// @google/genai-fix: Add a delay function to prevent API rate-limiting issues when processing sports sequentially.
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getStatusPriority = (statusShort: string): number => {
@@ -203,43 +202,35 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 }
 
 export async function runUpdateTask(env: Env) {
-     // Heartbeat: Immediately log that the task was triggered.
      await env.BOT_STATE.put('last_run_triggered_timestamp', new Date().toISOString());
 
      try {
         console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
         
-        const allSportsResults: PromiseSettledResult<SharedPrediction[]>[] = [];
+        const allSportsResults: SharedPrediction[] = [];
 
         for (const sport of SPORTS_TO_PROCESS) {
             try {
                 const result = await processSport(sport, env);
-                allSportsResults.push({ status: 'fulfilled', value: result });
+                if (result && result.length > 0) {
+                    allSportsResults.push(...result);
+                }
                 console.log(`[Updater Task] Sport processed successfully: ${sport}`);
             } catch (reason) {
-                allSportsResults.push({ status: 'rejected', reason });
                 console.error(`[Updater Task] A sport failed to process: ${sport}`, reason);
             }
 
             if (SPORTS_TO_PROCESS.indexOf(sport) < SPORTS_TO_PROCESS.length - 1) {
                 console.log('[Updater Task] Waiting 61 seconds before next sport to avoid per-minute rate limits...');
-                await delay(61000); // 61-second delay
+                await delay(61000);
             }
         }
         
-        const combinedPredictions: SharedPrediction[] = [];
-        allSportsResults.forEach(result => {
-            if (result.status === 'fulfilled' && Array.isArray(result.value)) {
-                combinedPredictions.push(...result.value);
-            }
-        });
+        await env.BOT_STATE.put('central_predictions:all', JSON.stringify(allSportsResults));
+        console.log(`[Updater Task] Combined "all" predictions key updated with ${allSportsResults.length} total entries.`);
 
-        await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combinedPredictions));
-        console.log(`[Updater Task] Combined "all" predictions key updated with ${combinedPredictions.length} total entries.`);
-
-        // Record the successful run
         await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
-        await env.BOT_STATE.delete('last_run_error'); // Clear any previous error on success
+        await env.BOT_STATE.delete('last_run_error');
         console.log('[Updater Task] Successfully recorded run timestamp.');
 
     } catch (error) {
@@ -249,7 +240,6 @@ export async function runUpdateTask(env: Env) {
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
         }));
-        // Re-throw the error to ensure the Cloudflare environment knows the task failed.
         throw error;
     }
 }

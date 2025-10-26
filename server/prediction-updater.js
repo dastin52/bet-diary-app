@@ -231,7 +231,9 @@ async function runUpdate() {
         try {
             console.log(`[Updater] Processing sport: ${sport}`);
             const result = await processSport(sport);
-            allResults.push(result);
+            if (result && result.length > 0) {
+                 allResults.push(...result);
+            }
             console.log(`[Updater] Successfully processed ${sport}.`);
         } catch (sportError) {
             console.error(`[Updater] Failed to process sport: ${sport}`, sportError.message);
@@ -245,9 +247,8 @@ async function runUpdate() {
         }
     }
     
-    const combinedPredictions = allResults.flat();
-    cache.putPersistent('central_predictions:all', combinedPredictions);
-    console.log(`[Updater] Combined "all" predictions key updated with ${combinedPredictions.length} total entries.`);
+    cache.putPersistent('central_predictions:all', allResults);
+    console.log(`[Updater] Combined "all" predictions key updated with ${allResults.length} total entries.`);
 
     if (overallSuccess) {
         cache.putPersistent('last_successful_run_timestamp', new Date().toISOString());
