@@ -59,18 +59,18 @@ const createMockMatch = (id: number, sport: string, eventName: string, home: str
 export const generateClientSideMocks = (): SharedPrediction[] => {
     const football = [
         createMockMatch(201, 'football', 'La Liga', 'Реал Мадрид', 'Барселона', '19:00'),
-        createMockMatch(202, 'football', 'Premier League', 'Манчестер Сити', 'Ливерпуль', '15:30'),
+        createMockMatch(202, 'football', 'Premier League', 'Манчестер Сити', 'Ливерпуль', '18:30'),
     ];
     const hockey = [
         createMockMatch(101, 'hockey', 'КХЛ', 'ЦСКА', 'СКА', '16:30'),
         createMockMatch(102, 'hockey', 'NHL', 'Торонто', 'Бостон', '23:00'),
     ];
     const basketball = [
-        createMockMatch(301, 'basketball', 'Euroleague', 'Анадолу Эфес', 'Реал Мадрид', '18:45'),
+        createMockMatch(301, 'basketball', 'Euroleague', 'Анадолу Эфес', 'Реал Мадрид', '21:45'),
     ];
     const nba = [
         createMockMatch(401, 'nba', 'NBA', 'Лейкерс', 'Бостон Селтикс', '23:30'),
     ];
     
-    return [...football, ...hockey, ...basketball, ...nba];
+    return [...football, ...hockey, ...basketball, ...nba].sort((a,b) => a.timestamp - b.timestamp);
 };

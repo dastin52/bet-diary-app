@@ -53,7 +53,8 @@ const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => voi
                 if (activeSport === 'basketball') {
                     return sportLower === 'basketball' && p.eventName.toUpperCase() !== 'NBA';
                 }
-                return sportLower === activeSport;
+                // Match both 'football' and 'Футбол'
+                return sportLower === activeSport || (SPORT_MAP[sportLower] && SPORT_MAP[sportLower].toLowerCase() === activeSport);
             });
     }, [allPredictions, activeSport]);
 
@@ -61,7 +62,7 @@ const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => voi
         if (isLoading) {
             return <LoadingSkeleton />;
         }
-        if (filteredMatches.length === 0 && !error) {
+        if (filteredMatches.length === 0) {
             return <p className="text-center text-gray-500 py-4">Нет матчей для выбранного фильтра.</p>;
         }
         return (
@@ -75,8 +76,7 @@ const UpcomingMatches: React.FC<{ onMatchClick: (match: SharedPrediction) => voi
                         <div>
                             <p className="text-xs text-gray-500 dark:text-gray-400">{SPORT_MAP[match.sport.toLowerCase()] || match.sport} &middot; {match.eventName}</p>
                             <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
-                                {match.status.emoji}
-                                {match.teams}
+                               {match.status.emoji} {match.teams}
                             </p>
                             <p className="text-sm text-indigo-500 dark:text-indigo-400">{match.date} &middot; {match.time}</p>
                         </div>

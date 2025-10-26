@@ -158,6 +158,7 @@ export interface UserSettings {
   theme: 'light' | 'dark' | 'system';
 }
 
+// DEPRECATED: Use SharedPrediction instead
 export interface UpcomingMatch {
   sport: string;
   eventName: string;

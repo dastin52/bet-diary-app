@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { SharedPrediction } from '../types';
+import { generateClientSideMocks } from '../utils/mockMatches';
 
 interface PredictionContextType {
   allPredictions: SharedPrediction[];
@@ -17,7 +18,7 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const fetchAllPredictions = useCallback(async (force: boolean = false) => {
     setIsLoading(true);
-    setError(null); // Clear previous errors on a new fetch attempt
+    setError(null);
     try {
       const response = await fetch('/api/gemini', {
         method: 'POST',
@@ -29,24 +30,29 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Ошибка ответа сервера.');
+        throw new Error('Ошибка ответа сервера.');
       }
 
       const predictions: SharedPrediction[] = await response.json();
 
-      // The frontend now trusts the backend completely.
-      // If the backend returns an empty array, it means there are no matches, which is a valid state.
-      // The UI component (UpcomingMatches) will be responsible for displaying "No matches found."
-      setAllPredictions(predictions);
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const startOfTodayTimestamp = Math.floor(today.getTime() / 1000);
+
+      const isDataStale = predictions.length === 0 || predictions.every(p => p.timestamp < startOfTodayTimestamp);
+      
+      if (isDataStale) {
+          console.warn("Server data is stale or empty. Falling back to client-side mocks.");
+          setError("Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня.");
+          setAllPredictions(generateClientSideMocks());
+      } else {
+          setAllPredictions(predictions);
+      }
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная сетевая ошибка.';
-      // Set an error message to be displayed in the UI.
-      setError(`Не удалось загрузить данные о матчах. Пожалуйста, попробуйте обновить страницу позже. Ошибка: ${errorMessage}`);
-      console.error("Failed to fetch predictions from the server:", err);
-      // Set predictions to an empty array to ensure the UI shows an empty state, not stale data.
-      setAllPredictions([]);
+      console.error("Failed to fetch predictions, falling back to client-side mocks:", err);
+      setError("Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня.");
+      setAllPredictions(generateClientSideMocks());
     } finally {
       setIsLoading(false);
     }
