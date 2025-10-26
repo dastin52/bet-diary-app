@@ -42,9 +42,8 @@ const logApiActivity = (logEntry) => {
 
 // --- CONSTANTS & HELPERS ---
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
+const JOB_STATE_KEY = 'prediction_job_state';
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
-const BATCH_SIZE = 15;
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getStatusPriority = (statusShort) => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
@@ -60,17 +59,6 @@ const getMatchStatusEmoji = (status) => {
         case 'FT': case 'AET': case 'PEN': case 'Finished': return '🏁';
         default: return '⏳';
     }
-};
-
-const resolveMarketOutcome = (market, scores, winner) => {
-    if (scores.home === null || scores.away === null) return 'unknown';
-    const { home, away } = scores;
-    if (market === 'П1' || market === 'П1 (осн. время)') return home > away ? 'correct' : 'incorrect';
-    if (market === 'X' || market === 'X (осн. время)') return home === away ? 'correct' : 'incorrect';
-    if (market === 'П2' || market === 'П2 (осн. время)') return away > home ? 'correct' : 'incorrect';
-    if (market.includes('П1 (с ОТ)') || market.includes('П1 (вкл. ОТ')) return winner === 'home' ? 'correct' : 'incorrect';
-    if (market.includes('П2 (с ОТ)') || market.includes('П2 (вкл. ОТ')) return winner === 'away' ? 'correct' : 'incorrect';
-    return 'unknown';
 };
 
 // --- MOCK & API SERVICES ---
@@ -223,50 +211,47 @@ async function processSport(sport) {
 async function runUpdate() {
     cache.putPersistent('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
-    let overallSuccess = true;
-    let errors = [];
     
-    // Start with an empty list for 'all' predictions
-    cache.putPersistent('central_predictions:all', []);
+    try {
+        const jobState = cache.getPersistent(JOB_STATE_KEY) || { nextSportIndex: 0 };
+        const sportIndex = jobState.nextSportIndex || 0;
 
-    for (const sport of SPORTS_TO_PROCESS) {
-        try {
-            console.log(`[Updater] Processing sport: ${sport}`);
-            const result = await processSport(sport);
-            if (result && result.length > 0) {
-                 // Incrementally add to the 'all' list
-                 const currentAll = cache.getPersistent('central_predictions:all') || [];
-                 const combined = [...currentAll, ...result];
-                 cache.putPersistent('central_predictions:all', combined);
-                 console.log(`[Updater] Sport '${sport}' processed successfully. Total predictions now: ${combined.length}`);
-            } else {
-                 console.log(`[Updater] Sport '${sport}' processed with no results.`);
-            }
-        } catch (sportError) {
-            console.error(`[Updater] Failed to process sport: ${sport}`, sportError.message);
-            overallSuccess = false;
-            errors.push({ sport, error: sportError.message });
+        if (sportIndex === 0) {
+            console.log('[Updater Task] Starting new cycle. Clearing "all" predictions cache.');
+            cache.putPersistent('central_predictions:all', []);
+        }
+
+        const sport = SPORTS_TO_PROCESS[sportIndex];
+        console.log(`[Updater Task] Processing sport #${sportIndex}: ${sport}`);
+
+        const result = await processSport(sport);
+
+        if (result && result.length > 0) {
+             const currentAll = cache.getPersistent('central_predictions:all') || [];
+             const combined = [...currentAll, ...result];
+             cache.putPersistent('central_predictions:all', combined);
+             console.log(`[Updater Task] Sport '${sport}' processed successfully. Total predictions now: ${combined.length}`);
+        } else {
+             console.log(`[Updater Task] Sport '${sport}' processed with no results.`);
         }
         
-        if (SPORTS_TO_PROCESS.indexOf(sport) < SPORTS_TO_PROCESS.length - 1) {
-             console.log('[Updater] Waiting 61 seconds before next sport to avoid rate limits...');
-             await delay(61000);
-        }
-    }
+        const nextSportIndex = (sportIndex + 1) % SPORTS_TO_PROCESS.length;
+        cache.putPersistent(JOB_STATE_KEY, { nextSportIndex });
+        console.log(`[Updater Task] Next sport to process will be index ${nextSportIndex}.`);
 
-    if (overallSuccess) {
-        cache.putPersistent('last_successful_run_timestamp', new Date().toISOString());
-        cache.putPersistent('last_run_error', null);
-        console.log('[Updater Task] Successfully recorded run timestamp.');
-        return { success: true, message: 'Update finished successfully.' };
-    } else {
-         const errorMessage = `Update completed with failures for sports: ${errors.map(e => e.sport).join(', ')}.`;
-         cache.putPersistent('last_run_error', {
+        if (nextSportIndex === 0) {
+            cache.putPersistent('last_successful_run_timestamp', new Date().toISOString());
+            cache.putPersistent('last_run_error', null);
+            console.log('[Updater Task] Full cycle complete. Successfully recorded run timestamp.');
+        }
+        return { success: true };
+    } catch (error) {
+        console.error('[Updater Task] A critical error occurred during execution:', error);
+        cache.putPersistent('last_run_error', {
             timestamp: new Date().toISOString(),
-            message: errorMessage,
-            details: errors,
-         });
-         return { success: false, message: errorMessage };
+            message: error.message,
+        });
+        return { success: false, message: error.message };
     }
 }
 

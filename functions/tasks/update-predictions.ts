@@ -19,7 +19,8 @@ type PagesFunction<E = unknown> = (
 
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const BATCH_SIZE = 15; // Process 15 games in parallel at a time to avoid timeouts and rate limits
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const JOB_STATE_KEY = 'prediction_job_state';
+
 
 const getStatusPriority = (statusShort: string): number => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
@@ -202,39 +203,46 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 }
 
 export async function runUpdateTask(env: Env) {
-     await env.BOT_STATE.put('last_run_triggered_timestamp', new Date().toISOString());
+    await env.BOT_STATE.put('last_run_triggered_timestamp', new Date().toISOString());
 
      try {
         console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
         
-        // Start with an empty list for all predictions.
-        await env.BOT_STATE.put('central_predictions:all', JSON.stringify([]));
-
-        for (const sport of SPORTS_TO_PROCESS) {
-            try {
-                const result = await processSport(sport, env);
-                if (result && result.length > 0) {
-                    // Incrementally add to the 'all' list.
-                    const currentAll = (await env.BOT_STATE.get('central_predictions:all', { type: 'json' }) as SharedPrediction[]) || [];
-                    const combined = [...currentAll, ...result];
-                    await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combined));
-                    console.log(`[Updater Task] Sport '${sport}' processed successfully. Total predictions now: ${combined.length}`);
-                } else {
-                     console.log(`[Updater Task] Sport '${sport}' processed with no results.`);
-                }
-            } catch (reason) {
-                console.error(`[Updater Task] A sport failed to process: ${sport}`, reason);
-            }
-
-            if (SPORTS_TO_PROCESS.indexOf(sport) < SPORTS_TO_PROCESS.length - 1) {
-                console.log('[Updater Task] Waiting 61 seconds before next sport to avoid per-minute rate limits...');
-                await delay(61000);
-            }
+        const jobState = await env.BOT_STATE.get(JOB_STATE_KEY, { type: 'json' }) as { nextSportIndex: number } || { nextSportIndex: 0 };
+        const sportIndex = jobState.nextSportIndex || 0;
+        
+        // Clear 'all' predictions only on the first sport of a cycle
+        if (sportIndex === 0) {
+            console.log('[Updater Task] Starting new cycle. Clearing "all" predictions cache.');
+            await env.BOT_STATE.put('central_predictions:all', JSON.stringify([]));
         }
 
-        await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
-        await env.BOT_STATE.delete('last_run_error');
-        console.log('[Updater Task] Successfully recorded run timestamp.');
+        const sport = SPORTS_TO_PROCESS[sportIndex];
+        console.log(`[Updater Task] Processing sport #${sportIndex}: ${sport}`);
+
+        const result = await processSport(sport, env);
+
+        // Incrementally add the results to the 'all' list
+        if (result && result.length > 0) {
+            const currentAll = (await env.BOT_STATE.get('central_predictions:all', { type: 'json' }) as SharedPrediction[]) || [];
+            const combined = [...currentAll, ...result];
+            await env.BOT_STATE.put('central_predictions:all', JSON.stringify(combined));
+            console.log(`[Updater Task] Sport '${sport}' processed. Total predictions in 'all' list: ${combined.length}`);
+        } else {
+             console.log(`[Updater Task] Sport '${sport}' processed with no new results.`);
+        }
+
+        // Prepare for the next run
+        const nextSportIndex = (sportIndex + 1) % SPORTS_TO_PROCESS.length;
+        await env.BOT_STATE.put(JOB_STATE_KEY, JSON.stringify({ nextSportIndex }));
+        console.log(`[Updater Task] Next sport to process will be index ${nextSportIndex} (${SPORTS_TO_PROCESS[nextSportIndex]}).`);
+
+        // Only update the success timestamp once a full cycle is complete.
+        if (nextSportIndex === 0) {
+             await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
+             await env.BOT_STATE.delete('last_run_error');
+             console.log('[Updater Task] Full cycle complete. Successfully recorded run timestamp.');
+        }
 
     } catch (error) {
         console.error('[Updater Task] A critical error occurred during execution:', error);
