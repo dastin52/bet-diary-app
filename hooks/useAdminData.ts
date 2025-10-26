@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 // @google/genai-fix: Import ApiActivityLog type.
 import { Bet, User, BetStatus, TeamStats, ApiActivityLog } from '../types';
@@ -88,7 +89,7 @@ export const useAdminData = (): UseAdminDataReturn => {
     }
 
     const settledBets = allBets.filter(b => b.status !== BetStatus.Pending);
-    // FIX: Ensure bet.stake is treated as a number to prevent arithmetic errors.
+    // @google/genai-fix: Ensure bet.stake is treated as a number to prevent arithmetic errors.
     const totalStaked = settledBets.reduce((acc, bet) => acc + (Number(bet.stake) || 0), 0);
     const totalProfit = settledBets.reduce((acc, bet) => acc + (bet.profit ?? 0), 0);
     const platformRoi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
@@ -99,7 +100,7 @@ export const useAdminData = (): UseAdminDataReturn => {
             acc[sport] = { profit: 0, staked: 0 };
         }
         acc[sport].profit += bet.profit ?? 0;
-        // FIX: Ensure bet.stake is treated as a number to prevent arithmetic errors.
+        // @google/genai-fix: Ensure bet.stake is treated as a number to prevent arithmetic errors.
         acc[sport].staked += Number(bet.stake) || 0;
         return acc;
     }, {});
@@ -113,7 +114,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
+    // @google/genai-fix: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
     const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
@@ -123,7 +124,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
+    // @google/genai-fix: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
     const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
@@ -150,7 +151,7 @@ export const useAdminData = (): UseAdminDataReturn => {
         const range = oddsRanges.find(r => bet.odds >= r.min && bet.odds < r.max);
         if (range) {
             const bucket = performanceByOddsAcc[range.label];
-            // FIX: Safely add to the staked amount by converting `bet.stake` to a number and providing a fallback of 0 to prevent `NaN` values.
+            // @google/genai-fix: Safely add to the staked amount by converting `bet.stake` to a number and providing a fallback of 0 to prevent `NaN` values.
             bucket.staked += Number(bet.stake) || 0;
             bucket.profit += bet.profit ?? 0;
             if (bet.status === BetStatus.Won) {
@@ -175,8 +176,7 @@ export const useAdminData = (): UseAdminDataReturn => {
 
     type TeamStatAccumulator = { [key: string]: { sport: string; count: number; wins: number; losses: number; staked: number; profit: number, oddsSum: number } };
 
-    // @google/genai-fix: Add explicit type to initial value of reduce to fix type inference issue.
-    // FIX: Changed type assertion on initial value to explicitly typing the accumulator parameter for more reliable type inference.
+    // @google/genai-fix: Add explicit type to the accumulator parameter of reduce to fix type inference issue.
     const teamStatsAggregator = settledBets.reduce((acc: TeamStatAccumulator, bet) => {
         bet.legs.forEach(leg => {
             const processTeam = (teamName: string) => {
@@ -192,7 +192,7 @@ export const useAdminData = (): UseAdminDataReturn => {
                 // @google/genai-fix: Ensure bet.stake is treated as a number.
                 teamData.staked += Number(bet.stake) || 0;
                 teamData.profit += bet.profit ?? 0;
-                // FIX: Safely add to the odds sum by converting `bet.odds` to a number and providing a fallback of 0 to prevent `NaN` values.
+                // @google/genai-fix: Safely add to the odds sum by converting `bet.odds` to a number and providing a fallback of 0 to prevent `NaN` values.
                 teamData.oddsSum += Number(bet.odds) || 0;
                 if (bet.status === BetStatus.Won) teamData.wins += 1;
                 else if (bet.status === BetStatus.Lost) teamData.losses += 1;

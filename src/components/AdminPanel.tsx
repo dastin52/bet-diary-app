@@ -3,16 +3,14 @@ import { useAdminData } from '../hooks/useAdminData';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
 import Button from './ui/Button';
-import MLModelPanel from './MLModelPanel';
-import TeamAnalyticsPanel from './TeamAnalyticsPanel';
 import DiagnosticsPanel from './DiagnosticsPanel';
 import RequestsChart from './RequestsChart';
 import ActivityTimeline from './ActivityTimeline';
 
-type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics' | 'diagnostics' | 'api_activity';
+type AdminView = 'stats' | 'users' | 'diagnostics' | 'api_activity';
 
 const AdminPanel: React.FC = () => {
-  const { users, allBets, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
+  const { users, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
   const [activeTab, setActiveTab] = useState<AdminView>('stats');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
