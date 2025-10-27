@@ -16,7 +16,7 @@ type PagesFunction<E = unknown> = (
 ) => Response | Promise<Response>;
 
 
-const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
+const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball'];
 const BATCH_SIZE = 15;
 const JOB_STATE_KEY = 'prediction_job_state';
 const CYCLE_COMPLETED_KEY = 'prediction_job_cycle_completed';

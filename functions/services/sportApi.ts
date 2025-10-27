@@ -7,8 +7,6 @@ const SPORT_API_CONFIG: SportApiConfig = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
-    // FIX: Removed hardcoded season. It will be added dynamically.
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12' },
 };
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];

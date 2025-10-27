@@ -41,7 +41,7 @@ const logApiActivity = (logEntry) => {
 };
 
 // --- CONSTANTS & HELPERS ---
-const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
+const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball'];
 const JOB_STATE_KEY = 'prediction_job_state';
 const CYCLE_COMPLETED_KEY = 'prediction_job_cycle_completed';
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
@@ -78,8 +78,6 @@ function generateMockGames(sport) {
         ],
         basketball: [
             { id: 3001, date: `${today}T20:00:00Z`, time: '20:00', timestamp: baseTimestamp + 7200, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 1, name: 'Euroleague', country: 'Europe', logo: '', season: 2024 }, teams: { home: { id: 204, name: 'Anadolu Efes' }, away: { id: 205, name: 'Real Madrid' } }, scores: { home: null, away: null } },
-        ],
-        nba: [
             { id: 4001, date: `${today}T21:00:00Z`, time: '21:00', timestamp: baseTimestamp + 10800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 12, name: 'NBA', country: 'USA', logo: '', season: 2023 }, teams: { home: { id: 15, name: 'Los Angeles Lakers' }, away: { id: 16, name: 'Los Angeles Clippers' } }, scores: { home: null, away: null } },
         ],
     };
@@ -100,7 +98,6 @@ const SPORT_API_CONFIG = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12&season=2023-2024' },
 };
 
 async function getTodaysGamesBySport(sport) {
