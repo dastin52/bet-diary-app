@@ -117,7 +117,8 @@ async function getTodaysGamesBySport(sport) {
     }
 
     let finalParams = config.params ? `&${config.params}` : '';
-    // Season parameter removed to align with production logic.
+    // By default, the API will use the latest available season on the user's plan.
+    // Specifying a season might cause errors on free plans if that season is not included.
 
     const url = `${config.host}/${config.path}?date=${today}${finalParams}`;
 

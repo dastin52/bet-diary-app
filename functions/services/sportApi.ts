@@ -55,8 +55,8 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     }
 
     let finalParams = config.params ? `&${config.params}` : '';
-    // Season parameter removed. Let the API infer it from the date, which should
-    // resolve the "plan does not have access to this season" error.
+    // By default, the API will use the latest available season on the user's plan.
+    // Specifying a season might cause errors on free plans if that season is not included.
 
     const url = `${config.host}/${config.path}?date=${today}${finalParams}`;
 
