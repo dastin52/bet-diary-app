@@ -7,7 +7,8 @@ const SPORT_API_CONFIG: SportApiConfig = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12&season=2023-2024' },
+    // FIX: Removed hardcoded season. It will be added dynamically.
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'league=12' },
 };
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
@@ -54,7 +55,20 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
          // Throw an error instead of returning an empty array to signal failure
          throw new Error(`No API config found for sport: ${sport}`);
     }
-    const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
+
+    let finalParams = config.params ? `&${config.params}` : '';
+    // FIX: Dynamically determine the current season for sports that use a YYYY-YYYY format.
+    // This prevents failures when a hardcoded season ends.
+    if (sport === 'nba' || sport === 'basketball' || sport === 'hockey') {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth(); // 0-11
+        // Season starts around Sept/Oct. If current month is after August (index 7), it's the new season starting this year.
+        const seasonStartYear = month >= 8 ? year : year - 1;
+        finalParams += `&season=${seasonStartYear}-${seasonStartYear + 1}`;
+    }
+
+    const url = `${config.host}/${config.path}?date=${today}${finalParams}`;
 
     try {
         const response = await fetch(url, { headers: { [config.keyName]: env.SPORT_API_KEY } });
