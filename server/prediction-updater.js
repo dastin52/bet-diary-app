@@ -115,7 +115,11 @@ async function getTodaysGamesBySport(sport) {
     if (!config) {
          throw new Error(`No API config found for sport: ${sport}`);
     }
-    const url = `${config.host}/${config.path}?date=${today}${config.params ? `&${config.params}` : ''}`;
+
+    let finalParams = config.params ? `&${config.params}` : '';
+    // Season parameter removed to align with production logic.
+
+    const url = `${config.host}/${config.path}?date=${today}${finalParams}`;
 
     try {
         const response = await fetch(url, { headers: { [config.keyName]: process.env.SPORT_API_KEY } });
@@ -189,7 +193,7 @@ async function processSport(sport) {
 
         return {
             ...(game),
-            id: game.id,
+            id: `${sport}-${game.id}`, // FIX: Create a composite, unique ID.
             sport: sport,
             eventName: game.league.name,
             teams: matchName,

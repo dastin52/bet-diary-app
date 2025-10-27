@@ -179,7 +179,11 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
             const formattedDate = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
 
             return {
-                ...(game as any), sport: sport, eventName: game.league.name, teams: matchName,
+                ...(game as any),
+                id: `${sport}-${game.id}`, // FIX: Create a composite, unique ID.
+                sport: sport, 
+                eventName: game.league.name, 
+                teams: matchName,
                 date: formattedDate,
                 time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
                 status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },

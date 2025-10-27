@@ -55,16 +55,8 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     }
 
     let finalParams = config.params ? `&${config.params}` : '';
-    // FIX: Dynamically determine the current season for sports that use a YYYY-YYYY format.
-    // This prevents failures when a hardcoded season ends.
-    if (sport === 'nba' || sport === 'basketball' || sport === 'hockey') {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth(); // 0-11
-        // Season starts around Sept/Oct. If current month is after August (index 7), it's the new season starting this year.
-        const seasonStartYear = month >= 8 ? year : year - 1;
-        finalParams += `&season=${seasonStartYear}-${seasonStartYear + 1}`;
-    }
+    // Season parameter removed. Let the API infer it from the date, which should
+    // resolve the "plan does not have access to this season" error.
 
     const url = `${config.host}/${config.path}?date=${today}${finalParams}`;
 
