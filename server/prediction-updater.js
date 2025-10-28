@@ -94,11 +94,11 @@ function generateMockGames(sport) {
     });
 }
 
-// FIX: Explicitly set a supported season for hockey and basketball to avoid free plan API errors.
+// FIX: Removed 'season' parameter for hockey and basketball to fix API error "The Season field can't be used alone".
 const SPORT_API_CONFIG = {
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'season=2023' },
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'season=2023' },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
 };
 
 async function getTodaysGamesBySport(sport) {

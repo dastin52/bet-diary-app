@@ -3,11 +3,12 @@ import { Env, SportApiResponse, SportGame, SportApiConfig, ApiActivityLog } from
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 
-// FIX: Explicitly set a supported season for hockey and basketball to avoid free plan API errors.
+// FIX: Removed 'season' parameter for hockey and basketball to fix API error "The Season field can't be used alone".
+// The API does not allow 'date' and 'season' to be used together. The app will now rely solely on the 'date' parameter.
 const SPORT_API_CONFIG: SportApiConfig = {
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'season=2023' },
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'season=2023' },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
 };
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
