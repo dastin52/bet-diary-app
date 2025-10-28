@@ -3,10 +3,11 @@ import { Env, SportApiResponse, SportGame, SportApiConfig, ApiActivityLog } from
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 
+// FIX: Explicitly set a supported season for hockey and basketball to avoid free plan API errors.
 const SPORT_API_CONFIG: SportApiConfig = {
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'season=2023' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: 'season=2023' },
 };
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
@@ -55,8 +56,6 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     }
 
     let finalParams = config.params ? `&${config.params}` : '';
-    // By default, the API will use the latest available season on the user's plan.
-    // Specifying a season might cause errors on free plans if that season is not included.
 
     const url = `${config.host}/${config.path}?date=${today}${finalParams}`;
 
