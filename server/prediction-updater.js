@@ -107,13 +107,12 @@ function generateMockGames(sport) {
     });
 }
 
-// By narrowing requests to specific popular leagues, we avoid the API's rate limits on broad date-based queries.
-// FIX: The season parameter must be in YYYY-YYYY format. Using the latest supported season for the free plan to avoid API errors.
-const seasonYear = '2022-2023';
+// FIX: Using a season that is accessible on the free plan.
+const seasonYear = '2023';
 
 const SPORT_API_CONFIG = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` }, // KHL
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' }, // No league needed
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=39` }, // Premier league
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=106` }, // VTB United League
     'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=12` }, // NBA
 };
@@ -128,16 +127,15 @@ async function getTodaysGamesBySport(sport) {
         return generateMockGames(sport);
     }
     
-    console.log(`[API] Fetching fresh games for ${sport} on ${today}.`);
+    console.log(`[API] Fetching fresh games for ${sport} for season ${seasonYear}.`);
 
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
          throw new Error(`No API config found for sport: ${sport}`);
     }
 
-    let finalParams = config.params ? `&${config.params}` : '';
-
-    const url = `${config.host}/${config.path}?date=${today}${finalParams}`;
+    // FIX: Removed date=today from the query. We will fetch for the whole season and filter locally.
+    const url = `${config.host}/${config.path}?${config.params}`;
 
     try {
         const response = await fetch(url, { headers: { [config.keyName]: process.env.SPORT_API_KEY } });
@@ -156,7 +154,7 @@ async function getTodaysGamesBySport(sport) {
         
         logApiActivity({ sport, endpoint: url, status: 'success' });
         
-        const games = data.response.map((item) => {
+        const allSeasonGames = data.response.map((item) => {
             if (sport === 'football') {
                 return {
                     id: item.fixture.id, date: item.fixture.date.split('T')[0],
@@ -178,8 +176,15 @@ async function getTodaysGamesBySport(sport) {
                     : undefined,
             };
         });
-        
-        return games;
+
+        // FIX: Filter the season's games to only show matches from today onwards.
+        const todayStartTimestamp = new Date(today).setUTCHours(0, 0, 0, 0) / 1000;
+        const upcomingGames = allSeasonGames
+            .filter(game => game.timestamp >= todayStartTimestamp)
+            .sort((a, b) => a.timestamp - b.timestamp); // Sort by soonest first
+
+        console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport}.`);
+        return upcomingGames;
 
     } catch (error) {
         console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);

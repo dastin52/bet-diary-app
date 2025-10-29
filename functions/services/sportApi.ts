@@ -5,12 +5,12 @@ import { generateMockGames } from '../utils/mockGames';
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 
 // By narrowing requests to specific popular leagues, we avoid the API's rate limits on broad date-based queries.
-// FIX: The season parameter must be in YYYY-YYYY format. Using the latest supported season for the free plan to avoid API errors.
-const seasonYear = '2022-2023';
+// FIX: Using a season that is accessible on the free plan to avoid API errors.
+const seasonYear = '2023';
 
 const SPORT_API_CONFIG: SportApiConfig = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` }, // KHL
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' }, // No league needed, works well by date
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=39` }, // Premier league
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=106` }, // VTB United League
     'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=12` }, // NBA
 };
@@ -54,9 +54,8 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
          throw new Error(`No API config found for sport: ${sport}`);
     }
 
-    let finalParams = config.params ? `&${config.params}` : '';
-
-    const url = `${config.host}/${config.path}?date=${today}${finalParams}`;
+    // FIX: Removed date=today from the query. We will fetch for the whole season and filter locally.
+    const url = `${config.host}/${config.path}?${config.params}`;
 
     try {
         const response = await fetch(url, { headers: { [config.keyName]: env.SPORT_API_KEY } });
@@ -79,7 +78,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         
         await logApiActivity(env, { sport, endpoint: url, status: 'success' });
         
-        const games: SportGame[] = data.response.map((item: any): SportGame => {
+        const allSeasonGames: SportGame[] = data.response.map((item: any): SportGame => {
             if (sport === 'football') {
                 return {
                     id: item.fixture.id,
@@ -108,14 +107,22 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
                 teams: item.teams,
                 scores: item.scores,
                 // Calculate winner based on scores if not provided
-                winner: (item.scores?.home !== null && item.scores?.away !== null)
+                winner: (item.scores?.home !== null && item.scores?.away !== null && item.scores.home !== undefined && item.scores.away !== undefined)
                     ? (item.scores.home > item.scores.away ? 'home' : (item.scores.away > item.scores.home ? 'away' : 'draw'))
                     : undefined,
             };
         });
         
-        await env.BOT_STATE.put(cacheKey, JSON.stringify(games), { expirationTtl: CACHE_TTL_SECONDS });
-        return games;
+        // FIX: Filter the season's games to only show matches from today onwards.
+        const todayStartTimestamp = new Date(today).setUTCHours(0, 0, 0, 0) / 1000;
+        const upcomingGames = allSeasonGames
+            .filter(game => game.timestamp >= todayStartTimestamp)
+            .sort((a, b) => a.timestamp - b.timestamp); // Sort by soonest first
+
+        await env.BOT_STATE.put(cacheKey, JSON.stringify(upcomingGames), { expirationTtl: CACHE_TTL_SECONDS });
+        console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport}.`);
+
+        return upcomingGames;
 
     } catch (error) {
         console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
