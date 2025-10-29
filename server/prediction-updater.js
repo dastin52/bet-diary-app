@@ -41,7 +41,7 @@ const logApiActivity = (logEntry) => {
 };
 
 // --- CONSTANTS & HELPERS ---
-const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball'];
+const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const JOB_STATE_KEY = 'prediction_job_state';
 const CYCLE_COMPLETED_KEY = 'prediction_job_cycle_completed';
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
@@ -80,6 +80,9 @@ function generateMockGames(sport) {
             { id: 3001, date: `${today}T20:00:00Z`, time: '20:00', timestamp: baseTimestamp + 7200, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 1, name: 'Euroleague', country: 'Europe', logo: '', season: 2024 }, teams: { home: { id: 204, name: 'Anadolu Efes' }, away: { id: 205, name: 'Real Madrid' } }, scores: { home: null, away: null } },
             { id: 4001, date: `${today}T21:00:00Z`, time: '21:00', timestamp: baseTimestamp + 10800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 12, name: 'NBA', country: 'USA', logo: '', season: 2023 }, teams: { home: { id: 15, name: 'Los Angeles Lakers' }, away: { id: 16, name: 'Los Angeles Clippers' } }, scores: { home: null, away: null } },
         ],
+        nba: [
+             { id: 4001, date: `${today}T21:00:00Z`, time: '21:00', timestamp: baseTimestamp + 10800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 12, name: 'NBA', country: 'USA', logo: '', season: 2023 }, teams: { home: { id: 15, name: 'Los Angeles Lakers' }, away: { id: 16, name: 'Los Angeles Clippers' } }, scores: { home: null, away: null } },
+        ]
     };
 
     return (mocks[sport] || []).map(item => {
@@ -94,17 +97,16 @@ function generateMockGames(sport) {
     });
 }
 
-// FIX: Re-added 'season' parameter for hockey and basketball. The API was returning rate-limit errors,
-// likely because queries by date alone are too broad. Specifying the season narrows the query,
-// which is often required for the API's free/lower tiers to prevent expensive operations.
+// By narrowing requests to specific popular leagues, we avoid the API's rate limits on broad date-based queries.
 const now = new Date();
-// If it's before August (month 7), we're likely in the second half of a season that started last year.
+// If it's before August (month 7), the season likely started last year (e.g., 2024 for the 2024-25 season).
 const seasonYear = now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
 
 const SPORT_API_CONFIG = {
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}` },
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}` },
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` }, // KHL
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' }, // No league needed
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=106` }, // VTB United League
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=12` }, // NBA
 };
 
 
