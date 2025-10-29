@@ -46,7 +46,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         console.log(`[Cache HIT] Found cached games for ${sport} on ${today}.`);
         return cachedData as SportGame[];
     }
-    console.log(`[Cache MISS] Fetching fresh games for ${sport} on ${today}.`);
+    console.log(`[Cache MISS] Fetching fresh games for ${sport} for season ${seasonYear}.`);
 
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
@@ -54,7 +54,6 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
          throw new Error(`No API config found for sport: ${sport}`);
     }
 
-    // FIX: Removed date=today from the query. We will fetch for the whole season and filter locally.
     const url = `${config.host}/${config.path}?${config.params}`;
 
     try {
@@ -113,7 +112,6 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             };
         });
         
-        // FIX: Filter the season's games to only show matches from today onwards.
         const todayStartTimestamp = new Date(today).setUTCHours(0, 0, 0, 0) / 1000;
         const upcomingGames = allSeasonGames
             .filter(game => game.timestamp >= todayStartTimestamp)

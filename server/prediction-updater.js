@@ -107,14 +107,13 @@ function generateMockGames(sport) {
     });
 }
 
-// FIX: Using a season that is accessible on the free plan.
 const seasonYear = '2023';
 
 const SPORT_API_CONFIG = {
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` }, // KHL
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=39` }, // Premier league
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=106` }, // VTB United League
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=12` }, // NBA
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` },
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=39` },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=106` },
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=12` },
 };
 
 
@@ -134,7 +133,6 @@ async function getTodaysGamesBySport(sport) {
          throw new Error(`No API config found for sport: ${sport}`);
     }
 
-    // FIX: Removed date=today from the query. We will fetch for the whole season and filter locally.
     const url = `${config.host}/${config.path}?${config.params}`;
 
     try {
@@ -177,11 +175,10 @@ async function getTodaysGamesBySport(sport) {
             };
         });
 
-        // FIX: Filter the season's games to only show matches from today onwards.
         const todayStartTimestamp = new Date(today).setUTCHours(0, 0, 0, 0) / 1000;
         const upcomingGames = allSeasonGames
             .filter(game => game.timestamp >= todayStartTimestamp)
-            .sort((a, b) => a.timestamp - b.timestamp); // Sort by soonest first
+            .sort((a, b) => a.timestamp - b.timestamp);
 
         console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport}.`);
         return upcomingGames;
@@ -191,7 +188,6 @@ async function getTodaysGamesBySport(sport) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logApiActivity({ sport, endpoint: url, status: 'error', errorMessage });
 
-        // Fallback to mock data if the API plan is the issue
         if (errorMessage.includes("Free plans do not have access to this season")) {
             console.warn(`[API FALLBACK] API plan limit detected for ${sport}. Falling back to mock data for this run.`);
             logApiActivity({ sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success' });
