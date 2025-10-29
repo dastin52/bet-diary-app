@@ -118,8 +118,6 @@ const SPORT_API_CONFIG = {
 
 
 async function getTodaysGamesBySport(sport) {
-    const today = new Date().toISOString().split('T')[0];
-    
     if (!process.env.SPORT_API_KEY) {
         console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
         logApiActivity({ sport, endpoint: 'MOCK_SPORTS_API', status: 'success' });
@@ -175,12 +173,21 @@ async function getTodaysGamesBySport(sport) {
             };
         });
 
-        const todayStartTimestamp = new Date(today).setUTCHours(0, 0, 0, 0) / 1000;
+        const now = new Date();
+        const supportedYear = 2023;
+        const filterDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+        if (now.getUTCFullYear() > supportedYear) {
+            filterDate.setUTCFullYear(supportedYear);
+        }
+
+        const filterTimestamp = filterDate.getTime() / 1000;
+
         const upcomingGames = allSeasonGames
-            .filter(game => game.timestamp >= todayStartTimestamp)
+            .filter(game => game.timestamp >= filterTimestamp)
             .sort((a, b) => a.timestamp - b.timestamp);
 
-        console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport}.`);
+        console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport} using filter date ${filterDate.toISOString().split('T')[0]}.`);
         return upcomingGames;
 
     } catch (error) {

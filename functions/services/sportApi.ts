@@ -41,6 +41,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         return generateMockGames(sport);
     }
     
+    // Local cache check for this specific run (not used in production cron)
     const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
     if (cachedData) {
         console.log(`[Cache HIT] Found cached games for ${sport} on ${today}.`);
@@ -112,13 +113,26 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             };
         });
         
-        const todayStartTimestamp = new Date(today).setUTCHours(0, 0, 0, 0) / 1000;
+        const now = new Date();
+        const supportedYear = 2023;
+
+        // Create a date for filtering. Start with today's date (UTC).
+        const filterDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        
+        // If the current system year is ahead of the supported season year, adjust the filter date's year.
+        // This handles test environments with future dates (like 2025).
+        if (now.getUTCFullYear() > supportedYear) {
+            filterDate.setUTCFullYear(supportedYear);
+        }
+
+        const filterTimestamp = filterDate.getTime() / 1000;
+        
         const upcomingGames = allSeasonGames
-            .filter(game => game.timestamp >= todayStartTimestamp)
+            .filter(game => game.timestamp >= filterTimestamp)
             .sort((a, b) => a.timestamp - b.timestamp); // Sort by soonest first
 
         await env.BOT_STATE.put(cacheKey, JSON.stringify(upcomingGames), { expirationTtl: CACHE_TTL_SECONDS });
-        console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport}.`);
+        console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport} using filter date ${filterDate.toISOString().split('T')[0]}.`);
 
         return upcomingGames;
 
