@@ -3,13 +3,19 @@ import { Env, SportApiResponse, SportGame, SportApiConfig, ApiActivityLog } from
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 
-// FIX: Removed 'season' parameter for hockey and basketball to fix API error "The Season field can't be used alone".
-// The API does not allow 'date' and 'season' to be used together. The app will now rely solely on the 'date' parameter.
+// FIX: Re-added 'season' parameter for hockey and basketball. The API was returning rate-limit errors,
+// likely because queries by date alone are too broad. Specifying the season narrows the query,
+// which is often required for the API's free/lower tiers to prevent expensive operations.
+const now = new Date();
+// If it's before August (month 7), we're likely in the second half of a season that started last year.
+const seasonYear = now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
+
 const SPORT_API_CONFIG: SportApiConfig = {
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}` },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}` },
 };
+
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
 
