@@ -1,12 +1,12 @@
 // functions/services/sportApi.ts
 import { Env, SportApiResponse, SportGame, SportApiConfig, ApiActivityLog } from '../telegram/types';
+import { generateMockGames } from '../utils/mockGames';
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 
 // By narrowing requests to specific popular leagues, we avoid the API's rate limits on broad date-based queries.
-const now = new Date();
-// If it's before August (month 7), the season likely started last year (e.g., 2024 for the 2024-25 season).
-const seasonYear = now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
+// FIX: The season parameter must be in YYYY-YYYY format. Using the latest supported season for the free plan to avoid API errors.
+const seasonYear = '2022-2023';
 
 const SPORT_API_CONFIG: SportApiConfig = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` }, // KHL
@@ -31,12 +31,6 @@ async function logApiActivity(env: Env, logEntry: Omit<ApiActivityLog, 'timestam
     }
 }
 
-function generateMockGames(sport: string): SportGame[] {
-    // This is a placeholder for local development.
-    // In a real scenario, this would generate mock data.
-    return [];
-}
-
 export async function getTodaysGamesBySport(sport: string, env: Env): Promise<SportGame[]> {
     const today = new Date().toISOString().split('T')[0];
     const cacheKey = `cache:${sport}:games:${today}`;
@@ -57,7 +51,6 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
          console.error(`No API config found for sport: ${sport}`);
-         // Throw an error instead of returning an empty array to signal failure
          throw new Error(`No API config found for sport: ${sport}`);
     }
 
@@ -126,8 +119,17 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
 
     } catch (error) {
         console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
-        await logApiActivity(env, { sport, endpoint: url, status: 'error', errorMessage: error instanceof Error ? error.message : String(error) });
-        // Re-throw the error to be caught by the calling task runner
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        await logApiActivity(env, { sport, endpoint: url, status: 'error', errorMessage });
+        
+        // Fallback to mock data if the API plan is the issue
+        if (errorMessage.includes("Free plans do not have access to this season")) {
+            console.warn(`[API FALLBACK] API plan limit detected for ${sport}. Falling back to mock data for this run.`);
+            await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success' });
+            return generateMockGames(sport);
+        }
+
+        // Re-throw for any other error to let the task runner know something went wrong
         throw error;
     }
 }

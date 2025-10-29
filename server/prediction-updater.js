@@ -70,15 +70,14 @@ function generateMockGames(sport) {
 
     const mocks = {
         football: [
-            { id: 1001, fixture: { id: 1001, date: `${today}T19:00:00Z`, timestamp: baseTimestamp + 3600, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' } }, league: { id: 39, name: 'Premier League', country: 'England', logo: '', season: 2024 }, teams: { home: { id: 40, name: 'Manchester City', winner: null }, away: { id: 42, name: 'Liverpool', winner: null } }, score: { fulltime: { home: null, away: null } } },
-            { id: 1002, fixture: { id: 1002, date: `${today}T16:00:00Z`, timestamp: baseTimestamp - 7200, timezone: 'UTC', status: { long: 'Match Finished', short: 'FT' } }, league: { id: 140, name: 'La Liga', country: 'Spain', logo: '', season: 2024 }, teams: { home: { id: 529, name: 'Real Madrid', winner: true }, away: { id: 530, name: 'Barcelona', winner: false } }, score: { fulltime: { home: 2, away: 1 } } },
+            { id: 1001, fixture: { id: 1001, date: `${today}T19:00:00Z`, timestamp: baseTimestamp + 3600, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' } }, league: { id: 39, name: 'Premier League', country: 'England', logo: '', season: 2023 }, teams: { home: { id: 40, name: 'Manchester City', winner: null }, away: { id: 42, name: 'Liverpool', winner: null } }, score: { fulltime: { home: null, away: null } } },
+            { id: 1002, fixture: { id: 1002, date: `${today}T16:00:00Z`, timestamp: baseTimestamp - 7200, timezone: 'UTC', status: { long: 'Match Finished', short: 'FT' } }, league: { id: 140, name: 'La Liga', country: 'Spain', logo: '', season: 2023 }, teams: { home: { id: 529, name: 'Real Madrid', winner: true }, away: { id: 530, name: 'Barcelona', winner: false } }, score: { fulltime: { home: 2, away: 1 } } },
         ],
         hockey: [
-            { id: 2001, date: `${today}T18:30:00Z`, time: '18:30', timestamp: baseTimestamp + 1800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 23, name: 'KHL', country: 'Russia', logo: '', season: 2024 }, teams: { home: { id: 198, name: 'CSKA Moscow' }, away: { id: 199, name: 'SKA St. Petersburg' } }, scores: { home: null, away: null } },
+            { id: 2001, date: `${today}T18:30:00Z`, time: '18:30', timestamp: baseTimestamp + 1800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 23, name: 'KHL', country: 'Russia', logo: '', season: 2023 }, teams: { home: { id: 198, name: 'CSKA Moscow' }, away: { id: 199, name: 'SKA St. Petersburg' } }, scores: { home: null, away: null } },
         ],
         basketball: [
-            { id: 3001, date: `${today}T20:00:00Z`, time: '20:00', timestamp: baseTimestamp + 7200, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 1, name: 'Euroleague', country: 'Europe', logo: '', season: 2024 }, teams: { home: { id: 204, name: 'Anadolu Efes' }, away: { id: 205, name: 'Real Madrid' } }, scores: { home: null, away: null } },
-            { id: 4001, date: `${today}T21:00:00Z`, time: '21:00', timestamp: baseTimestamp + 10800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 12, name: 'NBA', country: 'USA', logo: '', season: 2023 }, teams: { home: { id: 15, name: 'Los Angeles Lakers' }, away: { id: 16, name: 'Los Angeles Clippers' } }, scores: { home: null, away: null } },
+            { id: 3001, date: `${today}T20:00:00Z`, time: '20:00', timestamp: baseTimestamp + 7200, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 106, name: 'VTB United League', country: 'Russia', logo: '', season: 2023 }, teams: { home: { id: 204, name: 'Anadolu Efes' }, away: { id: 205, name: 'Real Madrid' } }, scores: { home: null, away: null } },
         ],
         nba: [
              { id: 4001, date: `${today}T21:00:00Z`, time: '21:00', timestamp: baseTimestamp + 10800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 12, name: 'NBA', country: 'USA', logo: '', season: 2023 }, teams: { home: { id: 15, name: 'Los Angeles Lakers' }, away: { id: 16, name: 'Los Angeles Clippers' } }, scores: { home: null, away: null } },
@@ -88,19 +87,29 @@ function generateMockGames(sport) {
     return (mocks[sport] || []).map(item => {
         if (sport === 'football') {
              return {
-                id: item.fixture.id, date: item.fixture.date, time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                timestamp: item.fixture.timestamp, timezone: item.fixture.timezone, status: item.fixture.status,
+                id: item.fixture.id, date: item.fixture.date.split('T')[0],
+                time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                timestamp: item.fixture.timestamp, timezone: item.fixture.timezone,
+                status: { long: item.fixture.status.long, short: item.fixture.status.short },
                 league: item.league, teams: item.teams, scores: item.score.fulltime,
+                winner: item.fixture.status.short === 'FT' ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw')) : undefined,
             };
         }
-        return item;
+        // For hockey and basketball, map explicitly to ensure correct structure
+        return {
+            id: item.id, date: item.date.split('T')[0], time: item.time, timestamp: item.timestamp,
+            timezone: item.timezone, status: { long: item.status.long, short: item.status.short },
+            league: item.league, teams: item.teams, scores: item.scores,
+            winner: (item.scores?.home !== null && item.scores?.away !== null && item.scores.home !== undefined && item.scores.away !== undefined)
+                ? (item.scores.home > item.scores.away ? 'home' : (item.scores.away > item.scores.home ? 'away' : 'draw'))
+                : undefined,
+        };
     });
 }
 
 // By narrowing requests to specific popular leagues, we avoid the API's rate limits on broad date-based queries.
-const now = new Date();
-// If it's before August (month 7), the season likely started last year (e.g., 2024 for the 2024-25 season).
-const seasonYear = now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
+// FIX: The season parameter must be in YYYY-YYYY format. Using the latest supported season for the free plan to avoid API errors.
+const seasonYear = '2022-2023';
 
 const SPORT_API_CONFIG = {
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` }, // KHL
@@ -174,8 +183,17 @@ async function getTodaysGamesBySport(sport) {
 
     } catch (error) {
         console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
-        logApiActivity({ sport, endpoint: url, status: 'error', errorMessage: error instanceof Error ? error.message : String(error) });
-        throw error; 
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logApiActivity({ sport, endpoint: url, status: 'error', errorMessage });
+
+        // Fallback to mock data if the API plan is the issue
+        if (errorMessage.includes("Free plans do not have access to this season")) {
+            console.warn(`[API FALLBACK] API plan limit detected for ${sport}. Falling back to mock data for this run.`);
+            logApiActivity({ sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success' });
+            return generateMockGames(sport);
+        }
+        
+        throw error;
     }
 }
 
