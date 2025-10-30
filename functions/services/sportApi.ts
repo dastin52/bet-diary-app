@@ -4,12 +4,12 @@ import { generateMockGames } from '../utils/mockGames';
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 
-// FIX: Add `season` parameter to all sports configs as it's now required by the API.
+// FIX: Remove league and season parameters to fetch all games for a given date, resolving API errors.
 const getSportApiConfig = (year: number): SportApiConfig => ({
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=23&season=${year}` },
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `league=39&season=${year}` },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=106&season=${year}` },
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=12&season=${year}` },
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: '' },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
 });
 
 
