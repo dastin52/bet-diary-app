@@ -106,14 +106,12 @@ function generateMockGames(sport) {
     });
 }
 
-const supportedYear = 2023;
-
-const SPORT_API_CONFIG = {
+const getSportApiConfig = (year) => ({
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=23` },
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `league=39&season=${supportedYear}` },
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `league=39&season=${year}` },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=106` },
     'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=12` },
-};
+});
 
 
 async function getTodaysGamesBySport(sport) {
@@ -124,13 +122,14 @@ async function getTodaysGamesBySport(sport) {
     }
 
     const now = new Date();
+    const year = now.getUTCFullYear();
     const month = String(now.getUTCMonth() + 1).padStart(2, '0');
     const day = String(now.getUTCDate()).padStart(2, '0');
-    const queryDate = `${supportedYear}-${month}-${day}`;
+    const queryDate = `${year}-${month}-${day}`;
 
     console.log(`[API] Fetching fresh games for ${sport} for date ${queryDate}.`);
     
-    const config = SPORT_API_CONFIG[sport];
+    const config = getSportApiConfig(year)[sport];
     if (!config) {
          throw new Error(`No API config found for sport: ${sport}`);
     }

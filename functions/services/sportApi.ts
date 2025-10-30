@@ -3,15 +3,14 @@ import { Env, SportApiResponse, SportGame, SportApiConfig, ApiActivityLog } from
 import { generateMockGames } from '../utils/mockGames';
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
-const supportedYear = 2023;
 
 // Football API requires season, others work better with just date + league.
-const SPORT_API_CONFIG: SportApiConfig = {
+const getSportApiConfig = (year: number): SportApiConfig => ({
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=23` },
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `league=39&season=${supportedYear}` },
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `league=39&season=${year}` },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=106` },
     'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=12` },
-};
+});
 
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
@@ -37,9 +36,10 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     }
 
     const now = new Date();
+    const year = now.getUTCFullYear();
     const month = String(now.getUTCMonth() + 1).padStart(2, '0');
     const day = String(now.getUTCDate()).padStart(2, '0');
-    const queryDate = `${supportedYear}-${month}-${day}`;
+    const queryDate = `${year}-${month}-${day}`;
     
     const cacheKey = `cache:${sport}:games:${queryDate}`;
 
@@ -51,7 +51,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     }
     console.log(`[Cache MISS] Fetching fresh games for ${sport} for date ${queryDate}.`);
 
-    const config = SPORT_API_CONFIG[sport];
+    const config = getSportApiConfig(year)[sport];
     if (!config) {
          console.error(`No API config found for sport: ${sport}`);
          throw new Error(`No API config found for sport: ${sport}`);
