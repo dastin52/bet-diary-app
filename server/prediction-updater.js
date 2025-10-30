@@ -95,7 +95,6 @@ function generateMockGames(sport) {
                 winner: item.fixture.status.short === 'FT' ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw')) : undefined,
             };
         }
-        // For hockey and basketball, map explicitly to ensure correct structure
         return {
             id: item.id, date: item.date.split('T')[0], time: item.time, timestamp: item.timestamp,
             timezone: item.timezone, status: { long: item.status.long, short: item.status.short },
@@ -107,13 +106,13 @@ function generateMockGames(sport) {
     });
 }
 
-const seasonYear = '2023';
+const supportedYear = 2023;
 
 const SPORT_API_CONFIG = {
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` },
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=39` },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=106` },
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=12` },
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=23` },
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `league=39&season=${supportedYear}` },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=106` },
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=12` },
 };
 
 
@@ -123,15 +122,21 @@ async function getTodaysGamesBySport(sport) {
         logApiActivity({ sport, endpoint: 'MOCK_SPORTS_API', status: 'success' });
         return generateMockGames(sport);
     }
-    
-    console.log(`[API] Fetching fresh games for ${sport} for season ${seasonYear}.`);
 
+    const now = new Date();
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(now.getUTCDate()).padStart(2, '0');
+    const queryDate = `${supportedYear}-${month}-${day}`;
+
+    console.log(`[API] Fetching fresh games for ${sport} for date ${queryDate}.`);
+    
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
          throw new Error(`No API config found for sport: ${sport}`);
     }
 
-    const url = `${config.host}/${config.path}?${config.params}`;
+    const queryParams = `date=${queryDate}${config.params ? `&${config.params}` : ''}`;
+    const url = `${config.host}/${config.path}?${queryParams}`;
 
     try {
         const response = await fetch(url, { headers: { [config.keyName]: process.env.SPORT_API_KEY } });
@@ -150,7 +155,7 @@ async function getTodaysGamesBySport(sport) {
         
         logApiActivity({ sport, endpoint: url, status: 'success' });
         
-        const allSeasonGames = data.response.map((item) => {
+        const games = data.response.map((item) => {
             if (sport === 'football') {
                 return {
                     id: item.fixture.id, date: item.fixture.date.split('T')[0],
@@ -173,29 +178,15 @@ async function getTodaysGamesBySport(sport) {
             };
         });
 
-        const now = new Date();
-        const supportedYear = 2023;
-        const filterDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-
-        if (now.getUTCFullYear() > supportedYear) {
-            filterDate.setUTCFullYear(supportedYear);
-        }
-
-        const filterTimestamp = filterDate.getTime() / 1000;
-
-        const upcomingGames = allSeasonGames
-            .filter(game => game.timestamp >= filterTimestamp)
-            .sort((a, b) => a.timestamp - b.timestamp);
-
-        console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport} using filter date ${filterDate.toISOString().split('T')[0]}.`);
-        return upcomingGames;
+        console.log(`[API SUCCESS] Fetched ${games.length} games for ${sport} on date ${queryDate}.`);
+        return games;
 
     } catch (error) {
         console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         logApiActivity({ sport, endpoint: url, status: 'error', errorMessage });
 
-        if (errorMessage.includes("Free plans do not have access to this season")) {
+        if (errorMessage.includes("plan") || errorMessage.includes("subscription")) {
             console.warn(`[API FALLBACK] API plan limit detected for ${sport}. Falling back to mock data for this run.`);
             logApiActivity({ sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success' });
             return generateMockGames(sport);
@@ -228,7 +219,7 @@ async function processSport(sport) {
 
         return {
             ...(game),
-            id: `${sport}-${game.id}`, // FIX: Create a composite, unique ID.
+            id: `${sport}-${game.id}`,
             sport: sport,
             eventName: game.league.name,
             teams: matchName,

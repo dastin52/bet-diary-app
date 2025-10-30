@@ -3,16 +3,14 @@ import { Env, SportApiResponse, SportGame, SportApiConfig, ApiActivityLog } from
 import { generateMockGames } from '../utils/mockGames';
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
+const supportedYear = 2023;
 
-// By narrowing requests to specific popular leagues, we avoid the API's rate limits on broad date-based queries.
-// FIX: Using a season that is accessible on the free plan to avoid API errors.
-const seasonYear = '2023';
-
+// Football API requires season, others work better with just date + league.
 const SPORT_API_CONFIG: SportApiConfig = {
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=23` }, // KHL
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=39` }, // Premier league
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=106` }, // VTB United League
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `season=${seasonYear}&league=12` }, // NBA
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=23` },
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `league=39&season=${supportedYear}` },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=106` },
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=12` },
 };
 
 
@@ -32,30 +30,35 @@ async function logApiActivity(env: Env, logEntry: Omit<ApiActivityLog, 'timestam
 }
 
 export async function getTodaysGamesBySport(sport: string, env: Env): Promise<SportGame[]> {
-    const today = new Date().toISOString().split('T')[0];
-    const cacheKey = `cache:${sport}:games:${today}`;
-
     if (!env.SPORT_API_KEY) {
         console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
         await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_GENERATOR', status: 'success' });
         return generateMockGames(sport);
     }
+
+    const now = new Date();
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(now.getUTCDate()).padStart(2, '0');
+    const queryDate = `${supportedYear}-${month}-${day}`;
     
+    const cacheKey = `cache:${sport}:games:${queryDate}`;
+
     // Local cache check for this specific run (not used in production cron)
     const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
     if (cachedData) {
-        console.log(`[Cache HIT] Found cached games for ${sport} on ${today}.`);
+        console.log(`[Cache HIT] Found cached games for ${sport} on ${queryDate}.`);
         return cachedData as SportGame[];
     }
-    console.log(`[Cache MISS] Fetching fresh games for ${sport} for season ${seasonYear}.`);
+    console.log(`[Cache MISS] Fetching fresh games for ${sport} for date ${queryDate}.`);
 
     const config = SPORT_API_CONFIG[sport];
     if (!config) {
          console.error(`No API config found for sport: ${sport}`);
          throw new Error(`No API config found for sport: ${sport}`);
     }
-
-    const url = `${config.host}/${config.path}?${config.params}`;
+    
+    const queryParams = `date=${queryDate}${config.params ? `&${config.params}` : ''}`;
+    const url = `${config.host}/${config.path}?${queryParams}`;
 
     try {
         const response = await fetch(url, { headers: { [config.keyName]: env.SPORT_API_KEY } });
@@ -78,7 +81,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         
         await logApiActivity(env, { sport, endpoint: url, status: 'success' });
         
-        const allSeasonGames: SportGame[] = data.response.map((item: any): SportGame => {
+        const games: SportGame[] = data.response.map((item: any): SportGame => {
             if (sport === 'football') {
                 return {
                     id: item.fixture.id,
@@ -112,43 +115,23 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
                     : undefined,
             };
         });
-        
-        const now = new Date();
-        const supportedYear = 2023;
 
-        // Create a date for filtering. Start with today's date (UTC).
-        const filterDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-        
-        // If the current system year is ahead of the supported season year, adjust the filter date's year.
-        // This handles test environments with future dates (like 2025).
-        if (now.getUTCFullYear() > supportedYear) {
-            filterDate.setUTCFullYear(supportedYear);
-        }
+        await env.BOT_STATE.put(cacheKey, JSON.stringify(games), { expirationTtl: CACHE_TTL_SECONDS });
+        console.log(`[API SUCCESS] Fetched ${games.length} games for ${sport} on date ${queryDate}.`);
 
-        const filterTimestamp = filterDate.getTime() / 1000;
-        
-        const upcomingGames = allSeasonGames
-            .filter(game => game.timestamp >= filterTimestamp)
-            .sort((a, b) => a.timestamp - b.timestamp); // Sort by soonest first
-
-        await env.BOT_STATE.put(cacheKey, JSON.stringify(upcomingGames), { expirationTtl: CACHE_TTL_SECONDS });
-        console.log(`[API SUCCESS] Fetched ${allSeasonGames.length} games for season, filtered to ${upcomingGames.length} upcoming games for ${sport} using filter date ${filterDate.toISOString().split('T')[0]}.`);
-
-        return upcomingGames;
+        return games;
 
     } catch (error) {
         console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         await logApiActivity(env, { sport, endpoint: url, status: 'error', errorMessage });
         
-        // Fallback to mock data if the API plan is the issue
-        if (errorMessage.includes("Free plans do not have access to this season")) {
+        if (errorMessage.includes("plan") || errorMessage.includes("subscription")) {
             console.warn(`[API FALLBACK] API plan limit detected for ${sport}. Falling back to mock data for this run.`);
             await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success' });
             return generateMockGames(sport);
         }
 
-        // Re-throw for any other error to let the task runner know something went wrong
         throw error;
     }
 }
