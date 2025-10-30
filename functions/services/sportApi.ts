@@ -4,12 +4,12 @@ import { generateMockGames } from '../utils/mockGames';
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 
-// Football API requires season, others work better with just date + league.
+// FIX: Add `season` parameter to all sports configs as it's now required by the API.
 const getSportApiConfig = (year: number): SportApiConfig => ({
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=23` },
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=23&season=${year}` },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: `league=39&season=${year}` },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=106` },
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=12` },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=106&season=${year}` },
+    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: `league=12&season=${year}` },
 });
 
 
