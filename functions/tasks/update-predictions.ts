@@ -103,6 +103,12 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
     console.log(`[CRON] Starting a fresh update for sport: ${sport}`);
 
     let games = await getTodaysGamesBySport(sport, env);
+
+    // When processing general basketball, filter out NBA games to avoid duplication
+    if (sport === 'basketball') {
+        games = games.filter(g => g.league.id !== 12);
+    }
+    
     const centralPredictionsKey = `central_predictions:${sport}`;
 
     if (games.length === 0) {

@@ -4,13 +4,22 @@ import { generateMockGames } from '../utils/mockGames';
 
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 
-// FIX: Remove league and season parameters to fetch all games for a given date, resolving API errors.
-const getSportApiConfig = (year: number): SportApiConfig => ({
-    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
-    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: '' },
-    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
-    'nba': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
-});
+const getSportApiConfig = (year: number): SportApiConfig => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const month = now.getMonth(); // 0-11
+    // NBA season typically starts around October. Let's use August as the cutoff for the new season year.
+    const season = month >= 7 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
+
+    return {
+        'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
+        'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: '' },
+        'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
+        // Per user request, use the dedicated v2 NBA endpoint. This endpoint doesn't need league/season params.
+        'nba': { host: 'https://v2.nba.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
+    };
+};
+
 
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
