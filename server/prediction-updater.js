@@ -175,10 +175,27 @@ async function getTodaysGamesBySport(sport) {
                         : undefined,
                 };
             }
+            
+            let gameDateStr = item.date;
+            if (sport === 'nba' && item.date && typeof item.date === 'object' && item.date.start) {
+                gameDateStr = item.date.start;
+            }
+
+            if (typeof gameDateStr !== 'string') {
+                console.warn(`Unexpected date format for game ID ${item.id} in sport ${sport}:`, item.date);
+                gameDateStr = new Date().toISOString();
+            }
+
             return {
-                id: item.id, date: item.date.split('T')[0], time: item.time, timestamp: item.timestamp,
-                timezone: item.timezone, status: { long: item.status.long, short: item.status.short },
-                league: item.league, teams: item.teams, scores: item.scores,
+                id: item.id,
+                date: gameDateStr.split('T')[0],
+                time: item.time,
+                timestamp: item.timestamp,
+                timezone: item.timezone,
+                status: { long: item.status.long, short: item.status.short },
+                league: item.league,
+                teams: item.teams,
+                scores: item.scores,
                 winner: (item.scores?.home !== null && item.scores?.away !== null && item.scores.home !== undefined && item.scores.away !== undefined)
                     ? (item.scores.home > item.scores.away ? 'home' : (item.scores.away > item.scores.home ? 'away' : 'draw'))
                     : undefined,

@@ -107,10 +107,21 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
                         : undefined,
                 };
             }
-            // For hockey and basketball, the structure is already close to SportGame
+            // For hockey, basketball, and nba
+            let gameDateStr = item.date;
+            if (sport === 'nba' && item.date && typeof item.date === 'object' && item.date.start) {
+                gameDateStr = item.date.start;
+            }
+
+            if (typeof gameDateStr !== 'string') {
+                // Fallback for unexpected date format to prevent crash
+                console.warn(`Unexpected date format for game ID ${item.id} in sport ${sport}:`, item.date);
+                gameDateStr = new Date().toISOString();
+            }
+            
             return {
                 id: item.id,
-                date: item.date.split('T')[0],
+                date: gameDateStr.split('T')[0],
                 time: item.time,
                 timestamp: item.timestamp,
                 timezone: item.timezone,
