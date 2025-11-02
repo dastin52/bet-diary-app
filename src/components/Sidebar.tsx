@@ -129,7 +129,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMo
   const [copied, setCopied] = useState(false);
 
   const handleSetView = (view: View) => {
-    const allowedDemoViews: View[] = ['dashboard', 'competition'];
+    const allowedDemoViews: View[] = ['dashboard', 'competition', 'ai_prediction_log'];
     if (isDemoMode && !allowedDemoViews.includes(view)) {
         onAuthRequired();
         return;
@@ -156,10 +156,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMo
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
             <nav className="space-y-1">
-                <NavItem icon={<DashboardIcon />} label="Дашборд" view="dashboard" currentView={currentView} onClick={setCurrentView} />
+                <NavItem icon={<DashboardIcon />} label="Дашборд" view="dashboard" currentView={currentView} onClick={handleSetView} />
                 <NavItem icon={<LogIcon />} label="Журнал ставок" view="log" currentView={currentView} onClick={handleSetView} />
                 <NavItem icon={<BankIcon />} label="История банка" view="bank_history" currentView={currentView} onClick={handleSetView} />
-                <NavItem icon={<CompetitionIcon />} label="Соревнования" view="competition" currentView={currentView} onClick={setCurrentView} />
+                <NavItem icon={<CompetitionIcon />} label="Соревнования" view="competition" currentView={currentView} onClick={handleSetView} />
             </nav>
             
             <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">

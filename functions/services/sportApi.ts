@@ -146,9 +146,9 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         const errorMessage = error instanceof Error ? error.message : String(error);
         await logApiActivity(env, { sport, endpoint: url, status: 'error', errorMessage });
         
-        if (errorMessage.includes("plan") || errorMessage.includes("subscription")) {
-            console.warn(`[API FALLBACK] API plan limit detected for ${sport}. Falling back to mock data for this run.`);
-            await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success' });
+        if (errorMessage.includes("plan") || errorMessage.includes("subscription") || errorMessage.includes("Too many subrequests")) {
+            console.warn(`[API FALLBACK] Subscription/rate-limit issue detected for ${sport}. Falling back to mock data for this run.`);
+            await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success', errorMessage: 'Subscription or rate-limit issue' });
             return generateMockGames(sport);
         }
 
