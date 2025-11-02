@@ -7,11 +7,11 @@ import DiagnosticsPanel from './DiagnosticsPanel';
 import RequestsChart from './RequestsChart';
 import ActivityTimeline from './ActivityTimeline';
 
-type AdminView = 'stats' | 'users' | 'diagnostics' | 'api_activity';
+type AdminView = 'stats' | 'users' | 'api_activity' | 'diagnostics';
 
 const AdminPanel: React.FC = () => {
   const { users, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
-  const [activeTab, setActiveTab] = useState<AdminView>('stats');
+  const [activeTab, setActiveTab] = useState<AdminView>('api_activity');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
   const [diagnosticsRefreshKey, setDiagnosticsRefreshKey] = useState(0);
