@@ -110,13 +110,16 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
     const centralPredictionsKey = `central_predictions:${sport}`;
 
     if (games.length === 0) {
-        console.log(`[CRON] No games found for ${sport} today. Clearing existing data.`);
-        await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify([]));
-        return [];
+        console.log(`[CRON] No new games found for ${sport} today. Keeping existing data.`);
+        // Don't clear the cache, just return what's there.
+        const existingData = await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[] | null;
+        return existingData || [];
     }
+    
+    // Fetch all existing predictions for this sport to merge with.
+    const allTimePredictionsForSport = (await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[]) || [];
+    const allTimePredictionsMap = new Map<string, SharedPrediction>(allTimePredictionsForSport.map(p => [`${sport}-${p.id}`, p]));
 
-    const existingPredictions = (await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[]) || [];
-    const existingPredictionDataMap = new Map<string, AIPrediction | null>(existingPredictions.map(p => [p.teams, p.prediction]));
 
     const teamNames = games.flatMap(g => [g?.teams?.home?.name, g?.teams?.away?.name]).filter((n): n is string => !!n);
     const uniqueTeamNames = Array.from(new Set(teamNames));
@@ -124,7 +127,6 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
     
-    const todaysSharedPredictions: SharedPrediction[] = [];
     for (let i = 0; i < games.length; i += BATCH_SIZE) {
         const batch = games.slice(i, i + BATCH_SIZE);
         console.log(`[CRON] Processing batch ${i / BATCH_SIZE + 1} for ${sport} with ${batch.length} games.`);
@@ -133,8 +135,10 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
             const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
             const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
             const matchName = `${homeTeam} vs ${awayTeam}`;
-            
-            let prediction = existingPredictionDataMap.get(matchName) ?? null;
+            const uniqueGameId = `${sport}-${game.id}`;
+
+            let existingPrediction = allTimePredictionsMap.get(uniqueGameId) || null;
+            let prediction = existingPrediction ? existingPrediction.prediction : null;
 
             if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
                 if (prediction && prediction.status === AIPredictionStatus.Pending) {
@@ -181,10 +185,11 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
             const d = new Date(game.timestamp * 1000);
             const formattedDate = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
-
-            return {
+            
+            // Create or update the prediction in the map
+            allTimePredictionsMap.set(uniqueGameId, {
                 ...(game as any),
-                id: `${sport}-${game.id}`, // FIX: Create a composite, unique ID.
+                id: game.id, // Use original game ID
                 sport: sport, 
                 eventName: game.league.name, 
                 teams: matchName,
@@ -192,20 +197,19 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                 time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
                 status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
                 prediction: prediction,
-                score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : undefined,
-                scores: (game.scores && game.scores.home !== null) ? game.scores : undefined,
-                winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : undefined,
-            };
+                score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : (existingPrediction?.score || undefined),
+                scores: (game.scores && game.scores.home !== null) ? game.scores : (existingPrediction?.scores || undefined),
+                winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : (existingPrediction?.winner || undefined),
+            });
         });
-
-        const batchResults = await Promise.all(batchPromises);
-        todaysSharedPredictions.push(...batchResults.filter(p => p));
+        await Promise.all(batchPromises);
     }
-
-    const finalPredictions = todaysSharedPredictions.sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || a.timestamp - b.timestamp);
+    
+    const finalPredictions = Array.from(allTimePredictionsMap.values())
+        .sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || b.timestamp - a.timestamp); // Sort by status, then newest first
 
     await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify(finalPredictions));
-    console.log(`[CRON] Successfully processed and stored ${finalPredictions.length} fresh predictions for ${sport}.`);
+    console.log(`[CRON] Successfully processed and stored ${finalPredictions.length} total predictions for ${sport}.`);
     return finalPredictions;
 }
 
@@ -216,10 +220,6 @@ export async function runUpdateTask(env: Env) {
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
 
     try {
-        console.log('[Updater Task] Starting full update for all sports. Clearing existing "all" predictions cache.');
-        // Clear the main 'all' cache at the beginning of each full run.
-        await env.BOT_STATE.put('central_predictions:all', JSON.stringify([]));
-        
         const allSportsPredictions: SharedPrediction[] = [];
 
         // Loop through all sports and process them.
@@ -247,8 +247,8 @@ export async function runUpdateTask(env: Env) {
             }
         }
         
-        // De-duplicate final results by ID before saving to 'all'
-        const uniqueAllPredictions = Array.from(new Map(allSportsPredictions.map(p => [p.id, p])).values());
+        // De-duplicate final results by a more robust unique ID before saving to 'all'
+        const uniqueAllPredictions = Array.from(new Map(allSportsPredictions.map(p => [`${p.sport}-${p.id}`, p])).values());
 
         // Save the combined, unique predictions for all sports
         await env.BOT_STATE.put('central_predictions:all', JSON.stringify(uniqueAllPredictions));

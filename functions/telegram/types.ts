@@ -299,6 +299,8 @@ export interface SportApiConfig {
 // FIX: Corrected SharedPrediction type to include `score` and an `emoji` in status.
 // FIX: Corrected SharedPrediction type. It should not directly extend SportGame because the `teams` property is changed from an object to a string. Using Omit preserves other properties while allowing `teams` to be redefined.
 export interface SharedPrediction extends Omit<SportGame, 'teams' | 'status'> {
+  // @google/genai-fix: Add the 'sport' property to align the type with its usage and fix compile error.
+  sport: string;
   teams: string; // The translated "Team A vs Team B" string
   prediction: AIPrediction | null;
   timestamp: number;

@@ -231,14 +231,11 @@ async function processSport(sport) {
     const centralPredictionsKey = `central_predictions:${sport}`;
 
     if (games.length === 0) {
-        console.log(`[Updater] No games found for ${sport} today. Clearing existing data.`);
-        cache.putPersistent(centralPredictionsKey, []);
-        return [];
+        console.log(`[Updater] No new games found for ${sport} today. Keeping existing data.`);
+        return cache.getPersistent(centralPredictionsKey) || [];
     }
     
-    // For local dev, we assume no complex translation or prediction logic is needed.
-    // We will just format the data.
-    const finalPredictions = games.map(game => {
+    const todaysPredictions = games.map(game => {
         const homeTeam = game.teams.home.name;
         const awayTeam = game.teams.away.name;
         const matchName = `${homeTeam} vs ${awayTeam}`;
@@ -248,7 +245,7 @@ async function processSport(sport) {
 
         return {
             ...(game),
-            id: `${sport}-${game.id}`,
+            id: game.id, // Use original game ID
             sport: sport,
             eventName: game.league.name,
             teams: matchName,
@@ -258,10 +255,19 @@ async function processSport(sport) {
             prediction: null, // AI predictions can be added here in a more complex setup
             score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : undefined,
         }
-    }).sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || a.timestamp - b.timestamp);
+    });
+    
+    // Merge with historical data
+    const existingPredictions = cache.getPersistent(centralPredictionsKey) || [];
+    const todaysPredictionMap = new Map(todaysPredictions.map(p => [p.id, p]));
+    const historicalPredictions = existingPredictions.filter(p => !todaysPredictionMap.has(p.id));
+    
+    const finalPredictions = [...historicalPredictions, ...todaysPredictions]
+        .sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || b.timestamp - a.timestamp);
+
 
     cache.putPersistent(centralPredictionsKey, finalPredictions);
-    console.log(`[Updater] Successfully processed and stored ${finalPredictions.length} matches for ${sport}.`);
+    console.log(`[Updater] Successfully processed and stored ${finalPredictions.length} total predictions for ${sport}.`);
     return finalPredictions;
 }
 
@@ -272,9 +278,6 @@ async function runUpdate() {
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
 
     try {
-        console.log('[Updater Task] Starting full update for all sports. Clearing existing "all" predictions cache.');
-        cache.putPersistent('central_predictions:all', []);
-
         const allSportsPredictions = [];
 
         for (const [index, sport] of SPORTS_TO_PROCESS.entries()) {
@@ -299,7 +302,7 @@ async function runUpdate() {
             }
         }
         
-        const uniqueAllPredictions = Array.from(new Map(allSportsPredictions.map(p => [p.id, p])).values());
+        const uniqueAllPredictions = Array.from(new Map(allSportsPredictions.map(p => [`${p.sport}-${p.id}`, p])).values());
         
         cache.putPersistent('central_predictions:all', uniqueAllPredictions);
         console.log(`[Updater Task] Full cycle complete. Total unique predictions stored: ${uniqueAllPredictions.length}`);
