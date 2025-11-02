@@ -242,8 +242,8 @@ export async function runUpdateTask(env: Env) {
             }
             // Add a delay after each sport processing, but not after the last one
             if (index < SPORTS_TO_PROCESS.length - 1) {
-                console.log(`[Updater Task] Waiting for 10 seconds before processing the next sport to avoid rate limiting...`);
-                await delay(10000); // 10-second delay
+                console.log(`[Updater Task] Waiting for 30 seconds before processing the next sport to avoid rate limiting...`);
+                await delay(30000); // 30-second delay
             }
         }
         
