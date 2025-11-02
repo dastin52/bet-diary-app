@@ -19,7 +19,7 @@ const AdminPanel: React.FC = () => {
 
   const handleForceUpdate = async () => {
     setIsUpdating(true);
-    setUpdateMessage({ type: 'info', text: 'Запускаю процесс обновления... Это может занять до минуты.' });
+    setUpdateMessage({ type: 'info', text: 'Запускаю процесс обновления... Это может занять несколько минут.' });
     try {
         const response = await fetch('/api/tasks/run-update', { method: 'POST' });
         const data = await response.json();
