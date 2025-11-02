@@ -209,6 +209,8 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
     return finalPredictions;
 }
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export async function runUpdateTask(env: Env) {
     await env.BOT_STATE.put('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
@@ -221,7 +223,7 @@ export async function runUpdateTask(env: Env) {
         const allSportsPredictions: SharedPrediction[] = [];
 
         // Loop through all sports and process them.
-        for (const sport of SPORTS_TO_PROCESS) {
+        for (const [index, sport] of SPORTS_TO_PROCESS.entries()) {
             try {
                 console.log(`[Updater Task] Processing sport: ${sport}`);
                 const sportPredictions = await processSport(sport, env);
@@ -237,6 +239,11 @@ export async function runUpdateTask(env: Env) {
                     message: sportError instanceof Error ? sportError.message : String(sportError),
                     stack: sportError instanceof Error ? sportError.stack : undefined,
                 }));
+            }
+            // Add a delay after each sport processing, but not after the last one
+            if (index < SPORTS_TO_PROCESS.length - 1) {
+                console.log(`[Updater Task] Waiting for 10 seconds before processing the next sport to avoid rate limiting...`);
+                await delay(10000); // 10-second delay
             }
         }
         
