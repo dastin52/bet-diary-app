@@ -197,7 +197,6 @@ export interface AIPrediction {
     matchName: string;
     prediction: string;
     status: AIPredictionStatus;
-    // @google/genai-fix: Add optional matchResult property to store final scores and winner.
     matchResult?: {
         winner: 'home' | 'away' | 'draw';
         scores: { home: number; away: number; };

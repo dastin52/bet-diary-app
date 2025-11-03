@@ -82,9 +82,10 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                     >
                         <div>
                             <p className="text-xs text-gray-500 dark:text-gray-400">{SPORT_MAP[match.sport.toLowerCase()] || match.sport} &middot; {match.eventName}</p>
-                            <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
-                               {match.status.emoji} {match.teams}
-                            </p>
+                            <div className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                               <span>{match.status.emoji} {match.teams}</span>
+                               {match.score && <span className="text-base font-mono bg-gray-200 dark:bg-gray-700 px-2 rounded">{match.score}</span>}
+                            </div>
                             <p className="text-sm text-indigo-500 dark:text-indigo-400">{match.date} &middot; {match.time}</p>
                         </div>
                         <div className="text-sm text-gray-400 hover:text-white flex-shrink-0 ml-2">

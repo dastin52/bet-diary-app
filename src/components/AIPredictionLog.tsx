@@ -79,7 +79,7 @@ const calculateMode = (numbers: number[]): number => {
     return mode;
 };
 
-type EnhancedAIPrediction = AIPrediction & { leagueName?: string };
+type EnhancedAIPrediction = AIPrediction & { leagueName?: string; finalScore?: string; };
 
 const AIPredictionLog: React.FC = () => {
     const { allPredictions: centralPredictions, isLoading, fetchAllPredictions } = usePredictionContext();
@@ -97,6 +97,7 @@ const AIPredictionLog: React.FC = () => {
             .map(p => ({
                 ...(p.prediction as AIPrediction),
                 leagueName: p.eventName,
+                finalScore: p.score,
             }))
             .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [centralPredictions]);
@@ -120,7 +121,7 @@ const AIPredictionLog: React.FC = () => {
 
     const filteredPredictions = useMemo(() => {
         return allEnhancedPredictions.filter(p => {
-            const sportMatch = sportFilter === 'all' || (SPORT_MAP[p.sport] === sportFilter) || p.sport === sportFilter;
+            const sportMatch = sportFilter === 'all' || (SPORT_MAP[p.sport.toLowerCase()] === sportFilter) || p.sport === sportFilter;
             const leagueMatch = leagueFilter === 'all' || p.leagueName === leagueFilter;
 
             let outcomeMatch = outcomeFilter === 'all';
@@ -136,7 +137,7 @@ const AIPredictionLog: React.FC = () => {
         });
     }, [allEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
     
-    const { generalStats, mainOutcomeStats, deepOutcomeStats, probabilityStats } = useMemo(() => {
+    const { generalStats, mainOutcomeStats, deepOutcomeStats, probabilityStats, sportStats } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending);
         const correct = settled.filter(p => p.status === AIPredictionStatus.Correct);
         
@@ -154,7 +155,21 @@ const AIPredictionLog: React.FC = () => {
         }, []);
         
         const modalCorrectCoefficient = calculateMode(correctCoefficients);
+
+        // FIX: Add explicit generic type to the `reduce` function to ensure correct type inference for the accumulator. This resolves errors where properties on `data` were inferred as `unknown`.
+        const statsBySport = settled.reduce<Record<string, { correct: number, total: number }>>((acc, p) => {
+            const sportName = SPORT_MAP[p.sport.toLowerCase()] || p.sport;
+            if (!acc[sportName]) acc[sportName] = { correct: 0, total: 0 };
+            acc[sportName].total++;
+            if (p.status === AIPredictionStatus.Correct) acc[sportName].correct++;
+            return acc;
+        }, {});
+
+        const sportStats = Object.entries(statsBySport)
+            .map(([sport, data]) => ({ sport, ...data, accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0 }))
+            .sort((a, b) => b.total - a.total);
         
+        // FIX: Add explicit generic type to the `reduce` function to ensure correct type inference for the accumulator. This resolves errors where properties on `data` were inferred as `unknown`.
         const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, allCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
@@ -186,16 +201,13 @@ const AIPredictionLog: React.FC = () => {
         });
 
         const deepOutcomeStats = Object.entries(statsByAllOutcomes)
-            .map(([market, data]) => {
-                const typedData = data as { correct: number; total: number; allCoefficients: number[] };
-                return {
-                    market,
-                    accuracy: typedData.total > 0 ? (typedData.correct / typedData.total) * 100 : 0,
-                    modalCoeff: calculateMode(typedData.allCoefficients),
-                    count: typedData.total,
-                    correct: typedData.correct,
-                };
-            })
+            .map(([market, data]) => ({
+                market,
+                accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+                modalCoeff: calculateMode(data.allCoefficients),
+                count: data.total,
+                correct: data.correct,
+            }))
             .filter(item => item.count > 0)
             .sort((a, b) => b.count - a.count);
 
@@ -242,6 +254,7 @@ const AIPredictionLog: React.FC = () => {
             mainOutcomeStats,
             deepOutcomeStats,
             probabilityStats,
+            sportStats,
         };
     }, [filteredPredictions]);
 
@@ -266,10 +279,11 @@ const AIPredictionLog: React.FC = () => {
 - Верно: ${generalStats.correct}
 - Точность: ${generalStats.accuracy.toFixed(1)}%
 
-Точность по типам всех исходов (не только рекомендованных):
-${deepOutcomeStats.map(item => 
-`- ${item.market}: ${item.accuracy.toFixed(1)}% (${item.correct}/${item.count})`
-).join('\n')}
+Точность по видам спорта:
+${sportStats.map(item => `- ${item.sport}: ${item.accuracy.toFixed(1)}% (${item.correct}/${item.total})`).join('\n')}
+
+Точность по вероятности AI:
+${probabilityStats.map(item => `- ${item.range}: ${item.accuracy.toFixed(1)}% (${item.correct}/${item.total})`).join('\n')}
 `;
         try {
             const result = await fetchAIPredictionAnalysis(analyticsText);
@@ -279,7 +293,7 @@ ${deepOutcomeStats.map(item =>
         } finally {
             setIsAnalysisLoading(false);
         }
-    }, [generalStats, deepOutcomeStats]);
+    }, [generalStats, sportStats, probabilityStats]);
 
 
     return (
@@ -310,48 +324,38 @@ ${deepOutcomeStats.map(item =>
                                 <span className="font-medium text-gray-300">Вероятность {bucket.range}</span>
                                 <span className="text-xs text-gray-400">{bucket.correct} из {bucket.total}</span>
                             </div>
-                            <div className="w-full bg-gray-700 rounded-full h-4">
+                            <div className="w-full bg-gray-700 rounded-full h-4 relative">
                                 <div 
                                     className="bg-indigo-500 h-4 rounded-full text-xs text-white flex items-center justify-center transition-all duration-500" 
                                     style={{ width: `${bucket.accuracy}%` }}>
                                     {bucket.total > 0 && `${bucket.accuracy.toFixed(1)}%`}
                                 </div>
+                                {bucket.accuracy === 0 && bucket.total > 0 && <span className="absolute left-2 top-0 bottom-0 flex items-center text-xs text-gray-300">0.0%</span>}
                             </div>
-                        </div>
-                    ))}
-                </div>
-            </Card>
-
-             <Card>
-                <h3 className="text-lg font-semibold mb-2">Точность по основным исходам</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {mainOutcomeStats.map(({ outcome, accuracy, modalCoeff, count }) => (
-                         <div key={outcome} className="p-4 bg-gray-900/50 rounded-lg text-center">
-                            <p className="text-sm text-gray-400">{outcome}</p>
-                            <div className="flex items-baseline justify-center gap-2 mt-1">
-                                <p className={`text-3xl font-bold ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
-                                {modalCoeff > 0 && <span className="text-sm text-amber-400 font-mono" title="Самый частый коэф.">{modalCoeff.toFixed(2)}</span>}
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
                         </div>
                     ))}
                 </div>
             </Card>
 
             <Card>
-                <h3 className="text-lg font-semibold mb-2">Глубокая аналитика по исходам</h3>
-                 <p className="text-xs text-gray-500 mb-4">Статистика по всем возможным исходам, отсортировано по количеству.</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {deepOutcomeStats.map(({ market, accuracy, modalCoeff, count }) => (
-                         <div key={market} className="p-3 bg-gray-900/50 rounded-lg text-center">
-                            <p className="text-sm text-gray-400 truncate" title={market}>{market}</p>
-                             <div className="flex items-baseline justify-center gap-1 mt-1">
-                                <p className={`text-2xl font-bold ${accuracy >= 50 ? 'text-green-400' : accuracy > 0 ? 'text-red-400' : 'text-gray-300'}`}>{accuracy.toFixed(1)}%</p>
-                                {modalCoeff > 0 && <span className="text-xs text-amber-400 font-mono" title="Самый частый коэф.">{modalCoeff.toFixed(2)}</span>}
+                <h3 className="text-lg font-semibold mb-4">Точность по видам спорта</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                     {sportStats.map(item => (
+                        <div key={item.sport}>
+                            <div className="flex justify-between items-center text-sm mb-1">
+                                <span className="font-medium text-gray-300">{item.sport}</span>
+                                <span className="text-xs text-gray-400">{item.correct} из {item.total}</span>
                             </div>
-                            <p className="text-xs text-gray-500 mt-1">{count} оценок</p>
+                            <div className="w-full bg-gray-700 rounded-full h-4 relative">
+                                <div 
+                                    className="bg-cyan-600 h-4 rounded-full text-xs text-white flex items-center justify-center transition-all duration-500" 
+                                    style={{ width: `${item.accuracy}%` }}>
+                                     {item.total > 0 && `${item.accuracy.toFixed(1)}%`}
+                                </div>
+                                 {item.accuracy === 0 && item.total > 0 && <span className="absolute left-2 top-0 bottom-0 flex items-center text-xs text-gray-300">0.0%</span>}
+                            </div>
                         </div>
-                    ))}
+                     ))}
                 </div>
             </Card>
 
@@ -388,8 +392,11 @@ ${deepOutcomeStats.map(item =>
                                     <tr key={p.id}>
                                         <td className="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">{new Date(p.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                                         <td className="px-4 py-3">
-                                            <p className="text-sm font-medium text-white">{p.matchName}</p>
-                                            <p className="text-xs text-gray-500">{p.sport}</p>
+                                            <p className="text-sm font-medium text-white flex items-center gap-2">
+                                                <span>{p.matchName}</span>
+                                                {p.finalScore && <span className="font-mono bg-gray-700 px-2 rounded">{p.finalScore}</span>}
+                                            </p>
+                                            <p className="text-xs text-gray-500">{SPORT_MAP[p.sport.toLowerCase()] || p.sport}</p>
                                         </td>
                                         <td className="px-4 py-3">
                                             <PredictionDetails prediction={p.prediction} />
