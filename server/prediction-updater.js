@@ -108,14 +108,12 @@ const getSportApiConfig = (year) => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const month = now.getMonth(); // 0-11
-    // NBA season typically starts around October. Let's use August as the cutoff for the new season year.
     const season = month >= 7 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
 
     return {
         'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
         'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: '' },
         'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
-        // Per user request, use the dedicated v2 NBA endpoint. This endpoint doesn't need league/season params.
         'nba': { host: 'https://v2.nba.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
     };
 };
@@ -257,7 +255,6 @@ async function processSport(sport) {
         }
     });
     
-    // Merge with historical data
     const existingPredictions = cache.getPersistent(centralPredictionsKey) || [];
     const todaysPredictionMap = new Map(todaysPredictions.map(p => [p.id, p]));
     const historicalPredictions = existingPredictions.filter(p => !todaysPredictionMap.has(p.id));
@@ -271,55 +268,46 @@ async function processSport(sport) {
     return finalPredictions;
 }
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+let currentSportIndex = 0;
 
 async function runUpdate() {
     cache.putPersistent('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
 
     try {
-        const allSportsPredictions = [];
-
-        for (const [index, sport] of SPORTS_TO_PROCESS.entries()) {
-            try {
-                console.log(`[Updater Task] Processing sport: ${sport}`);
-                const sportPredictions = await processSport(sport);
-                if (sportPredictions && sportPredictions.length > 0) {
-                    allSportsPredictions.push(...sportPredictions);
-                }
-            } catch (sportError) {
-                console.error(`[Updater Task] A non-critical error occurred for sport '${sport}':`, sportError);
-                cache.putPersistent(`last_run_error_${sport}`, {
-                    timestamp: new Date().toISOString(),
-                    sport: sport,
-                    message: sportError.message,
-                });
-            }
-             // Add a delay after each sport processing, but not after the last one
-            if (index < SPORTS_TO_PROCESS.length - 1) {
-                console.log(`[Updater Task] Waiting for 5 minutes before processing the next sport to avoid rate limiting...`);
-                await delay(300000); // 5-minute delay
-            }
-        }
+        const sportToProcess = SPORTS_TO_PROCESS[currentSportIndex];
+        console.log(`[Updater Task] Processing sport: ${sportToProcess}`);
         
-        const uniqueAllPredictions = Array.from(new Map(allSportsPredictions.map(p => [`${p.sport}-${p.id}`, p])).values());
+        const sportPredictions = await processSport(sportToProcess);
+
+        const allPredictions = cache.getPersistent('central_predictions:all') || [];
+        const otherSportsPredictions = allPredictions.filter(p => p.sport.toLowerCase() !== sportToProcess.toLowerCase());
+
+        const combinedPredictions = [...otherSportsPredictions, ...sportPredictions];
+        const uniqueAllPredictions = Array.from(new Map(combinedPredictions.map(p => [`${p.sport}-${p.id}`, p])).values());
         
         cache.putPersistent('central_predictions:all', uniqueAllPredictions);
-        console.log(`[Updater Task] Full cycle complete. Total unique predictions stored: ${uniqueAllPredictions.length}`);
+        console.log(`[Updater Task] Updated '${sportToProcess}'. Total unique predictions now: ${uniqueAllPredictions.length}`);
         
         cache.putPersistent('last_successful_run_timestamp', new Date().toISOString());
         cache.putPersistent('last_run_error', null);
         console.log('[Updater Task] Successfully recorded run timestamp.');
+
+        // Move to the next sport for the next run
+        currentSportIndex = (currentSportIndex + 1) % SPORTS_TO_PROCESS.length;
         
         return { success: true };
 
     } catch (error) {
-        console.error(`[Updater Task] A critical error occurred during the update task:`, error);
+        console.error(`[Updater Task] A critical error occurred during the update task for ${SPORTS_TO_PROCESS[currentSportIndex]}:`, error);
         cache.putPersistent('last_run_error', {
             timestamp: new Date().toISOString(),
-            sport: 'all',
+            sport: SPORTS_TO_PROCESS[currentSportIndex],
             message: error.message,
         });
+        
+        // Move to the next sport even on error to avoid getting stuck
+        currentSportIndex = (currentSportIndex + 1) % SPORTS_TO_PROCESS.length;
         return { success: false, message: error.message };
     }
 }
