@@ -71,19 +71,3 @@ export const OddsPerformanceTooltip: React.FC<TooltipProps> = ({ active, payload
     }
     return null;
 };
-
-
-export const AIPredictionAccuracyTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-        const data = payload[0].payload;
-        
-        return (
-            <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700 rounded-md text-sm shadow-lg">
-                <p className="label text-gray-800 dark:text-gray-300 font-semibold">{label}</p>
-                <p className="text-indigo-600 dark:text-indigo-400">{`Точность: ${data.accuracy.toFixed(1)}%`}</p>
-                <p className="text-gray-500 dark:text-gray-400">{`Оценок: ${data.count}`}</p>
-            </div>
-        );
-    }
-    return null;
-};
