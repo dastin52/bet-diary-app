@@ -85,7 +85,7 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                             <p className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                                {match.status.emoji} {match.teams}
                             </p>
-                            <p className="text-sm text-indigo-500 dark:text-indigo-400">{new Date(match.timestamp * 1000).toLocaleDateString('ru-RU')} &middot; {match.time}</p>
+                            <p className="text-sm text-indigo-500 dark:text-indigo-400">{match.date} &middot; {match.time}</p>
                         </div>
                         <div className="text-sm text-gray-400 hover:text-white flex-shrink-0 ml-2">
                            Анализ &rarr;

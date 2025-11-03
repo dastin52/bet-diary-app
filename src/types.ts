@@ -166,16 +166,6 @@ export interface UserSettings {
   theme: 'light' | 'dark' | 'system';
 }
 
-// DEPRECATED: Use SharedPrediction instead
-export interface UpcomingMatch {
-  sport: string;
-  eventName: string;
-  teams: string;
-  date: string;
-  time: string;
-  isHotMatch: boolean;
-}
-
 export interface TeamStats {
   name: string;
   sport: string;
@@ -213,7 +203,7 @@ export interface AIPrediction {
         scores: { home: number; away: number; };
     }
 }
-
+// @google/genai-fix: Add and export ApiActivityLog interface.
 export interface ApiActivityLog {
   timestamp: string;
   endpoint: string;
