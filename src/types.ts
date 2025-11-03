@@ -109,7 +109,7 @@ export interface User {
   status: 'active' | 'blocked';
   telegramId?: number;
   telegramUsername?: string;
-  // @google/genai-fix: Add 'source' property to track user origin (web or telegram).
+  // FIX: Add 'source' property to track user origin (web or telegram).
   source?: 'web' | 'telegram';
 }
 
@@ -166,6 +166,15 @@ export interface UserSettings {
   theme: 'light' | 'dark' | 'system';
 }
 
+export interface UpcomingMatch {
+  sport: string;
+  eventName: string;
+  teams: string;
+  date: string;
+  time: string;
+  isHotMatch: boolean;
+}
+
 export interface TeamStats {
   name: string;
   sport: string;
@@ -197,6 +206,7 @@ export interface AIPrediction {
     matchName: string;
     prediction: string;
     status: AIPredictionStatus;
+    // FIX: Add optional matchResult property to store final scores and winner.
     matchResult?: {
         winner: 'home' | 'away' | 'draw';
         scores: { home: number; away: number; };

@@ -3,9 +3,7 @@ import { SharedPrediction, AIPrediction, AIPredictionStatus } from '../types';
 const getMockStatus = (time: string): { status: { long: string, short: string, emoji: string }, score?: string } => {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
-    // Создаем дату матча в UTC для корректного сравнения
     const gameDate = new Date(`${todayStr}T${time}:00.000Z`);
-    // Считаем минуты с начала матча относительно текущего времени
     const minutesSinceStart = (now.getTime() - gameDate.getTime()) / 60000;
 
     if (minutesSinceStart > 120) {

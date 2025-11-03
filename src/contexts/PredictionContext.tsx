@@ -20,7 +20,6 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
     setIsLoading(true);
     setError(null);
     try {
-      // For local dev, we will use a proxy. For production, this will hit the Cloudflare function.
       const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,7 +39,6 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
       today.setUTCHours(0, 0, 0, 0);
       const startOfTodayTimestamp = Math.floor(today.getTime() / 1000);
 
-      // Check if data is stale (empty or all matches are from before today)
       const isDataStale = predictions.length === 0 || predictions.every(p => p.timestamp < startOfTodayTimestamp);
       
       if (isDataStale) {
