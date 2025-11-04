@@ -178,16 +178,29 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
             if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
                 if (prediction && prediction.status === AIPredictionStatus.Pending) {
-                    let recommendedOutcome: string | null = null;
-                    try { const data = JSON.parse(prediction.prediction); recommendedOutcome = data?.value_bet_outcome || null; } catch (e) { console.error(`Failed to parse prediction for ${matchName}`); }
+                    // Step 1: ALWAYS record the match result if the game is finished.
+                    const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
+                    prediction.matchResult = { winner, scores: { home: game.scores.home, away: game.scores.away } };
 
-                    if (recommendedOutcome) {
-                        const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
-                        const result = resolveMarketOutcome(recommendedOutcome, game.scores, winner);
-                        if (result !== 'unknown') {
-                            prediction.status = result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
-                            prediction.matchResult = { winner, scores: { home: game.scores.home, away: game.scores.away } };
+                    // Step 2: Try to resolve the status based on the value bet.
+                    let valueBetOutcome: string | null = null;
+                    try { 
+                        const data = JSON.parse(prediction.prediction); 
+                        valueBetOutcome = data?.value_bet_outcome || null; 
+                    } catch (e) { console.error(`Failed to parse prediction for ${matchName}`); }
+
+                    if (valueBetOutcome && valueBetOutcome !== 'Нет выгодной ставки') {
+                        const result = resolveMarketOutcome(valueBetOutcome, game.scores, winner);
+                        if (result === 'correct') {
+                            prediction.status = AIPredictionStatus.Correct;
+                        } else {
+                            // It could be 'incorrect' or 'unknown', but in either case, the prediction is settled and wasn't correct.
+                            prediction.status = AIPredictionStatus.Incorrect;
                         }
+                    } else {
+                        // If there's no value bet, the prediction is settled. Mark as incorrect for status purposes.
+                        // The UI will still be able to evaluate the 'most_likely' outcome correctly using the stored matchResult.
+                        prediction.status = AIPredictionStatus.Incorrect;
                     }
                 }
             } else if (game.status.short === 'NS' && !prediction) {
@@ -214,7 +227,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                                 if (value > maxValue) { maxValue = value; valueBetKey = market; }
                             }
                         }
-                        const valueBetOutcome = maxValue > 0 ? valueBetKey : 'Нет выгодной ставки';
+                        const valueBetOutcome = maxValue > 0.05 ? valueBetKey : 'Нет выгодной ставки';
                         
                         let mostLikelyKey = 'N/A';
                         let maxProb = -1;

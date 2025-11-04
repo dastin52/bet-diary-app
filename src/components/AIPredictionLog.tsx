@@ -189,8 +189,8 @@ const AIPredictionLog: React.FC = () => {
         
         const modalCorrectCoefficient = calculateMode(correctCoefficients);
         
-        // @google/genai-fix: Explicitly type the initial value of `reduce` to ensure correct type inference for `statsByAllOutcomes`. This resolves downstream errors where properties of its values were being inferred as `unknown`.
-        const statsByAllOutcomes = settled.reduce((acc, p) => {
+        // @google/genai-fix: Explicitly typed the accumulator in the `reduce` function for `statsByAllOutcomes` and changed the initial value to an empty object to ensure correct type inference and resolve downstream 'unknown' type errors.
+        const statsByAllOutcomes = settled.reduce((acc: Record<string, { correct: number, total: number, allCoefficients: number[] }>, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (data.market_analysis && p.matchResult) {
@@ -207,7 +207,7 @@ const AIPredictionLog: React.FC = () => {
                 }
             } catch {}
             return acc;
-        }, {} as Record<string, { correct: number, total: number, allCoefficients: number[] }>);
+        }, {});
         
         const mainOutcomes = ['П1', 'X', 'П2'];
         const mainOutcomeStats = mainOutcomes.map(outcome => {
