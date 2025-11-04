@@ -20,7 +20,7 @@ export interface UseBetsReturn {
   updateGoal: (id: string, updatedGoal: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
   addAIPrediction: (prediction: Omit<AIPrediction, 'id' | 'createdAt' | 'status'>) => void;
-  updateAIPrediction: (id: string, status: AIPredictionStatus) => void;
+  updateAIPrediction: (id: string, updates: Partial<Pick<AIPrediction, 'status' | 'matchResult'>>) => void;
   analytics: {
     totalStaked: number;
     turnover: number;
@@ -296,9 +296,9 @@ export const useBets = (userKey: string): UseBetsReturn => {
         setAIPredictions(prev => [newPrediction, ...prev]);
     }, [isDemoMode]);
 
-    const updateAIPrediction = useCallback((id: string, status: AIPredictionStatus) => {
+    const updateAIPrediction = useCallback((id: string, updates: Partial<Pick<AIPrediction, 'status' | 'matchResult'>>) => {
         if (isDemoMode) return;
-        setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, status } : p));
+        setAIPredictions(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
     }, [isDemoMode]);
 
 

@@ -1,5 +1,31 @@
-
-
+// @google/genai-fix: Add SharedPrediction type to be used by the prediction context and components.
+export interface SportLeague {
+  id: number;
+  name: string;
+  country: string;
+  logo: string;
+  season: number;
+}
+export interface SharedPrediction {
+  id: number;
+  sport: string;
+  eventName: string;
+  teams: string;
+  date: string;
+  time: string;
+  isHotMatch: boolean;
+  timestamp: number;
+  league: SportLeague;
+  status: {
+    long: string;
+    short: string;
+    emoji: string;
+  };
+  score?: string;
+  scores?: { home: number; away: number; };
+  winner?: 'home' | 'away' | 'draw';
+  prediction: AIPrediction | null;
+}
 
 export enum BetStatus {
   Pending = 'pending',
@@ -83,7 +109,7 @@ export interface User {
   status: 'active' | 'blocked';
   telegramId?: number;
   telegramUsername?: string;
-  // FIX: Add 'source' property to track user origin (web or telegram).
+  // @google/genai-fix: Add 'source' property to track user origin (web or telegram).
   source?: 'web' | 'telegram';
 }
 
@@ -140,15 +166,6 @@ export interface UserSettings {
   theme: 'light' | 'dark' | 'system';
 }
 
-export interface UpcomingMatch {
-  sport: string;
-  eventName: string;
-  teams: string;
-  date: string;
-  time: string;
-  isHotMatch: boolean;
-}
-
 export interface TeamStats {
   name: string;
   sport: string;
@@ -186,56 +203,6 @@ export interface AIPrediction {
         scores: { home: number; away: number; };
     }
 }
-
-// @google/genai-fix: Add types required for SharedPrediction.
-export interface SportTeam {
-    id: number;
-    name: string;
-    logo: string;
-}
-export interface SportLeague {
-    id: number;
-    name: string;
-    country: string;
-    logo: string;
-    season: number;
-}
-export interface SportGame {
-    id: number;
-    date: string;
-    time: string;
-    timestamp: number;
-    timezone: string;
-    status: {
-        long: string;
-        short: string;
-    };
-    league: SportLeague;
-    teams: {
-        home: SportTeam;
-        away: SportTeam;
-    };
-    scores?: {
-      home: number | null;
-      away: number | null;
-    };
-    winner?: 'home' | 'away' | 'draw';
-}
-
-// @google/genai-fix: Add SharedPrediction type to fix import error.
-export interface SharedPrediction extends Omit<SportGame, 'teams' | 'status'> {
-  sport: string;
-  teams: string; // The translated "Team A vs Team B" string
-  prediction: AIPrediction | null;
-  timestamp: number;
-  score?: string;
-  status: {
-    long: string;
-    short: string;
-    emoji: string;
-  };
-}
-
 // @google/genai-fix: Add and export ApiActivityLog interface.
 export interface ApiActivityLog {
   timestamp: string;

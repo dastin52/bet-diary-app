@@ -19,8 +19,9 @@ import AIStrategyBuilder from './AIStrategyBuilder';
 import BankrollSimulator from './BankrollSimulator';
 import ImportBetsModal from './ImportBetsModal';
 import BetDetailModal from './BetDetailModal';
+import AIPredictionLog from './AIPredictionLog';
 
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator';
+type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 
 interface LayoutProps {
   isDemoMode: boolean;
@@ -109,6 +110,8 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
         return <GoalsPanel />;
       case 'ai_strategy':
         return <AIStrategyBuilder />;
+      case 'ai_prediction_log':
+        return <AIPredictionLog />;
       case 'bank_simulator':
         return <BankrollSimulator />;
       default:
