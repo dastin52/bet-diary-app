@@ -167,8 +167,18 @@ const AIPredictionLog: React.FC = () => {
         const correct = settled.filter(p => {
             try {
                 const data = JSON.parse(p.prediction);
-                const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A' || !p.matchResult) return false;
+                if (!p.matchResult) return false;
+
+                let outcomeToCheck: string | undefined;
+                if (data.market_analysis) { // New format
+                    outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
+                    if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A') return false;
+                } else if (data.recommended_outcome) { // Old format
+                    outcomeToCheck = data.recommended_outcome;
+                } else {
+                    return false;
+                }
+
                 const result = resolveMarketOutcome(outcomeToCheck, p.matchResult.scores, p.matchResult.winner);
                 return result === 'correct';
             } catch { return false; }
@@ -177,8 +187,13 @@ const AIPredictionLog: React.FC = () => {
         const totalWithRec = settled.filter(p => {
             try {
                 const data = JSON.parse(p.prediction);
-                const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                return outcomeToCheck && outcomeToCheck !== 'Нет выгодной ставки' && outcomeToCheck !== 'N/A';
+                 if (data.market_analysis) {
+                    const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
+                    return outcomeToCheck && outcomeToCheck !== 'Нет выгодной ставки' && outcomeToCheck !== 'N/A';
+                } else if (data.recommended_outcome) {
+                    return !!data.recommended_outcome;
+                }
+                return false;
             } catch { return false; }
         }).length;
         
@@ -187,42 +202,63 @@ const AIPredictionLog: React.FC = () => {
         const correctCoefficients = correct.reduce<number[]>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
-                const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                const coeff = data.market_analysis?.[outcomeToCheck]?.coefficient;
-                if (typeof coeff === 'number') acc.push(coeff);
+                if (data.market_analysis) { // New format
+                    const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
+                    const coeff = data.market_analysis?.[outcomeToCheck]?.coefficient;
+                    if (typeof coeff === 'number') acc.push(coeff);
+                } else if (data.recommended_outcome && data.coefficients) { // Old format
+                    const outcomeToCheck = data.recommended_outcome;
+                    const coeff = data.coefficients[outcomeToCheck];
+                    if (typeof coeff === 'number') acc.push(coeff);
+                }
             } catch {}
             return acc;
         }, []);
         
         const modalCorrectCoefficient = calculateMode(correctCoefficients);
         
-        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
+        // @google/genai-fix: Explicitly type the initial value of the reduce accumulator to fix type inference issues.
+        const statsByAllOutcomes = settled.reduce((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
-                if (data.market_analysis && p.matchResult) {
-                    for (const market in data.market_analysis) {
-                        if (!acc[market]) acc[market] = { correct: 0, total: 0, correctCoefficients: [] };
-                        const result = resolveMarketOutcome(market, p.matchResult.scores, p.matchResult.winner);
-                        if (result !== 'unknown') {
-                            acc[market].total++;
-                             const coeff = data.market_analysis[market]?.coefficient;
-                            if (result === 'correct') {
-                                acc[market].correct++;
-                                if (typeof coeff === 'number') acc[market].correctCoefficients.push(coeff);
+                if (p.matchResult) {
+                    if (data.market_analysis) { // New format
+                        for (const market in data.market_analysis) {
+                            if (!acc[market]) acc[market] = { correct: 0, total: 0, correctCoefficients: [] };
+                            const result = resolveMarketOutcome(market, p.matchResult.scores, p.matchResult.winner);
+                            if (result !== 'unknown') {
+                                acc[market].total++;
+                                const coeff = data.market_analysis[market]?.coefficient;
+                                if (result === 'correct') {
+                                    acc[market].correct++;
+                                    if (typeof coeff === 'number') acc[market].correctCoefficients.push(coeff);
+                                }
+                            }
+                        }
+                    } else if (data.probabilities) { // Old format
+                        for (const market in data.probabilities) {
+                            if (!acc[market]) acc[market] = { correct: 0, total: 0, correctCoefficients: [] };
+                            const result = resolveMarketOutcome(market, p.matchResult.scores, p.matchResult.winner);
+                            if (result !== 'unknown') {
+                                acc[market].total++;
+                                const coeff = data.coefficients?.[market];
+                                if (result === 'correct') {
+                                    acc[market].correct++;
+                                    if (typeof coeff === 'number') acc[market].correctCoefficients.push(coeff);
+                                }
                             }
                         }
                     }
                 }
             } catch {}
             return acc;
-        }, {});
+        }, {} as Record<string, { correct: number, total: number, correctCoefficients: number[] }>);
         
         const mainOutcomes = ['П1', 'X', 'П2'];
         const mainOutcomeStats = mainOutcomes.map(outcome => {
             const data = statsByAllOutcomes[outcome] || { correct: 0, total: 0, correctCoefficients: [] };
             return {
                 outcome,
-// @google/genai-fix: Completed the truncated line of code to fix syntax error.
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
                 count: data.total,
                 avgCoeff: data.correctCoefficients.length > 0 ? data.correctCoefficients.reduce((a, b) => a + b, 0) / data.correctCoefficients.length : 0,
@@ -239,14 +275,30 @@ const AIPredictionLog: React.FC = () => {
             .sort((a, b) => b.count - a.count)
             .slice(0, 10);
             
-        const probabilityStats = settled.reduce<{ [range: string]: { correct: number, total: number } }>(
+        // @google/genai-fix: Explicitly type the initial value of the reduce accumulator to fix type inference issues.
+        const probabilityStats = settled.reduce(
             (acc, p) => {
                 try {
                     const data = JSON.parse(p.prediction);
-                    const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                    if (!outcomeToCheck || !data.market_analysis?.[outcomeToCheck] || !p.matchResult) return acc;
+                    if (!p.matchResult) return acc;
+
+                    let prob: number | undefined;
+                    let outcomeToCheck: string | undefined;
+
+                    if (data.market_analysis) { // New format
+                        outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
+                        if (outcomeToCheck && data.market_analysis?.[outcomeToCheck]) {
+                            prob = data.market_analysis[outcomeToCheck].probability;
+                        }
+                    } else if (data.probabilities) { // Old format
+                         outcomeToCheck = data.recommended_outcome;
+                        if (outcomeToCheck && data.probabilities[outcomeToCheck]) {
+                            prob = data.probabilities[outcomeToCheck] / 100; // Convert from 0-100 to 0-1
+                        }
+                    }
+
+                    if (prob === undefined || !outcomeToCheck) return acc;
                     
-                    const prob = data.market_analysis[outcomeToCheck].probability;
                     const range = `${Math.floor(prob * 10) * 10}-${Math.floor(prob * 10) * 10 + 10}%`;
                     
                     if (!acc[range]) acc[range] = { correct: 0, total: 0 };
@@ -261,7 +313,7 @@ const AIPredictionLog: React.FC = () => {
                     }
                 } catch {}
                 return acc;
-            }, {}
+            }, {} as { [range: string]: { correct: number, total: number } }
         );
 
         return {
@@ -324,7 +376,7 @@ const AIPredictionLog: React.FC = () => {
                  <h3 className="text-lg font-semibold mb-4">Общая Статистика</h3>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <KpiCard title="Точность (Value)" value={`${generalStats.accuracy.toFixed(1)}%`} subtext={`${generalStats.correct} / ${generalStats.total} ставок`} colorClass={generalStats.accuracy >= 50 ? "text-green-400" : "text-amber-400"}/>
-                    <KpiCard title="Модальный коэф." value={`@${generalStats.modalCorrectCoefficient.toFixed(2)}`} subtext="Самый частый выигрышный коэф."/>
+                    <KpiCard title="Модальный коэф." value={`${generalStats.modalCorrectCoefficient.toFixed(2)}`} subtext="Самый частый выигрышный коэф."/>
                     <KpiCard title="Всего прогнозов" value={String(allEnhancedPredictions.length)} subtext="В базе данных"/>
                     <KpiCard title="Оценено" value={String(filteredPredictions.filter(p => p.status !== 'pending').length)} subtext="С известным результатом"/>
                  </div>
