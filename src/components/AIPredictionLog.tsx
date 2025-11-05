@@ -161,7 +161,7 @@ const AIPredictionLog: React.FC = () => {
         });
     }, [allEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
     
-    const { generalStats, mainOutcomeStats, deepOutcomeStats, probabilityStats } = useMemo(() => {
+    const { generalStats, detailedOutcomeStats, probabilityStats } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending && p.matchResult);
         
         const correct = settled.filter(p => {
@@ -217,8 +217,8 @@ const AIPredictionLog: React.FC = () => {
         
         const modalCorrectCoefficient = calculateMode(correctCoefficients);
         
-        // @google/genai-fix: Explicitly type the initial value of the reduce accumulator to fix type inference issues.
-        const statsByAllOutcomes = settled.reduce((acc, p) => {
+// @google/genai-fix: Explicitly set the generic type for the `reduce` accumulator to prevent TypeScript from inferring it as `unknown`.
+        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (p.matchResult) {
@@ -252,31 +252,21 @@ const AIPredictionLog: React.FC = () => {
                 }
             } catch {}
             return acc;
-        }, {} as Record<string, { correct: number, total: number, correctCoefficients: number[] }>);
+        }, {});
         
-        const mainOutcomes = ['П1', 'X', 'П2'];
-        const mainOutcomeStats = mainOutcomes.map(outcome => {
-            const data = statsByAllOutcomes[outcome] || { correct: 0, total: 0, correctCoefficients: [] };
-            return {
-                outcome,
-                accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
-                count: data.total,
-                avgCoeff: data.correctCoefficients.length > 0 ? data.correctCoefficients.reduce((a, b) => a + b, 0) / data.correctCoefficients.length : 0,
-            };
-        });
-
-        const deepOutcomeStats = Object.entries(statsByAllOutcomes)
-            .filter(([market]) => !mainOutcomes.includes(market))
+        const detailedOutcomeStats = Object.entries(statsByAllOutcomes)
             .map(([market, data]) => ({
                 market,
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+                evaluations: `${data.correct} / ${data.total}`,
+                frequentCoefficient: calculateMode(data.correctCoefficients),
                 count: data.total,
             }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10);
+            .filter(item => item.count > 0)
+            .sort((a, b) => b.count - a.count);
             
-        // @google/genai-fix: Explicitly type the initial value of the reduce accumulator to fix type inference issues.
-        const probabilityStats = settled.reduce(
+// @google/genai-fix: Explicitly set the generic type for the `reduce` accumulator to prevent TypeScript from inferring it as `unknown`.
+        const probabilityStats = settled.reduce<Record<string, { correct: number, total: number }>>(
             (acc, p) => {
                 try {
                     const data = JSON.parse(p.prediction);
@@ -313,7 +303,7 @@ const AIPredictionLog: React.FC = () => {
                     }
                 } catch {}
                 return acc;
-            }, {} as { [range: string]: { correct: number, total: number } }
+            }, {}
         );
 
         return {
@@ -323,8 +313,7 @@ const AIPredictionLog: React.FC = () => {
                 accuracy,
                 modalCorrectCoefficient,
             },
-            mainOutcomeStats,
-            deepOutcomeStats,
+            detailedOutcomeStats,
             probabilityStats: Object.entries(probabilityStats)
                 .map(([range, data]) => ({
                     range,
@@ -342,8 +331,7 @@ const AIPredictionLog: React.FC = () => {
 
         const analyticsString = `
         Общая точность (${analysisType}): ${generalStats.accuracy.toFixed(1)}% (${generalStats.correct}/${generalStats.total})
-        Основные исходы: ${mainOutcomeStats.map(s => `${s.outcome}: ${s.accuracy.toFixed(1)}% (${s.count})`).join(', ')}
-        Другие рынки: ${deepOutcomeStats.map(s => `${s.market}: ${s.accuracy.toFixed(1)}% (${s.count})`).join(', ')}
+        Детальная статистика по исходам: ${detailedOutcomeStats.map(s => `${s.market}: ${s.accuracy.toFixed(1)}% (${s.count})`).join(', ')}
         Точность по вероятностям: ${probabilityStats.map(s => `${s.range}: ${s.accuracy.toFixed(1)}% (${s.count})`).join(', ')}
         `;
 
@@ -356,7 +344,7 @@ const AIPredictionLog: React.FC = () => {
             setIsAnalysisLoading(false);
         }
 
-    }, [generalStats, mainOutcomeStats, deepOutcomeStats, probabilityStats, analysisType]);
+    }, [generalStats, detailedOutcomeStats, probabilityStats, analysisType]);
 
     return (
         <div className="space-y-6">
@@ -375,7 +363,7 @@ const AIPredictionLog: React.FC = () => {
             <Card>
                  <h3 className="text-lg font-semibold mb-4">Общая Статистика</h3>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <KpiCard title="Точность (Value)" value={`${generalStats.accuracy.toFixed(1)}%`} subtext={`${generalStats.correct} / ${generalStats.total} ставок`} colorClass={generalStats.accuracy >= 50 ? "text-green-400" : "text-amber-400"}/>
+                    <KpiCard title={`Точность (${analysisType === 'value' ? 'Value' : 'Likely'})`} value={`${generalStats.accuracy.toFixed(1)}%`} subtext={`${generalStats.correct} / ${generalStats.total} ставок`} colorClass={generalStats.accuracy >= 50 ? "text-green-400" : "text-amber-400"}/>
                     <KpiCard title="Модальный коэф." value={`${generalStats.modalCorrectCoefficient.toFixed(2)}`} subtext="Самый частый выигрышный коэф."/>
                     <KpiCard title="Всего прогнозов" value={String(allEnhancedPredictions.length)} subtext="В базе данных"/>
                     <KpiCard title="Оценено" value={String(filteredPredictions.filter(p => p.status !== 'pending').length)} subtext="С известным результатом"/>
@@ -387,6 +375,37 @@ const AIPredictionLog: React.FC = () => {
                         <Button variant={analysisType === 'likely' ? 'primary' : 'secondary'} onClick={() => setAnalysisType('likely')}>Most Likely</Button>
                      </div>
                  </div>
+            </Card>
+
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Детальная точность по всем исходам</h3>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-700">
+                        <thead className="bg-gray-800">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Исход</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Точность</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Оценки</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Частый верный коэф.</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-gray-900 divide-y divide-gray-700">
+                            {detailedOutcomeStats.map(stat => (
+                                <tr key={stat.market}>
+                                    <td className="px-4 py-3 text-sm font-medium text-white">{stat.market}</td>
+                                    <td className={`px-4 py-3 text-sm text-center font-bold ${stat.accuracy > 55 ? 'text-green-400' : 'text-gray-300'}`}>{stat.accuracy.toFixed(1)}%</td>
+                                    <td className="px-4 py-3 text-sm text-center text-gray-300">{stat.evaluations}</td>
+                                    <td className="px-4 py-3 text-sm text-center font-mono text-cyan-400">{stat.frequentCoefficient > 0 ? stat.frequentCoefficient.toFixed(2) : '-'}</td>
+                                </tr>
+                            ))}
+                            {detailedOutcomeStats.length === 0 && (
+                                <tr>
+                                    <td colSpan={4} className="text-center py-6 text-gray-500">Нет данных для детальной статистики.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </Card>
 
             <Card>
@@ -438,43 +457,6 @@ const AIPredictionLog: React.FC = () => {
                          </tbody>
                     </table>
                 </div>
-            </Card>
-
-            <Card>
-                <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-semibold">Анализ точности по исходам</h3>
-                    <Button variant="secondary" onClick={handleOpenAnalysisModal} disabled={isAnalysisLoading}>
-                       {isAnalysisLoading ? 'Анализ...' : 'Спросить AI'}
-                    </Button>
-                </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                     <div>
-                        <h4 className="font-semibold mb-2 text-center">Основные исходы</h4>
-                        <div className="space-y-2">
-                            {mainOutcomeStats.map(stat => (
-                                <div key={stat.outcome} className="p-2 bg-gray-900/50 rounded-md">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="font-bold">{stat.outcome}</span>
-                                        <span>{stat.accuracy.toFixed(1)}% ({stat.count} оценок)</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                     </div>
-                      <div>
-                        <h4 className="font-semibold mb-2 text-center">Дополнительные рынки (топ по популярности)</h4>
-                         <div className="space-y-2">
-                             {deepOutcomeStats.map(stat => (
-                                <div key={stat.market} className="p-2 bg-gray-900/50 rounded-md">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="font-bold">{stat.market}</span>
-                                        <span>{stat.accuracy.toFixed(1)}% ({stat.count} оценок)</span>
-                                    </div>
-                                </div>
-                            ))}
-                         </div>
-                     </div>
-                 </div>
             </Card>
             
             {isAnalysisModalOpen && (
