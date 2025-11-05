@@ -7,11 +7,11 @@ import DiagnosticsPanel from './DiagnosticsPanel';
 import RequestsChart from './RequestsChart';
 import ActivityTimeline from './ActivityTimeline';
 
-type AdminView = 'stats' | 'users' | 'api_activity' | 'diagnostics';
+type AdminView = 'diagnostics' | 'api_activity' | 'stats' | 'users';
 
 const AdminPanel: React.FC = () => {
   const { users, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
-  const [activeTab, setActiveTab] = useState<AdminView>('api_activity');
+  const [activeTab, setActiveTab] = useState<AdminView>('diagnostics');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
   const [diagnosticsRefreshKey, setDiagnosticsRefreshKey] = useState(0);
@@ -55,35 +55,11 @@ const AdminPanel: React.FC = () => {
   const profitColor = analytics.totalProfit >= 0 ? 'text-green-500' : 'text-red-500';
   const roiColor = analytics.platformRoi >= 0 ? 'text-green-500' : 'text-red-500';
 
-  const getMessageColor = () => {
-    if (!updateMessage) return '';
-    switch (updateMessage.type) {
-        case 'success': return 'text-green-300 bg-green-900/50';
-        case 'error': return 'text-red-300 bg-red-900/50';
-        default: return 'text-gray-300 bg-gray-900/50';
-    }
-  }
-
   const renderContent = () => {
       switch (activeTab) {
           case 'stats':
               return (
                  <div className="space-y-6">
-                    <Card>
-                        <h3 className="text-lg font-semibold">Обслуживание системы</h3>
-                        <p className="text-sm text-gray-400 mt-2">
-                            Если автоматическое ежечасное обновление прогнозов матчей не сработало, вы можете запустить его вручную.
-                        </p>
-                        <div className="mt-4">
-                            <Button onClick={handleForceUpdate} disabled={isUpdating} variant="secondary">
-                                {isUpdating ? 'Обновление...' : 'Запустить обновление прогнозов'}
-                            </Button>
-                        </div>
-                        {updateMessage && (
-                            <p className={`mt-4 text-sm p-3 rounded-md ${getMessageColor()}`}>{updateMessage.text}</p>
-                        )}
-                    </Card>
-
                     <h2 className="text-xl font-semibold">Глобальная статистика платформы</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <KpiCard title="Всего пользователей" value={String(analytics.totalUsers)} colorClass="text-indigo-500 dark:text-indigo-400" />
@@ -157,17 +133,17 @@ const AdminPanel: React.FC = () => {
                  </div>
               );
           case 'diagnostics':
-              return <DiagnosticsPanel refreshKey={diagnosticsRefreshKey} />;
+              return <DiagnosticsPanel refreshKey={diagnosticsRefreshKey} onForceUpdate={handleForceUpdate} isUpdating={isUpdating} updateMessage={updateMessage} />;
       }
   }
 
   return (
     <div className="space-y-6">
         <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <Button variant={activeTab === 'diagnostics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('diagnostics')}>Диагностика</Button>
+            <Button variant={activeTab === 'api_activity' ? 'primary' : 'secondary'} onClick={() => setActiveTab('api_activity')}>API Активность</Button>
             <Button variant={activeTab === 'stats' ? 'primary' : 'secondary'} onClick={() => setActiveTab('stats')}>Статистика</Button>
             <Button variant={activeTab === 'users' ? 'primary' : 'secondary'} onClick={() => setActiveTab('users')}>Пользователи</Button>
-            <Button variant={activeTab === 'api_activity' ? 'primary' : 'secondary'} onClick={() => setActiveTab('api_activity')}>API Активность</Button>
-            <Button variant={activeTab === 'diagnostics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('diagnostics')}>Диагностика</Button>
         </div>
         <div>
             {renderContent()}

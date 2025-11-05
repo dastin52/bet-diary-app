@@ -224,10 +224,10 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                             const prob = parseFloat(probability); const coeff = parseFloat(coefficient);
                             if (!isNaN(prob) && !isNaN(coeff) && coeff > 1) {
                                 const value = prob * coeff - 1;
-                                if (value > maxValue) { maxValue = value; valueBetKey = market; }
+                                if (value > 0.05 && value > maxValue) { maxValue = value; valueBetKey = market; }
                             }
                         }
-                        const valueBetOutcome = maxValue > 0.05 ? valueBetKey : 'Нет выгодной ставки';
+                        const valueBetOutcome = valueBetKey;
                         
                         let mostLikelyKey = 'N/A';
                         let maxProb = -1;
@@ -292,7 +292,9 @@ export async function runUpdateTask(env: Env) {
 
         const otherSportsPredictions = allPredictions.filter(p => p.sport.toLowerCase() !== sportToProcess.toLowerCase());
         const combinedPredictions = [...otherSportsPredictions, ...sportPredictions];
-        const uniqueAllPredictions = Array.from(new Map(combinedPredictions.map(p => [`${p.sport}-${p.id}`, p])).values());
+        
+        // FIX: Use .toLowerCase() on the sport name to create a consistent key, preventing duplicates.
+        const uniqueAllPredictions = Array.from(new Map(combinedPredictions.map(p => [`${p.sport.toLowerCase()}-${p.id}`, p])).values());
 
         await env.BOT_STATE.put('central_predictions:all', JSON.stringify(uniqueAllPredictions));
         console.log(`[Updater Task] Updated '${sportToProcess}'. Total unique predictions now: ${uniqueAllPredictions.length}`);

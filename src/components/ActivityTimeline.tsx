@@ -9,7 +9,7 @@ const StatusDot: React.FC<{ status: 'success' | 'error' }> = ({ status }) => (
 const ActivityTimeline: React.FC<{ activityLog: ApiActivityLog[] }> = ({ activityLog }) => {
     return (
         <Card className="h-full">
-            <h3 className="text-lg font-semibold mb-4">My Activity</h3>
+            <h3 className="text-lg font-semibold mb-4">Лента активности</h3>
             {activityLog.length === 0 ? (
                 <p className="text-sm text-center text-gray-500 py-10">Нет данных об активности API.</p>
             ) : (

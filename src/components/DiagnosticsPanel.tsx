@@ -22,9 +22,12 @@ const SPORTS_TO_CHECK = ['football', 'hockey', 'basketball', 'nba', 'all'];
 
 interface DiagnosticsPanelProps {
     refreshKey: number;
+    onForceUpdate: () => void;
+    isUpdating: boolean;
+    updateMessage: { type: 'info' | 'success' | 'error'; text: string } | null;
 }
 
-const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
+const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey, onForceUpdate, isUpdating, updateMessage }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [log, setLog] = useState('');
     const [connectivity, setConnectivity] = useState<CheckResult | null>(null);
@@ -48,19 +51,16 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
             if (!healthRes.ok) throw new Error(`Server returned status ${healthRes.status}`);
             const healthData = await healthRes.json();
             
-            // Connectivity
             const connSuccessMsg = `Успешное соединение с бэкендом. (${healthData.timestamp})`;
             setConnectivity({ status: 'success', message: connSuccessMsg });
             fullLog += `[SUCCESS] Connectivity: ${connSuccessMsg}\n`;
 
-            // API Keys
             const geminiOk = healthData.apiKeys?.gemini === 'CONFIGURED';
             const keysOk = geminiOk;
             const apiKeyMessage = `Gemini: ${healthData.apiKeys?.gemini}, Sports API: ${healthData.apiKeys?.sportsApi}`;
             setApiKeys({ status: keysOk ? 'success' : 'error', message: apiKeyMessage });
             fullLog += `[${keysOk ? 'SUCCESS' : 'ERROR'}] API Keys: ${apiKeyMessage}\n`;
 
-            // Last Triggered (Heartbeat)
             const lastTriggeredTimestamp = healthData.lastTriggered;
             if (lastTriggeredTimestamp) {
                 const triggerDate = new Date(lastTriggeredTimestamp);
@@ -75,7 +75,6 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
                  fullLog += `[ERROR] Last Trigger Check: ${message}\n`;
             }
 
-            // Last Error
             if (healthData.lastUpdateError) {
                 const errorData = healthData.lastUpdateError;
                 const errorMsg = `Последний запуск обновления завершился ошибкой в ${new Date(errorData.timestamp).toLocaleString('ru-RU')}. Причина: ${errorData.message}`;
@@ -85,7 +84,6 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
                 setLastError(null);
             }
 
-            // Last Successful Update
             const lastRunTimestamp = healthData.lastSuccessfulUpdate;
             let lastUpdateStatus: Status = 'error';
             let lastUpdateMessage = 'Информация о последнем успешном обновлении отсутствует.';
@@ -108,7 +106,6 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
 
         fullLog += '\n--- CACHE STATUS ---\n';
 
-        // 2. Cache Status Check
         await Promise.all(SPORTS_TO_CHECK.map(async (sport) => {
             setCacheStatus(prev => ({ ...prev, [sport]: { status: 'pending', message: `Проверка кэша для '${sport}'...` } }));
             try {
@@ -148,6 +145,16 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
         setCopySuccess(true);
         setTimeout(() => setCopySuccess(false), 2000);
     };
+    
+     const getMessageColor = () => {
+        if (!updateMessage) return '';
+        switch (updateMessage.type) {
+            case 'success': return 'text-green-300 bg-green-900/50';
+            case 'error': return 'text-red-300 bg-red-900/50';
+            default: return 'text-gray-300 bg-gray-900/50';
+        }
+    }
+
 
     const StatusIcon = ({ status }: { status: Status }) => {
         if (status === 'pending') return <Spinner />;
@@ -159,7 +166,7 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
     return (
         <div className="space-y-6">
             <Card>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center flex-wrap gap-4">
                     <h2 className="text-xl font-semibold">Системная Диагностика</h2>
                     <div className="flex gap-2">
                         <Button variant="secondary" onClick={runDiagnostics} disabled={isLoading}>Перезапустить</Button>
@@ -167,6 +174,14 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey }) => {
                     </div>
                 </div>
                 <p className="text-sm text-gray-400 mt-2">Эта панель проверяет ключевые компоненты системы. Если матчи не обновляются, скопируйте лог и отправьте его для анализа.</p>
+                 <div className="mt-4">
+                    <Button onClick={onForceUpdate} disabled={isUpdating} variant="secondary">
+                        {isUpdating ? 'Обновление...' : 'Запустить обновление прогнозов вручную'}
+                    </Button>
+                </div>
+                 {updateMessage && (
+                    <p className={`mt-4 text-sm p-3 rounded-md ${getMessageColor()}`}>{updateMessage.text}</p>
+                )}
             </Card>
 
             {lastError && (

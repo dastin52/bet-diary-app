@@ -12,7 +12,7 @@ const COLORS: { [key: string]: string } = {
     Handball: '#14b8a6',
     Hockey: '#06b6d4',
     MMA: '#3b82f6',
-    NBA: '#6366f1',
+    Nba: '#6366f1',
     NFL: '#8b5cf6',
     Rugby: '#a855f7',
     Volleyball: '#d946ef',
@@ -57,7 +57,7 @@ const RequestsChart: React.FC<{ activityLog: ApiActivityLog[] }> = ({ activityLo
         });
 
         const chartData = Object.entries(hourlyData).map(([hour, sportCounts]) => ({
-            hour: `${hour}h`,
+            hour: `${hour}`,
             ...sportCounts
         }));
 
@@ -66,7 +66,7 @@ const RequestsChart: React.FC<{ activityLog: ApiActivityLog[] }> = ({ activityLo
     
     return (
         <Card>
-            <h3 className="text-lg font-semibold mb-4">Requests</h3>
+            <h3 className="text-lg font-semibold mb-4">Запросы к API за 24ч</h3>
             <ResponsiveContainer width="100%" height={250}>
                 <AreaChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                     <defs>
@@ -78,7 +78,7 @@ const RequestsChart: React.FC<{ activityLog: ApiActivityLog[] }> = ({ activityLo
                          ))}
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" />
-                    <XAxis dataKey="hour" stroke="#A0AEC0" tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="hour" stroke="#A0AEC0" tick={{ fontSize: 12 }} unit="h"/>
                     <YAxis stroke="#A0AEC0" tick={{ fontSize: 12 }} allowDecimals={false} />
                     <Tooltip content={<CustomTooltip />} />
                     {sports.map(sport => (
@@ -87,9 +87,9 @@ const RequestsChart: React.FC<{ activityLog: ApiActivityLog[] }> = ({ activityLo
                 </AreaChart>
             </ResponsiveContainer>
             <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-xs">
-                {Object.entries(COLORS).map(([name, color]) => (
+                {sports.map(name => (
                      <div key={name} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[name] || '#ccc' }}></div>
                         <span>{name}</span>
                     </div>
                 ))}

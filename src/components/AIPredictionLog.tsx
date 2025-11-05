@@ -196,7 +196,6 @@ const AIPredictionLog: React.FC = () => {
         
         const modalCorrectCoefficient = calculateMode(correctCoefficients);
         
-        // @google/genai-fix: Add an explicit type for the accumulator in the `reduce` function to prevent TypeScript from inferring it as `any` or `unknown`.
         const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
@@ -223,158 +222,219 @@ const AIPredictionLog: React.FC = () => {
             const data = statsByAllOutcomes[outcome] || { correct: 0, total: 0, correctCoefficients: [] };
             return {
                 outcome,
+// @google/genai-fix: Completed the truncated line of code to fix syntax error.
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
                 count: data.total,
+                avgCoeff: data.correctCoefficients.length > 0 ? data.correctCoefficients.reduce((a, b) => a + b, 0) / data.correctCoefficients.length : 0,
             };
         });
 
         const deepOutcomeStats = Object.entries(statsByAllOutcomes)
+            .filter(([market]) => !mainOutcomes.includes(market))
             .map(([market, data]) => ({
                 market,
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
-                modalCorrectCoeff: calculateMode(data.correctCoefficients),
                 count: data.total,
-                correct: data.correct,
             }))
-            .filter(item => item.count > 0)
-            .sort((a, b) => b.count - a.count);
-
-        const probabilityBuckets: Record<string, { correct: number, total: number }> = { '0-25%':{correct:0,total:0}, '25-40%':{correct:0,total:0}, '40-55%':{correct:0,total:0}, '55-70%':{correct:0,total:0}, '70-85%':{correct:0,total:0}, '85-100%':{correct:0,total:0} };
-        settled.forEach(p => {
-            try {
-                const data = JSON.parse(p.prediction);
-                const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                 if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A') return;
-
-                const prob = data.market_analysis?.[outcomeToCheck]?.probability * 100;
-                if (typeof prob !== 'number') return;
-                
-                let bucketKey: string|null = null;
-                if(prob>=0&&prob<=25)bucketKey='0-25%';else if(prob>25&&prob<=40)bucketKey='25-40%';else if(prob>40&&prob<=55)bucketKey='40-55%';else if(prob>55&&prob<=70)bucketKey='55-70%';else if(prob>70&&prob<=85)bucketKey='70-85%';else if(prob>85&&prob<=100)bucketKey='85-100%';
-                
-                if(bucketKey){
-                    probabilityBuckets[bucketKey].total++;
-                    if(resolveMarketOutcome(outcomeToCheck,p.matchResult!.scores,p.matchResult!.winner)==='correct'){
-                        probabilityBuckets[bucketKey].correct++;
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+            
+        const probabilityStats = settled.reduce<{ [range: string]: { correct: number, total: number } }>(
+            (acc, p) => {
+                try {
+                    const data = JSON.parse(p.prediction);
+                    const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
+                    if (!outcomeToCheck || !data.market_analysis?.[outcomeToCheck] || !p.matchResult) return acc;
+                    
+                    const prob = data.market_analysis[outcomeToCheck].probability;
+                    const range = `${Math.floor(prob * 10) * 10}-${Math.floor(prob * 10) * 10 + 10}%`;
+                    
+                    if (!acc[range]) acc[range] = { correct: 0, total: 0 };
+                    
+                    const result = resolveMarketOutcome(outcomeToCheck, p.matchResult.scores, p.matchResult.winner);
+                    
+                    if (result !== 'unknown') {
+                        acc[range].total++;
+                        if (result === 'correct') {
+                            acc[range].correct++;
+                        }
                     }
-                }
-            } catch {}
-        });
-        const probabilityStats = Object.entries(probabilityBuckets).map(([range, data]) => ({ range, ...data, accuracy: data.total>0?(data.correct/data.total)*100:0 }));
+                } catch {}
+                return acc;
+            }, {}
+        );
 
-        return { generalStats: { total: totalWithRec, correct: correct.length, accuracy, modalCorrectCoefficient }, mainOutcomeStats, deepOutcomeStats, probabilityStats };
+        return {
+            generalStats: {
+                total: totalWithRec,
+                correct: correct.length,
+                accuracy,
+                modalCorrectCoefficient,
+            },
+            mainOutcomeStats,
+            deepOutcomeStats,
+            probabilityStats: Object.entries(probabilityStats)
+                .map(([range, data]) => ({
+                    range,
+                    accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
+                    count: data.total,
+                }))
+                .sort((a,b) => parseInt(a.range) - parseInt(b.range)),
+        };
+
     }, [filteredPredictions, analysisType]);
+    
+    const handleOpenAnalysisModal = useCallback(async () => {
+        setIsAnalysisModalOpen(true);
+        setIsAnalysisLoading(true);
 
-    const handleRefresh = () => { fetchAllPredictions(true); };
+        const analyticsString = `
+        Общая точность (${analysisType}): ${generalStats.accuracy.toFixed(1)}% (${generalStats.correct}/${generalStats.total})
+        Основные исходы: ${mainOutcomeStats.map(s => `${s.outcome}: ${s.accuracy.toFixed(1)}% (${s.count})`).join(', ')}
+        Другие рынки: ${deepOutcomeStats.map(s => `${s.market}: ${s.accuracy.toFixed(1)}% (${s.count})`).join(', ')}
+        Точность по вероятностям: ${probabilityStats.map(s => `${s.range}: ${s.accuracy.toFixed(1)}% (${s.count})`).join(', ')}
+        `;
 
-    const handleGetAIAnalysis = useCallback(async () => {
-        if (generalStats.total === 0) { setIsAnalysisModalOpen(true); setAnalysisText("Недостаточно данных для анализа."); return; }
-        setIsAnalysisLoading(true); setAnalysisText(''); setIsAnalysisModalOpen(true);
-        const analyticsText = `Анализ по типу: ${analysisType === 'value' ? 'Value Bet' : 'Most Likely'}\n\nОбщая статистика:\n- Всего: ${generalStats.total}, Верно: ${generalStats.correct}, Точность: ${generalStats.accuracy.toFixed(1)}%\n\nТочность по исходам:\n${deepOutcomeStats.map(i=>`- ${i.market}: ${i.accuracy.toFixed(1)}% (${i.correct}/${i.count})`).join('\n')}`;
-        try { const result = await fetchAIPredictionAnalysis(analyticsText); setAnalysisText(result); } catch (error) { setAnalysisText(error instanceof Error ? error.message : "Ошибка."); } finally { setIsAnalysisLoading(false); }
-    }, [generalStats, deepOutcomeStats, analysisType]);
+        try {
+            const result = await fetchAIPredictionAnalysis(analyticsString);
+            setAnalysisText(result);
+        } catch (e) {
+            setAnalysisText("Не удалось получить анализ от AI.");
+        } finally {
+            setIsAnalysisLoading(false);
+        }
+
+    }, [generalStats, mainOutcomeStats, deepOutcomeStats, probabilityStats, analysisType]);
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center flex-wrap gap-4">
-                 <div className="flex items-center gap-2 p-1 bg-gray-900/50 rounded-lg">
-                    <span className="text-sm font-medium pl-2">Анализ по:</span>
-                    <Button variant={analysisType === 'value' ? 'primary' : 'secondary'} onClick={() => setAnalysisType('value')}>📈 Value Bet</Button>
-                    <Button variant={analysisType === 'likely' ? 'primary' : 'secondary'} onClick={() => setAnalysisType('likely')}>🎯 Most Likely</Button>
-                </div>
-                 <Button onClick={handleRefresh} variant="secondary">
-                     <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5M20 4l-4 4M4 20l4-4" /></svg>
-                    Обновить
-                </Button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <KpiCard title="Всего оценено" value={String(generalStats.total)} subtext="Прогнозы с четкой рекомендацией"/>
-                <KpiCard title="Верных прогнозов" value={String(generalStats.correct)} />
-                <KpiCard title="Общая точность" value={`${generalStats.accuracy.toFixed(1)}%`} colorClass={generalStats.accuracy >= 50 ? 'text-green-400' : 'text-red-400'}/>
-                <KpiCard title="Частый верный коэф." value={generalStats.modalCorrectCoefficient.toFixed(2)} colorClass="text-amber-400" />
-            </div>
-
             <Card>
-                <h3 className="text-lg font-semibold mb-4">Точность по основным исходам (Всегда осн. время)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                    {mainOutcomeStats.map(item => (
-                        <div key={item.outcome} className="p-3 bg-gray-900/50 rounded-lg">
-                            <p className="font-bold text-xl">{item.outcome}</p>
-                            <p className={`font-semibold text-lg ${item.accuracy >= 50 ? 'text-green-400' : 'text-red-400'}`}>{item.accuracy.toFixed(1)}%</p>
-                            <p className="text-xs text-gray-400">{item.count} оценок</p>
-                        </div>
-                    ))}
-                </div>
-            </Card>
-            
-            <Card>
-                <h3 className="text-lg font-semibold mb-4">Точность по вероятности AI ({analysisType === 'value' ? 'Value Bet' : 'Most Likely'})</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                    {probabilityStats.map(bucket => (
-                        <div key={bucket.range}>
-                            <div className="flex justify-between items-center text-sm mb-1"><span className="font-medium text-gray-300">Вероятность {bucket.range}</span><span className="text-xs text-gray-400">{bucket.correct} из {bucket.total}</span></div>
-                            <div className="w-full bg-gray-700 rounded-full h-4"><div className="bg-indigo-500 h-4 rounded-full text-xs text-white flex items-center justify-center" style={{ width: `${bucket.accuracy}%` }}>{bucket.total > 0 && `${bucket.accuracy.toFixed(1)}%`}</div></div>
-                        </div>
-                    ))}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h2 className="text-xl font-semibold">База Прогнозов AI</h2>
+                        <p className="text-sm text-gray-400 mt-1">Оценка точности AI на основе результатов матчей.</p>
+                    </div>
+                    <Button onClick={() => fetchAllPredictions(true)} disabled={isLoading} variant="secondary">
+                        {isLoading ? 'Обновление...' : 'Обновить данные'}
+                    </Button>
                 </div>
             </Card>
 
             <Card>
-                <h3 className="text-lg font-semibold mb-4">Детальная точность по всем исходам</h3>
-                 <div className="max-h-96 overflow-y-auto pr-2">
-                    <table className="min-w-full divide-y divide-gray-800 text-sm">
-                        <thead className="bg-gray-800 sticky top-0">
-                            <tr>
-                                <th className="px-4 py-2 text-left font-medium text-gray-400 uppercase">Исход</th>
-                                <th className="px-4 py-2 text-center font-medium text-gray-400 uppercase">Точность</th>
-                                <th className="px-4 py-2 text-center font-medium text-gray-400 uppercase">Оценки</th>
-                                <th className="px-4 py-2 text-center font-medium text-gray-400 uppercase">Частый верный коэф.</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-gray-900 divide-y divide-gray-800">
-                             {deepOutcomeStats.map(item => (
-                                <tr key={item.market}>
-                                    <td className="px-4 py-2 font-medium text-white">{item.market}</td>
-                                    <td className="px-4 py-2 text-center">
-                                        <span className={`font-bold ${item.accuracy >= 55 ? 'text-green-400' : item.accuracy >= 45 ? 'text-amber-400' : 'text-red-400'}`}>{item.accuracy.toFixed(1)}%</span>
-                                    </td>
-                                    <td className="px-4 py-2 text-center text-gray-400">{item.correct} / {item.count}</td>
-                                    <td className="px-4 py-2 text-center text-cyan-400 font-mono">{item.modalCorrectCoeff > 0 ? item.modalCorrectCoeff.toFixed(2) : '-'}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                 <h3 className="text-lg font-semibold mb-4">Общая Статистика</h3>
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <KpiCard title="Точность (Value)" value={`${generalStats.accuracy.toFixed(1)}%`} subtext={`${generalStats.correct} / ${generalStats.total} ставок`} colorClass={generalStats.accuracy >= 50 ? "text-green-400" : "text-amber-400"}/>
+                    <KpiCard title="Модальный коэф." value={`@${generalStats.modalCorrectCoefficient.toFixed(2)}`} subtext="Самый частый выигрышный коэф."/>
+                    <KpiCard title="Всего прогнозов" value={String(allEnhancedPredictions.length)} subtext="В базе данных"/>
+                    <KpiCard title="Оценено" value={String(filteredPredictions.filter(p => p.status !== 'pending').length)} subtext="С известным результатом"/>
+                 </div>
+                 <div className="mt-4 flex items-center gap-4">
+                     <span className="text-sm font-medium">Анализировать по:</span>
+                     <div className="flex gap-2">
+                        <Button variant={analysisType === 'value' ? 'primary' : 'secondary'} onClick={() => setAnalysisType('value')}>Value Bet</Button>
+                        <Button variant={analysisType === 'likely' ? 'primary' : 'secondary'} onClick={() => setAnalysisType('likely')}>Most Likely</Button>
+                     </div>
+                 </div>
             </Card>
 
-
             <Card>
-                <h3 className="text-lg font-semibold mb-4">Журнал прогнозов</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <Select value={sportFilter} onChange={e => setSportFilter(e.target.value)}><option value="all">Все виды спорта</option>{SPORTS.map(s => <option key={s} value={s}>{s}</option>)}</Select>
-                    <Select value={leagueFilter} onChange={e => setLeagueFilter(e.target.value)}><option value="all">Все лиги</option>{availableLeagues.map(l => <option key={l} value={l}>{l}</option>)}</Select>
-                    <Select value={outcomeFilter} onChange={e => setOutcomeFilter(e.target.value)}><option value="all">Все исходы</option>{availableOutcomes.map(o => <option key={o} value={o}>{o}</option>)}</Select>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <Select value={sportFilter} onChange={e => setSportFilter(e.target.value)}>
+                        <option value="all">Все виды спорта</option>
+                        {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </Select>
+                    <Select value={leagueFilter} onChange={e => setLeagueFilter(e.target.value)}>
+                        <option value="all">Все лиги</option>
+                        {availableLeagues.map(l => <option key={l} value={l}>{l}</option>)}
+                    </Select>
+                     <Select value={outcomeFilter} onChange={e => setOutcomeFilter(e.target.value)}>
+                        <option value="all">Все исходы</option>
+                        {availableOutcomes.map(o => <option key={o} value={o}>{o}</option>)}
+                    </Select>
                 </div>
+
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-800"><tr><th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Дата/Время</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Матч</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Прогноз AI</th><th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Статус</th></tr></thead>
-                        <tbody className="bg-gray-900 divide-y divide-gray-700">
-                             {filteredPredictions.map(p => {
-                                const status = getStatusInfo(p.status);
-                                return (
-                                    <tr key={p.id}>
-                                        <td className="px-4 py-3 text-sm text-gray-400 whitespace-nowrap">{new Date(p.createdAt).toLocaleString('ru-RU')}</td>
-                                        <td className="px-4 py-3"><p className="text-sm font-medium text-white">{p.matchName}</p><p className="text-xs text-gray-500">{p.sport}</p></td>
-                                        <td className="px-4 py-3"><PredictionDetails prediction={p.prediction} /></td>
-                                        <td className="px-4 py-3 text-center"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${status.color}`}>{status.label}</span></td>
-                                    </tr>
-                                )
-                            })}
-                        </tbody>
+                         <thead className="bg-gray-800">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Матч</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Прогноз AI</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Результат</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Статус</th>
+                            </tr>
+                         </thead>
+                         <tbody className="bg-gray-900 divide-y divide-gray-700">
+                            {filteredPredictions.map(p => (
+                                <tr key={p.id}>
+                                    <td className="px-4 py-3 text-sm">
+                                        <p className="font-medium text-white">{p.matchName}</p>
+                                        <p className="text-xs text-gray-500">{p.leagueName} | {new Date(p.createdAt).toLocaleDateString('ru-RU')}</p>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                        <PredictionDetails prediction={p.prediction} />
+                                    </td>
+                                     <td className="px-4 py-3 text-sm text-center font-mono">
+                                        {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-center">
+                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(p.status).color}`}>
+                                            {getStatusInfo(p.status).label}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                         </tbody>
                     </table>
                 </div>
             </Card>
-            {isAnalysisModalOpen && (<Modal title="Анализ производительности AI" onClose={() => setIsAnalysisModalOpen(false)}>{isAnalysisLoading ? (<div className="flex justify-center items-center h-40"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-400"></div></div>) : (<div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap text-gray-300">{analysisText}</div>)}</Modal>)}
+
+            <Card>
+                <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">Анализ точности по исходам</h3>
+                    <Button variant="secondary" onClick={handleOpenAnalysisModal} disabled={isAnalysisLoading}>
+                       {isAnalysisLoading ? 'Анализ...' : 'Спросить AI'}
+                    </Button>
+                </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                     <div>
+                        <h4 className="font-semibold mb-2 text-center">Основные исходы</h4>
+                        <div className="space-y-2">
+                            {mainOutcomeStats.map(stat => (
+                                <div key={stat.outcome} className="p-2 bg-gray-900/50 rounded-md">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold">{stat.outcome}</span>
+                                        <span>{stat.accuracy.toFixed(1)}% ({stat.count} оценок)</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                     </div>
+                      <div>
+                        <h4 className="font-semibold mb-2 text-center">Дополнительные рынки (топ по популярности)</h4>
+                         <div className="space-y-2">
+                             {deepOutcomeStats.map(stat => (
+                                <div key={stat.market} className="p-2 bg-gray-900/50 rounded-md">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold">{stat.market}</span>
+                                        <span>{stat.accuracy.toFixed(1)}% ({stat.count} оценок)</span>
+                                    </div>
+                                </div>
+                            ))}
+                         </div>
+                     </div>
+                 </div>
+            </Card>
+            
+            {isAnalysisModalOpen && (
+                <Modal title="Анализ от AI" onClose={() => setIsAnalysisModalOpen(false)}>
+                    {isAnalysisLoading ? <p>Анализирую...</p> : (
+                        <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap">
+                            {analysisText}
+                        </div>
+                    )}
+                </Modal>
+            )}
+
         </div>
     );
 };
