@@ -217,8 +217,8 @@ const AIPredictionLog: React.FC = () => {
         
         const modalCorrectCoefficient = calculateMode(correctCoefficients);
         
-// @google/genai-fix: Explicitly set the generic type for the `reduce` accumulator to prevent TypeScript from inferring it as `unknown`.
-        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
+        // @google/genai-fix: Explicitly type the accumulator in the `reduce` function to resolve type inference issues.
+        const statsByAllOutcomes = settled.reduce((acc: Record<string, { correct: number, total: number, correctCoefficients: number[] }>, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (p.matchResult) {
@@ -265,9 +265,9 @@ const AIPredictionLog: React.FC = () => {
             .filter(item => item.count > 0)
             .sort((a, b) => b.count - a.count);
             
-// @google/genai-fix: Explicitly set the generic type for the `reduce` accumulator to prevent TypeScript from inferring it as `unknown`.
-        const probabilityStats = settled.reduce<Record<string, { correct: number, total: number }>>(
-            (acc, p) => {
+        // @google/genai-fix: Explicitly type the accumulator in the `reduce` function to resolve type inference issues.
+        const probabilityStats = settled.reduce(
+            (acc: Record<string, { correct: number, total: number }>, p) => {
                 try {
                     const data = JSON.parse(p.prediction);
                     if (!p.matchResult) return acc;
@@ -345,6 +345,32 @@ const AIPredictionLog: React.FC = () => {
         }
 
     }, [generalStats, detailedOutcomeStats, probabilityStats, analysisType]);
+
+    const getDynamicStatus = useCallback((prediction: EnhancedAIPrediction, type: 'value' | 'likely'): AIPredictionStatus => {
+        if (prediction.status === AIPredictionStatus.Pending || !prediction.matchResult) {
+            return AIPredictionStatus.Pending;
+        }
+        try {
+            const data = JSON.parse(prediction.prediction);
+            let outcomeToCheck: string | undefined;
+
+            if (data.market_analysis) {
+                outcomeToCheck = type === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
+            } else if (data.recommended_outcome) {
+                outcomeToCheck = data.recommended_outcome;
+            }
+
+            if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A') {
+                return AIPredictionStatus.Incorrect;
+            }
+
+            const result = resolveMarketOutcome(outcomeToCheck, prediction.matchResult.scores, prediction.matchResult.winner);
+            return result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
+
+        } catch {
+            return AIPredictionStatus.Incorrect;
+        }
+    }, []);
 
     return (
         <div className="space-y-6">
@@ -435,7 +461,9 @@ const AIPredictionLog: React.FC = () => {
                             </tr>
                          </thead>
                          <tbody className="bg-gray-900 divide-y divide-gray-700">
-                            {filteredPredictions.map(p => (
+                            {filteredPredictions.map(p => {
+                                const dynamicStatus = getDynamicStatus(p, analysisType);
+                                return (
                                 <tr key={p.id}>
                                     <td className="px-4 py-3 text-sm">
                                         <p className="font-medium text-white">{p.matchName}</p>
@@ -448,12 +476,13 @@ const AIPredictionLog: React.FC = () => {
                                         {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
                                     </td>
                                     <td className="px-4 py-3 text-sm text-center">
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(p.status).color}`}>
-                                            {getStatusInfo(p.status).label}
+                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(dynamicStatus).color}`}>
+                                            {getStatusInfo(dynamicStatus).label}
                                         </span>
                                     </td>
                                 </tr>
-                            ))}
+                                )
+                            })}
                          </tbody>
                     </table>
                 </div>
