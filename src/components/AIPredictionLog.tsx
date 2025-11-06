@@ -210,7 +210,7 @@ const AIPredictionLog: React.FC = () => {
         const valueStats = calculateStatsForType('value');
         
         // FIX: Add an explicit type for the accumulator in the reduce function to resolve type errors.
-        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
+        const statsByAllOutcomes = settled.reduce((acc: Record<string, { correct: number, total: number, correctCoefficients: number[] }>, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (p.matchResult) {
@@ -244,7 +244,7 @@ const AIPredictionLog: React.FC = () => {
                 }
             } catch {}
             return acc;
-        }, {});
+        }, {} as Record<string, { correct: number, total: number, correctCoefficients: number[] }>);
         
         const detailedOutcomeStats = Object.entries(statsByAllOutcomes)
             .map(([market, data]) => ({

@@ -53,8 +53,19 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
     const [activeSport, setActiveSport] = useState('all');
 
     const filteredMatches = useMemo(() => {
-        return allPredictions
-            .filter(p => !FINISHED_STATUSES.includes(p.status.short))
+        // De-duplicate first as a safeguard against data inconsistencies
+        const uniquePredictions = Array.from(new Map(allPredictions.map(p => [`${p.sport}-${p.id}`, p])).values());
+        
+        const now = Date.now();
+        // Show non-finished matches that started in the last 4 hours or are in the future
+        const timeWindowStart = now - (4 * 60 * 60 * 1000);
+
+        return uniquePredictions
+            .filter(p => {
+                const gameTime = p.timestamp * 1000;
+                // Game has not finished AND it started recently or is in the future.
+                return !FINISHED_STATUSES.includes(p.status.short) && gameTime >= timeWindowStart;
+            })
             .filter(p => {
                 const sportLower = p.sport.toLowerCase();
                 if (activeSport === 'all') return true;
@@ -80,7 +91,7 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
             <div className="space-y-2 max-h-96 overflow-y-auto pr-2 mt-4">
                 {filteredMatches.map((match) => (
                     <button
-                        key={match.id}
+                        key={`${match.sport}-${match.id}`}
                         onClick={() => onMatchClick(match)}
                         className="w-full text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors duration-200 flex justify-between items-center"
                     >
