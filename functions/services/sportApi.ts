@@ -105,6 +105,21 @@ async function _fetchGamesForDate(sport: string, queryDate: string, env: Env): P
                 console.warn(`Unexpected date format for game ID ${item.id} in sport ${sport}:`, item.date);
                 gameDateStr = new Date().toISOString();
             }
+
+            const getScores = (scoresObj: any): { home: number | null, away: number | null } => {
+                if (!scoresObj) return { home: null, away: null };
+                // Basketball/NBA structure with total scores
+                if (scoresObj.home && typeof scoresObj.home === 'object' && scoresObj.home.total !== undefined) {
+                    return { home: scoresObj.home.total, away: scoresObj.away.total };
+                }
+                // Hockey/simple structure with direct numbers
+                if (typeof scoresObj.home === 'number' && typeof scoresObj.away === 'number') {
+                    return { home: scoresObj.home, away: scoresObj.away };
+                }
+                return { home: null, away: null };
+            };
+
+            const finalScores = getScores(item.scores);
             
             return {
                 id: item.id,
@@ -115,9 +130,9 @@ async function _fetchGamesForDate(sport: string, queryDate: string, env: Env): P
                 status: { long: item.status.long, short: item.status.short },
                 league: item.league,
                 teams: item.teams,
-                scores: item.scores,
-                winner: (item.scores?.home !== null && item.scores?.away !== null && item.scores.home !== undefined && item.scores.away !== undefined)
-                    ? (item.scores.home > item.scores.away ? 'home' : (item.scores.away > item.scores.home ? 'away' : 'draw'))
+                scores: finalScores,
+                winner: (finalScores.home !== null && finalScores.away !== null)
+                    ? (finalScores.home > finalScores.away ? 'home' : (finalScores.away > finalScores.home ? 'away' : 'draw'))
                     : undefined,
             };
         });
