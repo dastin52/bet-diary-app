@@ -252,7 +252,7 @@ const AIPredictionLog: React.FC = () => {
                 }
             } catch {}
             return acc;
-        }, {});
+        }, {} as Record<string, { correct: number, total: number, correctCoefficients: number[] }>);
         
         const detailedOutcomeStats = Object.entries(statsByAllOutcomes)
             .map(([market, data]) => ({
@@ -303,7 +303,7 @@ const AIPredictionLog: React.FC = () => {
                     }
                 } catch {}
                 return acc;
-            }, {}
+            }, {} as Record<string, { correct: number, total: number }>
         );
 
         return {

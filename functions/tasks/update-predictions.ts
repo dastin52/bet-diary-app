@@ -140,6 +140,12 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
     console.log(`[CRON] Starting a fresh update for sport: ${sport}`);
 
     let games = await getTodaysGamesBySport(sport, env);
+    
+    // FIX: Add a robust filter to remove any malformed game data from the API response.
+    // This prevents crashes if a game is missing team information.
+    games = games.filter(game =>
+        game && game.teams && game.teams.home && game.teams.home.name && game.teams.away && game.teams.away.name
+    );
 
     if (sport === 'basketball') {
         games = games.filter(g => g.league.id !== 12);
