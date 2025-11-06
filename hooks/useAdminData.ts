@@ -115,8 +115,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         };
     });
     
-    // @google/genai-fix: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
-    const popularSportsCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
+    // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
+    const popularSportsCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.sport] = (acc[bet.sport] || 0) + 1;
         return acc;
     }, {});
@@ -126,8 +126,8 @@ export const useAdminData = (): UseAdminDataReturn => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-    // @google/genai-fix: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
-    const popularBookmakersCounts = settledBets.reduce((acc: Record<string, number>, bet) => {
+    // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `count` was inferred as `unknown`.
+    const popularBookmakersCounts = settledBets.reduce<Record<string, number>>((acc, bet) => {
         acc[bet.bookmaker] = (acc[bet.bookmaker] || 0) + 1;
         return acc;
     }, {});
@@ -179,8 +179,8 @@ export const useAdminData = (): UseAdminDataReturn => {
 
     type TeamStatAccumulator = { [key: string]: { sport: string; count: number; wins: number; losses: number; staked: number; profit: number, oddsSum: number } };
 
-    // @google/genai-fix: Add explicit type to the accumulator parameter of reduce to fix type inference issue.
-    const teamStatsAggregator = settledBets.reduce((acc: TeamStatAccumulator, bet) => {
+    // FIX: Add explicit type to the accumulator parameter of reduce to fix type inference issue.
+    const teamStatsAggregator = settledBets.reduce<TeamStatAccumulator>((acc, bet) => {
         bet.legs.forEach(leg => {
             const processTeam = (teamName: string) => {
                 if (!teamName) return;

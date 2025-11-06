@@ -135,16 +135,33 @@ const getSportApiConfig = (year) => {
 };
 
 const getScores = (scoresObj) => {
-    if (!scoresObj) return { home: null, away: null };
-    // Basketball/NBA structure
-    if (scoresObj.home && typeof scoresObj.home === 'object' && scoresObj.home.total !== undefined) {
-        return { home: scoresObj.home.total, away: scoresObj.away.total };
+    if (!scoresObj) {
+        return { home: null, away: null };
     }
-    // Hockey structure or simple structure
-    if (typeof scoresObj.home === 'number' && typeof scoresObj.away === 'number') {
-        return { home: scoresObj.home, away: scoresObj.away };
+
+    let homeScore = null;
+    let awayScore = null;
+
+    // Case for nested objects (e.g., basketball { home: { total: 95 } })
+    if (scoresObj.home && typeof scoresObj.home === 'object') {
+        homeScore = scoresObj.home.total; // will be undefined if no total, which is fine
+    } 
+    // Case for direct numbers
+    else if (typeof scoresObj.home === 'number') {
+        homeScore = scoresObj.home;
     }
-    return { home: null, away: null };
+
+    if (scoresObj.away && typeof scoresObj.away === 'object') {
+        awayScore = scoresObj.away.total;
+    } else if (typeof scoresObj.away === 'number') {
+        awayScore = scoresObj.away;
+    }
+    
+    // Final check to ensure we only return numbers or null
+    return { 
+        home: typeof homeScore === 'number' ? homeScore : null,
+        away: typeof awayScore === 'number' ? awayScore : null,
+    };
 };
 
 
