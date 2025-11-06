@@ -37,29 +37,17 @@ async function logApiActivity(env: Env, logEntry: Omit<ApiActivityLog, 'timestam
     }
 }
 
-export async function getTodaysGamesBySport(sport: string, env: Env): Promise<SportGame[]> {
-    if (!env.SPORT_API_KEY) {
-        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
-        await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_GENERATOR', status: 'success' });
-        return generateMockGames(sport);
-    }
-
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(now.getUTCDate()).padStart(2, '0');
-    const queryDate = `${year}-${month}-${day}`;
-    
+async function _fetchGamesForDate(sport: string, queryDate: string, env: Env): Promise<SportGame[]> {
     const cacheKey = `cache:${sport}:games:${queryDate}`;
 
-    // Local cache check for this specific run (not used in production cron)
     const cachedData = await env.BOT_STATE.get(cacheKey, { type: 'json' });
     if (cachedData) {
         console.log(`[Cache HIT] Found cached games for ${sport} on ${queryDate}.`);
         return cachedData as SportGame[];
     }
     console.log(`[Cache MISS] Fetching fresh games for ${sport} for date ${queryDate}.`);
-
+    
+    const year = new Date(queryDate).getFullYear();
     const config = getSportApiConfig(year)[sport];
     if (!config) {
          console.error(`No API config found for sport: ${sport}`);
@@ -70,7 +58,7 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
     const url = `${config.host}/${config.path}?${queryParams}`;
 
     try {
-        const response = await fetch(url, { headers: { [config.keyName]: env.SPORT_API_KEY } });
+        const response = await fetch(url, { headers: { [config.keyName]: env.SPORT_API_KEY! } });
 
         if (!response.ok) {
             const errorBody = await response.text();
@@ -114,7 +102,6 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
             }
 
             if (typeof gameDateStr !== 'string') {
-                // Fallback for unexpected date format to prevent crash
                 console.warn(`Unexpected date format for game ID ${item.id} in sport ${sport}:`, item.date);
                 gameDateStr = new Date().toISOString();
             }
@@ -129,7 +116,6 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
                 league: item.league,
                 teams: item.teams,
                 scores: item.scores,
-                // Calculate winner based on scores if not provided
                 winner: (item.scores?.home !== null && item.scores?.away !== null && item.scores.home !== undefined && item.scores.away !== undefined)
                     ? (item.scores.home > item.scores.away ? 'home' : (item.scores.away > item.scores.home ? 'away' : 'draw'))
                     : undefined,
@@ -142,16 +128,48 @@ export async function getTodaysGamesBySport(sport: string, env: Env): Promise<Sp
         return games;
 
     } catch (error) {
-        console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
+        console.error(`[API ERROR] An error occurred while fetching ${sport} games for ${queryDate}. Error:`, error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         await logApiActivity(env, { sport, endpoint: url, status: 'error', errorMessage });
         
         if (errorMessage.includes("plan") || errorMessage.includes("subscription") || errorMessage.includes("Too many subrequests")) {
-            console.warn(`[API FALLBACK] Subscription/rate-limit issue detected for ${sport}. Falling back to mock data for this run.`);
+             console.warn(`[API FALLBACK] Subscription/rate-limit issue detected for ${sport}. Falling back to mock data for this run.`);
             await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success', errorMessage: 'Subscription or rate-limit issue' });
             return generateMockGames(sport);
         }
-
         throw error;
     }
+}
+
+export async function getTodaysGamesBySport(sport: string, env: Env): Promise<SportGame[]> {
+    if (!env.SPORT_API_KEY) {
+        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
+        await logApiActivity(env, { sport, endpoint: 'MOCK_DATA_GENERATOR', status: 'success' });
+        return generateMockGames(sport);
+    }
+
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    
+    const todayStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+    const yesterdayStr = `${yesterday.getUTCFullYear()}-${String(yesterday.getUTCMonth() + 1).padStart(2, '0')}-${String(yesterday.getUTCDate()).padStart(2, '0')}`;
+
+    console.log(`[API] Fetching games for ${sport} for dates: ${yesterdayStr} and ${todayStr}`);
+
+    // Fetch for both today and yesterday in parallel
+    const [yesterdayGames, todayGames] = await Promise.all([
+        _fetchGamesForDate(sport, yesterdayStr, env).catch(e => { console.error(`Failed to fetch yesterday's games for ${sport}`, e); return []; }),
+        _fetchGamesForDate(sport, todayStr, env).catch(e => { console.error(`Failed to fetch today's games for ${sport}`, e); return []; })
+    ]);
+
+    // Combine and de-duplicate, preferring today's data if a game appears in both
+    const allGamesMap = new Map<number, SportGame>();
+    yesterdayGames.forEach(game => allGamesMap.set(game.id, game));
+    todayGames.forEach(game => allGamesMap.set(game.id, game)); // Today's data overwrites yesterday's if IDs conflict
+    
+    const combinedGames = Array.from(allGamesMap.values());
+    console.log(`[API] Combined ${yesterdayGames.length} games from yesterday and ${todayGames.length} from today into ${combinedGames.length} unique games for ${sport}.`);
+
+    return combinedGames;
 }

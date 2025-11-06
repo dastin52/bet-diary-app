@@ -118,23 +118,10 @@ const getSportApiConfig = (year) => {
     };
 };
 
-
-
-async function getTodaysGamesBySport(sport) {
-    if (!process.env.SPORT_API_KEY) {
-        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
-        logApiActivity({ sport, endpoint: 'MOCK_SPORTS_API', status: 'success' });
-        return generateMockGames(sport);
-    }
-
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(now.getUTCDate()).padStart(2, '0');
-    const queryDate = `${year}-${month}-${day}`;
-
+async function _fetchGamesForDate(sport, queryDate) {
     console.log(`[API] Fetching fresh games for ${sport} for date ${queryDate}.`);
     
+    const year = new Date(queryDate).getFullYear();
     const config = getSportApiConfig(year)[sport];
     if (!config) {
          throw new Error(`No API config found for sport: ${sport}`);
@@ -218,9 +205,40 @@ async function getTodaysGamesBySport(sport) {
     }
 }
 
+
+async function getTodaysGamesBySport(sport) {
+    if (!process.env.SPORT_API_KEY) {
+        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
+        logApiActivity({ sport, endpoint: 'MOCK_SPORTS_API', status: 'success' });
+        return generateMockGames(sport);
+    }
+    
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    
+    const todayStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+    const yesterdayStr = `${yesterday.getUTCFullYear()}-${String(yesterday.getUTCMonth() + 1).padStart(2, '0')}-${String(yesterday.getUTCDate()).padStart(2, '0')}`;
+
+    const [yesterdayGames, todayGames] = await Promise.all([
+        _fetchGamesForDate(sport, yesterdayStr).catch(e => { console.error(`(Local) Failed to fetch yesterday's games for ${sport}`, e); return []; }),
+        _fetchGamesForDate(sport, todayStr).catch(e => { console.error(`(Local) Failed to fetch today's games for ${sport}`, e); return []; })
+    ]);
+    
+    const allGamesMap = new Map();
+    yesterdayGames.forEach(game => allGamesMap.set(game.id, game));
+    todayGames.forEach(game => allGamesMap.set(game.id, game));
+    
+    return Array.from(allGamesMap.values());
+}
+
 async function processSport(sport) {
     console.log(`[Updater] Starting a fresh update for sport: ${sport}`);
     let games = await getTodaysGamesBySport(sport);
+
+    games = games.filter(game =>
+        game && game.teams && game.teams.home && game.teams.home.name && game.teams.away && game.teams.away.name
+    );
 
     if (sport === 'basketball') {
         games = games.filter(g => g.league.id !== 12);
@@ -284,7 +302,7 @@ async function runUpdate() {
         const otherSportsPredictions = allPredictions.filter(p => p.sport.toLowerCase() !== sportToProcess.toLowerCase());
 
         const combinedPredictions = [...otherSportsPredictions, ...sportPredictions];
-        const uniqueAllPredictions = Array.from(new Map(combinedPredictions.map(p => [`${p.sport}-${p.id}`, p])).values());
+        const uniqueAllPredictions = Array.from(new Map(combinedPredictions.map(p => [`${p.sport.toLowerCase()}-${p.id}`, p])).values());
         
         cache.putPersistent('central_predictions:all', uniqueAllPredictions);
         console.log(`[Updater Task] Updated '${sportToProcess}'. Total unique predictions now: ${uniqueAllPredictions.length}`);

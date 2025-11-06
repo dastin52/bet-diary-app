@@ -164,39 +164,44 @@ const AIPredictionLog: React.FC = () => {
     const { generalStats, detailedOutcomeStats, probabilityStats } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending && p.matchResult);
         
-        const correct = settled.filter(p => {
+        // Filter for predictions where the recommended outcome can actually be resolved
+        const resolvableSettled = settled.filter(p => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (!p.matchResult) return false;
-
+                
                 let outcomeToCheck: string | undefined;
                 if (data.market_analysis) { // New format
                     outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                    if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A') return false;
                 } else if (data.recommended_outcome) { // Old format
                     outcomeToCheck = data.recommended_outcome;
-                } else {
-                    return false;
                 }
 
-                const result = resolveMarketOutcome(outcomeToCheck, p.matchResult.scores, p.matchResult.winner);
-                return result === 'correct';
+                if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A') return false;
+
+                // The key change: check if the outcome is resolvable
+                return resolveMarketOutcome(outcomeToCheck, p.matchResult.scores, p.matchResult.winner) !== 'unknown';
+
+            } catch { return false; }
+        });
+
+        const correct = resolvableSettled.filter(p => {
+            try {
+                const data = JSON.parse(p.prediction);
+                const matchResult = p.matchResult!; // We know this exists from the filter
+
+                let outcomeToCheck: string | undefined;
+                if (data.market_analysis) {
+                    outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
+                } else {
+                    outcomeToCheck = data.recommended_outcome;
+                }
+                
+                return resolveMarketOutcome(outcomeToCheck!, matchResult.scores, matchResult.winner) === 'correct';
             } catch { return false; }
         });
         
-        const totalWithRec = settled.filter(p => {
-            try {
-                const data = JSON.parse(p.prediction);
-                 if (data.market_analysis) {
-                    const outcomeToCheck = analysisType === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                    return outcomeToCheck && outcomeToCheck !== 'Нет выгодной ставки' && outcomeToCheck !== 'N/A';
-                } else if (data.recommended_outcome) {
-                    return !!data.recommended_outcome;
-                }
-                return false;
-            } catch { return false; }
-        }).length;
-        
+        const totalWithRec = resolvableSettled.length;
         const accuracy = totalWithRec > 0 ? (correct.length / totalWithRec) * 100 : 0;
         
         const correctCoefficients = correct.reduce<number[]>((acc, p) => {
@@ -217,8 +222,8 @@ const AIPredictionLog: React.FC = () => {
         
         const modalCorrectCoefficient = calculateMode(correctCoefficients);
         
-        // @google/genai-fix: Explicitly type the accumulator in the `reduce` function to resolve type inference issues.
-        const statsByAllOutcomes = settled.reduce((acc: Record<string, { correct: number, total: number, correctCoefficients: number[] }>, p) => {
+        // FIX: Explicitly type the accumulator in the `reduce` function to resolve type inference issues.
+        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (p.matchResult) {
@@ -252,7 +257,7 @@ const AIPredictionLog: React.FC = () => {
                 }
             } catch {}
             return acc;
-        }, {} as Record<string, { correct: number, total: number, correctCoefficients: number[] }>);
+        }, {});
         
         const detailedOutcomeStats = Object.entries(statsByAllOutcomes)
             .map(([market, data]) => ({
@@ -265,9 +270,9 @@ const AIPredictionLog: React.FC = () => {
             .filter(item => item.count > 0)
             .sort((a, b) => b.count - a.count);
             
-        // @google/genai-fix: Explicitly type the accumulator in the `reduce` function to resolve type inference issues.
-        const probabilityStats = settled.reduce(
-            (acc: Record<string, { correct: number, total: number }>, p) => {
+        // FIX: Explicitly type the accumulator in the `reduce` function to resolve type inference issues.
+        const probabilityStats = settled.reduce<Record<string, { correct: number, total: number }>>(
+            (acc, p) => {
                 try {
                     const data = JSON.parse(p.prediction);
                     if (!p.matchResult) return acc;
@@ -303,7 +308,7 @@ const AIPredictionLog: React.FC = () => {
                     }
                 } catch {}
                 return acc;
-            }, {} as Record<string, { correct: number, total: number }>
+            }, {}
         );
 
         return {
