@@ -254,7 +254,7 @@ const AIPredictionLog: React.FC = () => {
                 frequentCoefficient: calculateMode(data.correctCoefficients),
                 count: data.total,
             }))
-            .filter(item => item.count > 0)
+            .filter(item => item.count >= 3)
             .sort((a, b) => b.count - a.count);
 
         return {

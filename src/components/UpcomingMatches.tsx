@@ -41,6 +41,8 @@ const SPORT_MAP: Record<string, string> = {
     Хоккей: 'Хоккей',
 };
 
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
+
 interface UpcomingMatchesProps {
     onMatchClick: (match: SharedPrediction) => void;
 }
@@ -52,6 +54,7 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
 
     const filteredMatches = useMemo(() => {
         return allPredictions
+            .filter(p => !FINISHED_STATUSES.includes(p.status.short))
             .filter(p => {
                 const sportLower = p.sport.toLowerCase();
                 if (activeSport === 'all') return true;
@@ -62,7 +65,8 @@ const UpcomingMatches: React.FC<UpcomingMatchesProps> = ({ onMatchClick }) => {
                     return sportLower === 'basketball' && p.eventName.toUpperCase() !== 'NBA';
                 }
                 return sportLower === activeSport || (SPORT_MAP[sportLower] && SPORT_MAP[sportLower].toLowerCase() === activeSport);
-            });
+            })
+            .sort((a, b) => a.timestamp - b.timestamp);
     }, [allPredictions, activeSport]);
 
     const renderContent = () => {
