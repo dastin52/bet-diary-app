@@ -210,7 +210,7 @@ const AIPredictionLog: React.FC = () => {
         const valueStats = calculateStatsForType('value');
         
         // FIX: Add an explicit type for the accumulator in the reduce function to resolve type errors.
-        const statsByAllOutcomes = settled.reduce((acc: Record<string, { correct: number, total: number, correctCoefficients: number[] }>, p) => {
+        const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
                 if (p.matchResult) {
@@ -244,7 +244,7 @@ const AIPredictionLog: React.FC = () => {
                 }
             } catch {}
             return acc;
-        }, {} as Record<string, { correct: number, total: number, correctCoefficients: number[] }>);
+        }, {});
         
         const detailedOutcomeStats = Object.entries(statsByAllOutcomes)
             .map(([market, data]) => ({
@@ -286,7 +286,7 @@ const AIPredictionLog: React.FC = () => {
 
     }, [likelyStats, valueStats, detailedOutcomeStats]);
 
-    const getDynamicStatus = useCallback((prediction: EnhancedAIPrediction, type: 'value' | 'likely'): AIPredictionStatus => {
+    const getDynamicStatus = useCallback((prediction: EnhancedAIPrediction, type: 'value' | 'likely'): AIPredictionStatus | 'not_applicable' => {
         if (prediction.status === AIPredictionStatus.Pending || !prediction.matchResult) {
             return AIPredictionStatus.Pending;
         }
@@ -302,6 +302,9 @@ const AIPredictionLog: React.FC = () => {
             }
 
             if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A') {
+                if (type === 'value') {
+                    return 'not_applicable';
+                }
                 return AIPredictionStatus.Incorrect;
             }
 
@@ -404,7 +407,7 @@ const AIPredictionLog: React.FC = () => {
                          <tbody className="bg-gray-900 divide-y divide-gray-700">
                             {filteredPredictions.map(p => {
                                 const valueStatus = getDynamicStatus(p, 'value');
-                                const likelyStatus = getDynamicStatus(p, 'likely');
+                                const likelyStatus = getDynamicStatus(p, 'likely') as AIPredictionStatus;
                                 return (
                                 <tr key={p.id}>
                                     <td className="px-4 py-3 text-sm">
@@ -418,9 +421,13 @@ const AIPredictionLog: React.FC = () => {
                                         {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
                                     </td>
                                     <td className="px-4 py-3 text-sm text-center">
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(valueStatus).color}`}>
-                                            {getStatusInfo(valueStatus).label}
-                                        </span>
+                                        {valueStatus === 'not_applicable' ? (
+                                            <span className="text-gray-500">-</span>
+                                        ) : (
+                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(valueStatus).color}`}>
+                                                {getStatusInfo(valueStatus).label}
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3 text-sm text-center">
                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(likelyStatus).color}`}>
