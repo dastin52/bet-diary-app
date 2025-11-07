@@ -151,7 +151,13 @@ const AIPredictionLog: React.FC = () => {
             if (outcomeFilter !== 'all') {
                  try {
                     const data = JSON.parse(p.prediction);
-                    outcomeMatch = (data.value_bet_outcome === outcomeFilter || data.most_likely_outcome === outcomeFilter);
+                    if (data.market_analysis) {
+                        outcomeMatch = outcomeFilter in data.market_analysis;
+                    } else if (data.probabilities) {
+                        outcomeMatch = outcomeFilter in data.probabilities;
+                    } else {
+                        outcomeMatch = false;
+                    }
                 } catch {
                     outcomeMatch = false;
                 }
