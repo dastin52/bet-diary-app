@@ -20,7 +20,15 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
     setIsLoading(true);
     setError(null);
     try {
-      // For local dev, we will use a proxy. For production, this will hit the Cloudflare function.
+      if (force) {
+        console.log('[PredictionContext] Forcing a manual update...');
+        const updateResponse = await fetch('/api/tasks/run-update', { method: 'POST' });
+        if (!updateResponse.ok) {
+          const errorData = await updateResponse.json();
+          throw new Error(errorData.error || 'Не удалось запустить фоновое обновление.');
+        }
+      }
+
       const response = await fetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,21 +48,35 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
       today.setUTCHours(0, 0, 0, 0);
       const startOfTodayTimestamp = Math.floor(today.getTime() / 1000);
 
-      // Check if data is stale (empty or all matches are from before today)
       const isDataStale = predictions.length === 0 || predictions.every(p => p.timestamp < startOfTodayTimestamp);
       
       if (isDataStale) {
-          console.warn("Server data is stale or empty. Falling back to client-side mocks for demonstration.");
-          setError("Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня.");
-          setAllPredictions(generateClientSideMocks());
+          if (force) {
+              setError("Обновление не вернуло актуальных данных. Возможно, сейчас нет предстоящих матчей или произошла ошибка на сервере. Попробуйте позже или проверьте панель диагностики.");
+              setAllPredictions([]);
+          } else {
+              console.warn("Server data is stale or empty. Falling back to client-side mocks for demonstration.");
+              setError("Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня.");
+              setAllPredictions(generateClientSideMocks());
+          }
       } else {
           setAllPredictions(predictions);
       }
 
     } catch (err) {
-      console.error("Failed to fetch predictions, falling back to client-side mocks:", err);
-      setError("Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня.");
-      setAllPredictions(generateClientSideMocks());
+      const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная ошибка.';
+      console.error("Failed to fetch predictions:", err);
+      if (force) {
+        setError(`Ошибка принудительного обновления: ${errorMessage}`);
+      } else {
+        setError(`Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня. Ошибка: ${errorMessage}`);
+      }
+      
+      if (!force) {
+        setAllPredictions(generateClientSideMocks());
+      } else {
+        setAllPredictions([]);
+      }
     } finally {
       setIsLoading(false);
     }
