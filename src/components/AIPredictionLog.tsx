@@ -46,7 +46,7 @@ const PredictionDetails: React.FC<{ prediction: string, confidence: number | nul
                         {mostLikelyInfo && <span className="text-gray-400">({(mostLikelyInfo.probability * 100).toFixed(0)}%)</span>}
                     </p>
                     {confidence !== null && (
-                         <p className="flex items-center gap-2" title="Уверенность основана на ROI ваших прошлых ставок на похожих рынках.">
+                         <p className="flex items-center gap-2" title="Уверенность основана на глобальном ROI AI на похожих рынках.">
                             <span className="font-bold text-fuchsia-400">👩‍🔬 Джинджер:</span>
                              <span className="font-medium text-white">Уверенность {confidence.toFixed(0)}%</span>
                         </p>
@@ -205,7 +205,7 @@ const AIPredictionLog: React.FC = () => {
         
         const aiStats = calculateStatsForType();
         
-        // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where properties were being accessed on an 'unknown' type.
+        // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where properties were inferred as 'unknown'.
         const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);

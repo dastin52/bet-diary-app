@@ -106,6 +106,7 @@ const GingerMLPanel: React.FC = () => {
                                         <td className="py-2 text-center">{p.count}</td>
                                     </tr>
                                 ))}
+                                 {topPatterns.length === 0 && (<tr><td colSpan={3} className="text-center py-4 text-gray-500">Нет данных для анализа.</td></tr>)}
                             </tbody>
                         </table>
                     </div>
@@ -130,6 +131,7 @@ const GingerMLPanel: React.FC = () => {
                                         <td className="py-2 text-center">{p.count}</td>
                                     </tr>
                                 ))}
+                                {worstPatterns.length === 0 && (<tr><td colSpan={3} className="text-center py-4 text-gray-500">Нет данных для анализа.</td></tr>)}
                             </tbody>
                         </table>
                     </div>

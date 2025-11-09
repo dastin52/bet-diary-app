@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useState } from 'react';
-import { Bet, BetStatus, AIPrediction, AIPredictionStatus } from '../types';
+import { AIPrediction, AIPredictionStatus } from '../types';
 import { resolveMarketOutcome } from '../utils/predictionUtils';
 
 interface LearnedPattern {
