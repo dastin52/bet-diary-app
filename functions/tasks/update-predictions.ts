@@ -148,116 +148,124 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
     }
     
     const centralPredictionsKey = `central_predictions:${sport}`;
-
-    if (games.length === 0) {
-        console.log(`[CRON] No new games found for ${sport} today. Keeping existing data.`);
-        const existingData = await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[] | null;
-        return existingData || [];
-    }
     
     const allTimePredictionsForSport = (await env.BOT_STATE.get(centralPredictionsKey, { type: 'json' }) as SharedPrediction[]) || [];
     const allTimePredictionsMap = new Map<string, SharedPrediction>(allTimePredictionsForSport.map(p => [`${sport}-${p.id}`, p]));
 
-
-    const teamNames = games.flatMap(g => [g?.teams?.home?.name, g?.teams?.away?.name]).filter((n): n is string => !!n);
-    const uniqueTeamNames = Array.from(new Set(teamNames));
-    const translationMap = await translateTeamNames(uniqueTeamNames, env);
-
-    const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-    
-    for (let i = 0; i < games.length; i += BATCH_SIZE) {
-        const batch = games.slice(i, i + BATCH_SIZE);
-        console.log(`[CRON] Processing batch ${i / BATCH_SIZE + 1} for ${sport} with ${batch.length} games.`);
+    // Even if no new games, proceed to update statuses of existing ones
+    if (games.length > 0) {
+        const teamNames = games.flatMap(g => [g?.teams?.home?.name, g?.teams?.away?.name]).filter((n): n is string => !!n);
+        const uniqueTeamNames = Array.from(new Set(teamNames));
+        const translationMap = await translateTeamNames(uniqueTeamNames, env);
+        const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
         
-        const batchPromises = batch.map(async (game) => {
-            const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
-            const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
-            const matchName = `${homeTeam} vs ${awayTeam}`;
-            const uniqueGameId = `${sport}-${game.id}`;
+        for (let i = 0; i < games.length; i += BATCH_SIZE) {
+            const batch = games.slice(i, i + BATCH_SIZE);
+            console.log(`[CRON] Processing batch ${i / BATCH_SIZE + 1} for ${sport} with ${batch.length} games.`);
+            
+            const batchPromises = batch.map(async (game) => {
+                const homeTeam = translationMap[game.teams.home.name] || game.teams.home.name;
+                const awayTeam = translationMap[game.teams.away.name] || game.teams.away.name;
+                const matchName = `${homeTeam} vs ${awayTeam}`;
+                const uniqueGameId = `${sport}-${game.id}`;
 
-            let existingPrediction = allTimePredictionsMap.get(uniqueGameId) || null;
-            let prediction = existingPrediction ? existingPrediction.prediction : null;
+                let existingPrediction = allTimePredictionsMap.get(uniqueGameId) || null;
+                let prediction = existingPrediction ? existingPrediction.prediction : null;
 
-            if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
-                if (prediction && prediction.status === AIPredictionStatus.Pending) {
-                    const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
-                    prediction.matchResult = { winner, scores: { home: game.scores.home, away: game.scores.away } };
-                    
-                    let mostLikelyOutcome: string | null = null;
-                    try { 
-                        const data = JSON.parse(prediction.prediction); 
-                        mostLikelyOutcome = data?.most_likely_outcome || data?.recommended_outcome || null; 
-                    } catch (e) { console.error(`Failed to parse prediction for ${matchName}`); }
+                if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
+                    if (prediction && prediction.status === AIPredictionStatus.Pending) {
+                        const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
+                        prediction.matchResult = { winner, scores: { home: game.scores.home, away: game.scores.away } };
+                        
+                        let mostLikelyOutcome: string | null = null;
+                        try { 
+                            const data = JSON.parse(prediction.prediction); 
+                            mostLikelyOutcome = data?.most_likely_outcome || data?.recommended_outcome || null; 
+                        } catch (e) { console.error(`Failed to parse prediction for ${matchName}`); }
 
-                    if (mostLikelyOutcome) {
-                         const result = resolveMarketOutcome(mostLikelyOutcome, game.scores, winner);
-                         if (result === 'correct') {
-                            prediction.status = AIPredictionStatus.Correct;
+                        if (mostLikelyOutcome) {
+                             const result = resolveMarketOutcome(mostLikelyOutcome, game.scores, winner);
+                             if (result === 'correct') {
+                                prediction.status = AIPredictionStatus.Correct;
+                            } else {
+                                prediction.status = AIPredictionStatus.Incorrect;
+                            }
                         } else {
                             prediction.status = AIPredictionStatus.Incorrect;
                         }
-                    } else {
-                        prediction.status = AIPredictionStatus.Incorrect;
                     }
+                } else if (game.status.short === 'NS' && !prediction) {
+                    try {
+                        const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
+                        const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }], config: { responseMimeType: "application/json", responseSchema: schema } });
+                        const rawPredictionData = JSON.parse(response.text);
+
+                        if (rawPredictionData && rawPredictionData.market_analysis) {
+                            const marketAnalysis = rawPredictionData.market_analysis;
+                            const remappedAnalysis: Record<string, any> = {};
+                            for (const key in marketAnalysis) {
+                                const readableKey = keyMapping[key] || key;
+                                remappedAnalysis[readableKey] = marketAnalysis[key];
+                            }
+
+                            let mostLikelyKey = 'N/A';
+                            let maxProb = -1;
+                            for (const market in remappedAnalysis) {
+                                const { probability } = remappedAnalysis[market];
+                                const prob = parseFloat(probability);
+                                if (!isNaN(prob) && prob > maxProb) { maxProb = prob; mostLikelyKey = market; }
+                            }
+                            const mostLikelyOutcome = mostLikelyKey;
+
+                            prediction = {
+                                id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
+                                matchName: matchName, prediction: JSON.stringify({ market_analysis: remappedAnalysis, most_likely_outcome: mostLikelyOutcome }), status: AIPredictionStatus.Pending,
+                            };
+                        }
+                    } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }
                 }
-            } else if (game.status.short === 'NS' && !prediction) {
-                try {
-                    const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
-                    const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }], config: { responseMimeType: "application/json", responseSchema: schema } });
-                    const rawPredictionData = JSON.parse(response.text);
 
-                    if (rawPredictionData && rawPredictionData.market_analysis) {
-                        const marketAnalysis = rawPredictionData.market_analysis;
-                        const remappedAnalysis: Record<string, any> = {};
-                        for (const key in marketAnalysis) {
-                            const readableKey = keyMapping[key] || key;
-                            remappedAnalysis[readableKey] = marketAnalysis[key];
-                        }
-
-                        let mostLikelyKey = 'N/A';
-                        let maxProb = -1;
-                        for (const market in remappedAnalysis) {
-                            const { probability } = remappedAnalysis[market];
-                            const prob = parseFloat(probability);
-                            if (!isNaN(prob) && prob > maxProb) { maxProb = prob; mostLikelyKey = market; }
-                        }
-                        const mostLikelyOutcome = mostLikelyKey;
-
-                        prediction = {
-                            id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
-                            matchName: matchName, prediction: JSON.stringify({ market_analysis: remappedAnalysis, most_likely_outcome: mostLikelyOutcome }), status: AIPredictionStatus.Pending,
-                        };
-                    }
-                } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }
-            }
-
-            const d = new Date(game.timestamp * 1000);
-            const formattedDate = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
-            
-            allTimePredictionsMap.set(uniqueGameId, {
-                ...(game as any),
-                id: game.id,
-                sport: sport, 
-                eventName: game.league.name, 
-                teams: matchName,
-                date: formattedDate,
-                time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
-                status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
-                prediction: prediction,
-                score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : (existingPrediction?.score || undefined),
-                scores: (game.scores && game.scores.home !== null) ? game.scores : (existingPrediction?.scores || undefined),
-                winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : (existingPrediction?.winner || undefined),
+                const d = new Date(game.timestamp * 1000);
+                const formattedDate = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
+                
+                allTimePredictionsMap.set(uniqueGameId, {
+                    ...(game as any),
+                    id: game.id,
+                    sport: sport, 
+                    eventName: game.league.name, 
+                    teams: matchName,
+                    date: formattedDate,
+                    time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
+                    status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
+                    prediction: prediction,
+                    score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : (existingPrediction?.score || undefined),
+                    scores: (game.scores && game.scores.home !== null) ? game.scores : (existingPrediction?.scores || undefined),
+                    winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : (existingPrediction?.winner || undefined),
+                });
             });
-        });
-        await Promise.all(batchPromises);
+            await Promise.all(batchPromises);
+        }
     }
     
     const finalPredictions = Array.from(allTimePredictionsMap.values())
         .sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || b.timestamp - a.timestamp);
+        
+    const now = Date.now();
+    const cutoff = now - (48 * 60 * 60 * 1000); // 48 hours ago cutoff for keeping non-finished games
 
-    await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify(finalPredictions));
-    console.log(`[CRON] Successfully processed and stored ${finalPredictions.length} total predictions for ${sport}.`);
-    return finalPredictions;
+    const prunedPredictions = finalPredictions.filter(p => {
+        if (FINISHED_STATUSES.includes(p.status.short)) {
+            return true;
+        }
+        if (p.timestamp * 1000 >= cutoff) {
+            return true;
+        }
+        return false;
+    });
+
+    await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify(prunedPredictions));
+    console.log(`[CRON] Pruned ${finalPredictions.length - prunedPredictions.length} old games. Storing ${prunedPredictions.length} total predictions for ${sport}.`);
+    return prunedPredictions;
 }
 
 export async function runUpdateTask(env: Env) {

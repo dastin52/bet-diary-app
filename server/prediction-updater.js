@@ -293,13 +293,10 @@ async function processSport(sport) {
     }
     
     const centralPredictionsKey = `central_predictions:${sport}`;
+    const existingPredictions = cache.getPersistent(centralPredictionsKey) || [];
+    const existingPredictionsMap = new Map(existingPredictions.map(p => [p.id, p]));
 
-    if (games.length === 0) {
-        console.log(`[Updater] No new games found for ${sport} today. Keeping existing data.`);
-        return cache.getPersistent(centralPredictionsKey) || [];
-    }
-    
-    const todaysPredictions = games.map(game => {
+    games.forEach(game => {
         const homeTeam = game.teams.home.name;
         const awayTeam = game.teams.away.name;
         const matchName = `${homeTeam} vs ${awayTeam}`;
@@ -307,31 +304,38 @@ async function processSport(sport) {
         const d = new Date(game.timestamp * 1000);
         const formattedDate = `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
 
-        return {
+        existingPredictionsMap.set(game.id, {
             ...(game),
-            id: game.id, // Use original game ID
             sport: sport,
             eventName: game.league.name,
             teams: matchName,
             date: formattedDate,
             time: new Date(game.timestamp * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }),
             status: { ...game.status, emoji: getMatchStatusEmoji(game.status) },
-            prediction: null, // AI predictions can be added here in a more complex setup
+            prediction: existingPredictionsMap.get(game.id)?.prediction || null,
             score: (game.scores && game.scores.home !== null) ? `${game.scores.home} - ${game.scores.away}` : undefined,
-        }
+        });
     });
-    
-    const existingPredictions = cache.getPersistent(centralPredictionsKey) || [];
-    const todaysPredictionMap = new Map(todaysPredictions.map(p => [p.id, p]));
-    const historicalPredictions = existingPredictions.filter(p => !todaysPredictionMap.has(p.id));
-    
-    const finalPredictions = [...historicalPredictions, ...todaysPredictions]
+
+    const finalPredictions = Array.from(existingPredictionsMap.values())
         .sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || b.timestamp - a.timestamp);
+    
+    const now = Date.now();
+    const cutoff = now - (48 * 60 * 60 * 1000); // 48 hours ago cutoff
 
+    const prunedPredictions = finalPredictions.filter(p => {
+        if (FINISHED_STATUSES.includes(p.status.short)) {
+            return true;
+        }
+        if (p.timestamp * 1000 >= cutoff) {
+            return true;
+        }
+        return false;
+    });
 
-    cache.putPersistent(centralPredictionsKey, finalPredictions);
-    console.log(`[Updater] Successfully processed and stored ${finalPredictions.length} total predictions for ${sport}.`);
-    return finalPredictions;
+    cache.putPersistent(centralPredictionsKey, prunedPredictions);
+    console.log(`[Updater] Pruned ${finalPredictions.length - prunedPredictions.length} old games. Storing ${prunedPredictions.length} total predictions for ${sport}.`);
+    return prunedPredictions;
 }
 
 async function runUpdate() {
@@ -355,7 +359,7 @@ async function runUpdate() {
                     message: sportError.message,
                 });
             }
-            await delay(2000); // 2-second delay for local dev
+            await delay(10000);
         }
 
         const uniqueAllPredictions = Array.from(new Map(allSportPredictions.map(p => [`${p.sport.toLowerCase()}-${p.id}`, p])).values());
