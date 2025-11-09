@@ -177,28 +177,23 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
             if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
                 if (prediction && prediction.status === AIPredictionStatus.Pending) {
-                    // Step 1: ALWAYS record the match result if the game is finished.
                     const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
                     prediction.matchResult = { winner, scores: { home: game.scores.home, away: game.scores.away } };
-
-                    // Step 2: Try to resolve the status based on the value bet.
-                    let valueBetOutcome: string | null = null;
+                    
+                    let mostLikelyOutcome: string | null = null;
                     try { 
                         const data = JSON.parse(prediction.prediction); 
-                        valueBetOutcome = data?.value_bet_outcome || null; 
+                        mostLikelyOutcome = data?.most_likely_outcome || data?.recommended_outcome || null; 
                     } catch (e) { console.error(`Failed to parse prediction for ${matchName}`); }
 
-                    if (valueBetOutcome && valueBetOutcome !== 'Нет выгодной ставки') {
-                        const result = resolveMarketOutcome(valueBetOutcome, game.scores, winner);
-                        if (result === 'correct') {
+                    if (mostLikelyOutcome) {
+                         const result = resolveMarketOutcome(mostLikelyOutcome, game.scores, winner);
+                         if (result === 'correct') {
                             prediction.status = AIPredictionStatus.Correct;
                         } else {
-                            // It could be 'incorrect' or 'unknown', but in either case, the prediction is settled and wasn't correct.
                             prediction.status = AIPredictionStatus.Incorrect;
                         }
                     } else {
-                        // If there's no value bet, the prediction is settled. Mark as incorrect for status purposes.
-                        // The UI will still be able to evaluate the 'most_likely' outcome correctly using the stored matchResult.
                         prediction.status = AIPredictionStatus.Incorrect;
                     }
                 }
@@ -216,18 +211,6 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                             remappedAnalysis[readableKey] = marketAnalysis[key];
                         }
 
-                        let valueBetKey = 'Нет выгодной ставки';
-                        let maxValue = -Infinity;
-                        for (const market in remappedAnalysis) {
-                            const { probability, coefficient } = remappedAnalysis[market];
-                            const prob = parseFloat(probability); const coeff = parseFloat(coefficient);
-                            if (!isNaN(prob) && !isNaN(coeff) && coeff > 1) {
-                                const value = prob * coeff - 1;
-                                if (value > 0.05 && value > maxValue) { maxValue = value; valueBetKey = market; }
-                            }
-                        }
-                        const valueBetOutcome = valueBetKey;
-                        
                         let mostLikelyKey = 'N/A';
                         let maxProb = -1;
                         for (const market in remappedAnalysis) {
@@ -239,7 +222,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
 
                         prediction = {
                             id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
-                            matchName: matchName, prediction: JSON.stringify({ market_analysis: remappedAnalysis, value_bet_outcome: valueBetOutcome, most_likely_outcome: mostLikelyOutcome }), status: AIPredictionStatus.Pending,
+                            matchName: matchName, prediction: JSON.stringify({ market_analysis: remappedAnalysis, most_likely_outcome: mostLikelyOutcome }), status: AIPredictionStatus.Pending,
                         };
                     }
                 } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }

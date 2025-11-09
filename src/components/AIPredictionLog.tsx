@@ -9,6 +9,8 @@ import { SPORTS } from '../constants';
 import Modal from './ui/Modal';
 import { fetchAIPredictionAnalysis } from '../services/aiService';
 import { resolveMarketOutcome } from '../utils/predictionUtils';
+import { useGingerModel } from '../hooks/useGingerModel';
+import { useAdminData } from '../hooks/useAdminData';
 
 
 const SPORT_MAP: Record<string, string> = {
@@ -29,28 +31,27 @@ const getStatusInfo = (status: AIPredictionStatus): { label: string; color: stri
     }
 };
 
-const PredictionDetails: React.FC<{ prediction: string }> = ({ prediction }) => {
+const PredictionDetails: React.FC<{ prediction: string, confidence: number | null }> = ({ prediction, confidence }) => {
     try {
         const data = JSON.parse(prediction);
         // NEW STRUCTURE
         if (data.market_analysis) {
-            const { market_analysis, value_bet_outcome, most_likely_outcome } = data;
-            const valueBetInfo = market_analysis[value_bet_outcome];
+            const { market_analysis, most_likely_outcome } = data;
             const mostLikelyInfo = market_analysis[most_likely_outcome];
 
             return (
                 <div className="text-xs space-y-2">
-                     <p className="flex items-center gap-2" title="Value Bet: исход с наилучшим математическим ожиданием (вероятность * коэф. - 1)">
-                        <span className="font-bold text-violet-400">📈 Value:</span>
-                        <span className="font-medium text-white">{value_bet_outcome}</span>
-                        {valueBetInfo && <span className="text-gray-400">({(valueBetInfo.probability * 100).toFixed(0)}%)</span>}
-                        {valueBetInfo && <span className="text-amber-500 font-mono">@{valueBetInfo.coefficient.toFixed(2)}</span>}
-                    </p>
                      <p className="flex items-center gap-2" title="Most Likely: исход с самой высокой вероятностью по мнению AI">
-                        <span className="font-bold text-cyan-400">🎯 Likely:</span>
+                        <span className="font-bold text-cyan-400">🎯 AI-Прогноз:</span>
                         <span className="font-medium text-white">{most_likely_outcome}</span>
                         {mostLikelyInfo && <span className="text-gray-400">({(mostLikelyInfo.probability * 100).toFixed(0)}%)</span>}
                     </p>
+                    {confidence !== null && (
+                         <p className="flex items-center gap-2" title="Уверенность основана на ROI ваших прошлых ставок на похожих рынках.">
+                            <span className="font-bold text-fuchsia-400">👩‍🔬 Джинджер:</span>
+                             <span className="font-medium text-white">Уверенность {confidence.toFixed(0)}%</span>
+                        </p>
+                    )}
                     <details className="text-xs pt-1">
                         <summary className="cursor-pointer text-gray-500 hover:text-gray-300">Подробнее об исходах</summary>
                         <div className="mt-2 space-y-1 p-2 bg-gray-900/50 rounded-md max-h-40 overflow-y-auto">
@@ -106,6 +107,9 @@ type EnhancedAIPrediction = AIPrediction & { leagueName?: string };
 
 const AIPredictionLog: React.FC = () => {
     const { allPredictions: centralPredictions, isLoading, fetchAllPredictions } = usePredictionContext();
+    const { allBets } = useAdminData(); // Get all historical bets for Ginger
+    const { getConfidenceForPrediction } = useGingerModel(allBets);
+
     const [sportFilter, setSportFilter] = useState('all');
     const [leagueFilter, setLeagueFilter] = useState('all');
     const [outcomeFilter, setOutcomeFilter] = useState('all');
@@ -132,7 +136,6 @@ const AIPredictionLog: React.FC = () => {
             if (p.leagueName) leagues.add(p.leagueName);
             try {
                 const data = JSON.parse(p.prediction);
-                if (data.value_bet_outcome) outcomes.add(data.value_bet_outcome);
                 if (data.most_likely_outcome) outcomes.add(data.most_likely_outcome);
             } catch {}
         });
@@ -166,23 +169,18 @@ const AIPredictionLog: React.FC = () => {
         });
     }, [allEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
     
-    const { likelyStats, valueStats, detailedOutcomeStats } = useMemo(() => {
+    const { aiStats, detailedOutcomeStats } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending && p.matchResult);
         
-        const calculateStatsForType = (type: 'value' | 'likely') => {
+        const calculateStatsForType = () => {
              const resolvableSettled = settled.filter(p => {
                 try {
                     const data = JSON.parse(p.prediction);
                     if (!p.matchResult) return false;
                     
-                    let outcomeToCheck: string | undefined;
-                    if (data.market_analysis) {
-                        outcomeToCheck = type === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                    } else if (data.recommended_outcome) {
-                        outcomeToCheck = data.recommended_outcome;
-                    }
-
-                    if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A') return false;
+                    let outcomeToCheck: string | undefined = data.most_likely_outcome || data.recommended_outcome;
+                    if (!outcomeToCheck || outcomeToCheck === 'N/A') return false;
+                    
                     return resolveMarketOutcome(outcomeToCheck, p.matchResult.scores, p.matchResult.winner) !== 'unknown';
 
                 } catch { return false; }
@@ -192,13 +190,7 @@ const AIPredictionLog: React.FC = () => {
                 try {
                     const data = JSON.parse(p.prediction);
                     const matchResult = p.matchResult!;
-
-                    let outcomeToCheck: string | undefined;
-                    if (data.market_analysis) {
-                        outcomeToCheck = type === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-                    } else {
-                        outcomeToCheck = data.recommended_outcome;
-                    }
+                    let outcomeToCheck: string | undefined = data.most_likely_outcome || data.recommended_outcome;
                     
                     return resolveMarketOutcome(outcomeToCheck!, matchResult.scores, matchResult.winner) === 'correct';
                 } catch { return false; }
@@ -212,10 +204,9 @@ const AIPredictionLog: React.FC = () => {
             };
         }
         
-        const likelyStats = calculateStatsForType('likely');
-        const valueStats = calculateStatsForType('value');
+        const aiStats = calculateStatsForType();
         
-        // FIX: Add an explicit type for the accumulator in the reduce function to resolve type errors.
+        // FIX: Explicitly type the accumulator in the `reduce` function to resolve type inference errors.
         const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
@@ -227,19 +218,6 @@ const AIPredictionLog: React.FC = () => {
                             if (result !== 'unknown') {
                                 acc[market].total++;
                                 const coeff = data.market_analysis[market]?.coefficient;
-                                if (result === 'correct') {
-                                    acc[market].correct++;
-                                    if (typeof coeff === 'number') acc[market].correctCoefficients.push(coeff);
-                                }
-                            }
-                        }
-                    } else if (data.probabilities) {
-                        for (const market in data.probabilities) {
-                            if (!acc[market]) acc[market] = { correct: 0, total: 0, correctCoefficients: [] };
-                            const result = resolveMarketOutcome(market, p.matchResult.scores, p.matchResult.winner);
-                            if (result !== 'unknown') {
-                                acc[market].total++;
-                                const coeff = data.coefficients?.[market];
                                 if (result === 'correct') {
                                     acc[market].correct++;
                                     if (typeof coeff === 'number') acc[market].correctCoefficients.push(coeff);
@@ -260,12 +238,11 @@ const AIPredictionLog: React.FC = () => {
                 frequentCoefficient: calculateMode(data.correctCoefficients),
                 count: data.total,
             }))
-            .filter(item => item.count >= 3)
+            .filter(item => item.count >= 3 && item.market !== "Нет выгодной ставки" && item.market !== "N/A")
             .sort((a, b) => b.count - a.count);
 
         return {
-            likelyStats,
-            valueStats,
+            aiStats,
             detailedOutcomeStats,
         };
 
@@ -276,8 +253,7 @@ const AIPredictionLog: React.FC = () => {
         setIsAnalysisLoading(true);
 
         const analyticsString = `
-        Общая точность (Most Likely): ${likelyStats.accuracy.toFixed(1)}% (${likelyStats.correct}/${likelyStats.total})
-        Общая точность (Value Bet): ${valueStats.accuracy.toFixed(1)}% (${valueStats.correct}/${valueStats.total})
+        Общая точность (AI-Прогноз): ${aiStats.accuracy.toFixed(1)}% (${aiStats.correct}/${aiStats.total})
         Детальная статистика по всем исходам: ${detailedOutcomeStats.map(s => `${s.market}: ${s.accuracy.toFixed(1)}% (${s.count})`).join(', ')}
         `;
 
@@ -290,33 +266,23 @@ const AIPredictionLog: React.FC = () => {
             setIsAnalysisLoading(false);
         }
 
-    }, [likelyStats, valueStats, detailedOutcomeStats]);
+    }, [aiStats, detailedOutcomeStats]);
 
-    const getDynamicStatus = useCallback((prediction: EnhancedAIPrediction, type: 'value' | 'likely'): AIPredictionStatus | 'not_applicable' => {
+    const getDynamicStatus = useCallback((prediction: EnhancedAIPrediction): AIPredictionStatus => {
         if (prediction.status === AIPredictionStatus.Pending || !prediction.matchResult) {
             return AIPredictionStatus.Pending;
         }
         try {
             const data = JSON.parse(prediction.prediction);
-            let outcomeToCheck: string | undefined;
+            let outcomeToCheck: string | undefined = data.most_likely_outcome || data.recommended_outcome;
 
-            if (data.market_analysis) {
-                outcomeToCheck = type === 'value' ? data.value_bet_outcome : data.most_likely_outcome;
-            } else if (data.recommended_outcome) {
-                 // For old format, both value and likely are the same
-                outcomeToCheck = data.recommended_outcome;
-            }
-
-            if (!outcomeToCheck || outcomeToCheck === 'Нет выгодной ставки' || outcomeToCheck === 'N/A') {
-                if (type === 'value') {
-                    return 'not_applicable';
-                }
+            if (!outcomeToCheck || outcomeToCheck === 'N/A') {
                 return AIPredictionStatus.Incorrect;
             }
 
             const result = resolveMarketOutcome(outcomeToCheck, prediction.matchResult.scores, prediction.matchResult.winner);
             
-            if (result === 'unknown') return AIPredictionStatus.Incorrect; // Treat unresolvable as incorrect for a clean UI
+            if (result === 'unknown') return AIPredictionStatus.Incorrect;
             
             return result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
 
@@ -345,8 +311,7 @@ const AIPredictionLog: React.FC = () => {
             <Card>
                  <h3 className="text-lg font-semibold mb-4">Общая Статистика</h3>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <KpiCard title="Точность (Most Likely)" value={`${likelyStats.accuracy.toFixed(1)}%`} subtext={`${likelyStats.correct} / ${likelyStats.total} ставок`} colorClass={likelyStats.accuracy >= 50 ? "text-green-400" : "text-amber-400"}/>
-                    <KpiCard title="Точность (Value Bet)" value={`${valueStats.accuracy.toFixed(1)}%`} subtext={`${valueStats.correct} / ${valueStats.total} ставок`} colorClass={valueStats.accuracy >= 50 ? "text-green-400" : "text-amber-400"}/>
+                    <KpiCard title="Точность AI" value={`${aiStats.accuracy.toFixed(1)}%`} subtext={`${aiStats.correct} / ${aiStats.total} ставок`} colorClass={aiStats.accuracy >= 50 ? "text-green-400" : "text-amber-400"}/>
                     <KpiCard title="Всего прогнозов" value={String(allEnhancedPredictions.length)} subtext="В базе данных"/>
                     <KpiCard title="Оценено" value={String(filteredPredictions.filter(p => p.status !== 'pending').length)} subtext="С известным результатом"/>
                  </div>
@@ -406,14 +371,13 @@ const AIPredictionLog: React.FC = () => {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Матч</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Прогноз AI</th>
                                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Результат</th>
-                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Статус (Value)</th>
-                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Статус (Likely)</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Статус AI</th>
                             </tr>
                          </thead>
                          <tbody className="bg-gray-900 divide-y divide-gray-700">
                             {filteredPredictions.map(p => {
-                                const valueStatus = getDynamicStatus(p, 'value');
-                                const likelyStatus = getDynamicStatus(p, 'likely') as AIPredictionStatus;
+                                const confidence = getConfidenceForPrediction(p);
+                                const status = getDynamicStatus(p);
                                 return (
                                 <tr key={p.id}>
                                     <td className="px-4 py-3 text-sm">
@@ -421,23 +385,14 @@ const AIPredictionLog: React.FC = () => {
                                         <p className="text-xs text-gray-500">{p.leagueName} | {new Date(p.createdAt).toLocaleDateString('ru-RU')}</p>
                                     </td>
                                     <td className="px-4 py-3 text-sm">
-                                        <PredictionDetails prediction={p.prediction} />
+                                        <PredictionDetails prediction={p.prediction} confidence={confidence} />
                                     </td>
                                      <td className="px-4 py-3 text-sm text-center font-mono">
                                         {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
                                     </td>
                                     <td className="px-4 py-3 text-sm text-center">
-                                        {valueStatus === 'not_applicable' ? (
-                                            <span className="text-gray-500">-</span>
-                                        ) : (
-                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(valueStatus).color}`}>
-                                                {getStatusInfo(valueStatus).label}
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-center">
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(likelyStatus).color}`}>
-                                            {getStatusInfo(likelyStatus).label}
+                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(status).color}`}>
+                                            {getStatusInfo(status).label}
                                         </span>
                                     </td>
                                 </tr>
