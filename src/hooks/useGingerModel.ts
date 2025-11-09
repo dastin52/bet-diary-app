@@ -1,5 +1,6 @@
 import { useMemo, useCallback, useState } from 'react';
-import { Bet, BetStatus, AIPrediction } from '../types';
+import { Bet, BetStatus, AIPrediction, AIPredictionStatus } from '../types';
+import { resolveMarketOutcome } from '../utils/predictionUtils';
 
 interface LearnedPattern {
     key: string;
@@ -25,29 +26,55 @@ const scaleRoiToConfidence = (roi: number): number => {
 };
 
 
-export const useGingerModel = (allBets: Bet[]) => {
+export const useGingerModel = (allPredictions: AIPrediction[]) => {
     const [retrainCounter, setRetrainCounter] = useState(0);
 
     const learnedPatterns = useMemo(() => {
-        console.log(`[Ginger] Retraining model... (Trigger: ${retrainCounter})`);
-        const settledBets = allBets.filter(b => b.status !== BetStatus.Pending && b.status !== BetStatus.Void);
+        console.log(`[Ginger] Retraining model on AI predictions... (Trigger: ${retrainCounter})`);
+        
+        // Use predictions with known outcomes
+        const settledPredictions = allPredictions.filter(p => p.status !== AIPredictionStatus.Pending && p.matchResult);
         
         const patternStats: Record<string, { staked: number, profit: number, count: number }> = {};
 
-        settledBets.forEach(bet => {
-            bet.legs.forEach(leg => {
-                const key = `${bet.sport}#${leg.market}`;
-                if (!patternStats[key]) {
-                    patternStats[key] = { staked: 0, profit: 0, count: 0 };
-                }
-                // For parlays, we distribute the stake and profit across legs to evaluate market performance
-                const effectiveStake = bet.stake / bet.legs.length;
-                const effectiveProfit = (bet.profit || 0) / bet.legs.length;
+        settledPredictions.forEach(prediction => {
+            try {
+                const data = JSON.parse(prediction.prediction);
+                const marketAnalysis = data.market_analysis;
                 
-                patternStats[key].staked += effectiveStake;
-                patternStats[key].profit += effectiveProfit;
-                patternStats[key].count += 1;
-            });
+                if (!marketAnalysis || !prediction.matchResult) return;
+
+                for (const market in marketAnalysis) {
+                    const marketData = marketAnalysis[market];
+                    const key = `${prediction.sport}#${market}`;
+
+                    if (!patternStats[key]) {
+                        patternStats[key] = { staked: 0, profit: 0, count: 0 };
+                    }
+                    
+                    const stake = 1; // Assume a flat 1-unit stake for analysis
+                    let profit = 0;
+                    
+                    // Resolve outcome for this specific market
+                    const result = resolveMarketOutcome(market, prediction.matchResult.scores, prediction.matchResult.winner);
+
+                    if (result === 'correct') {
+                        const coefficient = marketData.coefficient || 1.0;
+                        profit = stake * (coefficient - 1);
+                    } else if (result === 'incorrect') {
+                        profit = -stake;
+                    }
+
+                    // Only count markets that were resolved
+                    if (result !== 'unknown') {
+                        patternStats[key].staked += stake;
+                        patternStats[key].profit += profit;
+                        patternStats[key].count += 1;
+                    }
+                }
+            } catch (e) {
+                // Ignore predictions with invalid JSON
+            }
         });
         
         const patterns: LearnedPattern[] = Object.entries(patternStats).map(([key, stats]) => {
@@ -63,7 +90,7 @@ export const useGingerModel = (allBets: Bet[]) => {
 
         return patterns;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [allBets, retrainCounter]);
+    }, [allPredictions, retrainCounter]);
 
     const patternMap = useMemo(() => {
         return new Map(learnedPatterns.map(p => [p.key, p]));

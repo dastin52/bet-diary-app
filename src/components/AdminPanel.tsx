@@ -14,7 +14,7 @@ import DiagnosticsPanel from './DiagnosticsPanel';
 type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics' | 'diagnostics';
 
 const AdminPanel: React.FC = () => {
-  const { users, allBets, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
+  const { users, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
   const [activeTab, setActiveTab] = useState<AdminView>('stats');
   const [diagnosticsRefreshKey, setDiagnosticsRefreshKey] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -179,7 +179,7 @@ const AdminPanel: React.FC = () => {
                 </Card>
               );
           case 'ml_model':
-              return <GingerMLPanel allBets={allBets} />;
+              return <GingerMLPanel />;
           case 'team_analytics':
               return <TeamAnalyticsPanel teamStats={analytics.teamAnalytics} />;
           case 'diagnostics':
