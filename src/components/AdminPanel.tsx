@@ -5,14 +5,41 @@ import KpiCard from './ui/KpiCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
 import { BarChartTooltip } from './charts/ChartTooltip';
 import Button from './ui/Button';
-import GingerMLPanel from './GingerMLPanel';
+import GingerMLPanel from './MLModelPanel';
 import TeamAnalyticsPanel from './TeamAnalyticsPanel';
+import ActivityTimeline from './ActivityTimeline';
+import RequestsChart from './RequestsChart';
+import DiagnosticsPanel from './DiagnosticsPanel';
 
-type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics';
+type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics' | 'diagnostics';
 
 const AdminPanel: React.FC = () => {
-  const { users, allBets, analytics, isLoading, updateUserStatus } = useAdminData();
+  const { users, allBets, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
   const [activeTab, setActiveTab] = useState<AdminView>('stats');
+  const [diagnosticsRefreshKey, setDiagnosticsRefreshKey] = useState(0);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<{ type: 'info' | 'success' | 'error', text: string } | null>(null);
+
+  const handleForceUpdate = async () => {
+    setIsUpdating(true);
+    setUpdateMessage({ type: 'info', text: 'Запускаю обновление прогнозов вручную...' });
+    try {
+        const response = await fetch('/api/tasks/run-update', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Произошла неизвестная ошибка');
+        }
+        setUpdateMessage({ type: 'success', text: data.message });
+        // Trigger a refresh of diagnostics data after the update
+        setTimeout(() => setDiagnosticsRefreshKey(k => k + 1), 1000);
+    } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setUpdateMessage({ type: 'error', text: `Ошибка обновления: ${message}` });
+    } finally {
+        setIsUpdating(false);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -45,6 +72,11 @@ const AdminPanel: React.FC = () => {
                         <KpiCard title="Общая прибыль платформы" value={`${analytics.totalProfit.toFixed(2)} ₽`} colorClass={profitColor} />
                         <KpiCard title="ROI платформы" value={`${analytics.platformRoi.toFixed(2)}%`} colorClass={roiColor} />
                     </div>
+
+                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <RequestsChart activityLog={activityLog} />
+                        <ActivityTimeline activityLog={activityLog} />
+                     </div>
 
                     <Card>
                         <h3 className="text-lg font-semibold mb-4">Прибыль по видам спорта (Все пользователи)</h3>
@@ -150,6 +182,8 @@ const AdminPanel: React.FC = () => {
               return <GingerMLPanel allBets={allBets} />;
           case 'team_analytics':
               return <TeamAnalyticsPanel teamStats={analytics.teamAnalytics} />;
+          case 'diagnostics':
+              return <DiagnosticsPanel refreshKey={diagnosticsRefreshKey} onForceUpdate={handleForceUpdate} isUpdating={isUpdating} updateMessage={updateMessage} />;
       }
   }
 
@@ -160,6 +194,7 @@ const AdminPanel: React.FC = () => {
             <Button variant={activeTab === 'users' ? 'primary' : 'secondary'} onClick={() => setActiveTab('users')}>Управление пользователями</Button>
             <Button variant={activeTab === 'ml_model' ? 'primary' : 'secondary'} onClick={() => setActiveTab('ml_model')}>Джинджер (ML)</Button>
             <Button variant={activeTab === 'team_analytics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('team_analytics')}>Аналитика команд</Button>
+            <Button variant={activeTab === 'diagnostics' ? 'primary' : 'secondary'} onClick={() => { setActiveTab('diagnostics'); setDiagnosticsRefreshKey(k => k + 1); }}>Диагностика</Button>
         </div>
         <div>
             {renderContent()}

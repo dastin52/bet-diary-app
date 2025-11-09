@@ -206,7 +206,7 @@ const AIPredictionLog: React.FC = () => {
         
         const aiStats = calculateStatsForType();
         
-        // FIX: Explicitly type the accumulator in the `reduce` function to resolve type inference errors.
+        // @google/genai-fix: Explicitly type the accumulator in the `reduce` function to resolve type inference errors.
         const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);
