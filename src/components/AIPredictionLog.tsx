@@ -10,7 +10,7 @@ import Modal from './ui/Modal';
 import { fetchAIPredictionAnalysis } from '../services/aiService';
 import { resolveMarketOutcome } from '../utils/predictionUtils';
 import { useGingerModel } from '../hooks/useGingerModel';
-import { useAdminData } from '../hooks/useAdminData';
+import { useBetContext } from '../contexts/BetContext';
 
 
 const SPORT_MAP: Record<string, string> = {
@@ -107,8 +107,8 @@ type EnhancedAIPrediction = AIPrediction & { leagueName?: string };
 
 const AIPredictionLog: React.FC = () => {
     const { allPredictions: centralPredictions, isLoading, fetchAllPredictions } = usePredictionContext();
-    const { allBets } = useAdminData(); // Get all historical bets for Ginger
-    const { getConfidenceForPrediction } = useGingerModel(allBets);
+    const { bets } = useBetContext(); // Use current user's bets for Ginger
+    const { getConfidenceForPrediction } = useGingerModel(bets);
 
     const [sportFilter, setSportFilter] = useState('all');
     const [leagueFilter, setLeagueFilter] = useState('all');
@@ -206,7 +206,7 @@ const AIPredictionLog: React.FC = () => {
         
         const aiStats = calculateStatsForType();
         
-        // @google/genai-fix: Explicitly type the accumulator in the `reduce` function to resolve type inference errors.
+        // @google/genai-fix: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where `acc[market]` was inferred as `unknown`.
         const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);

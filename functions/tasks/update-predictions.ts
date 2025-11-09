@@ -19,6 +19,9 @@ type PagesFunction<E = unknown> = (
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const BATCH_SIZE = 15;
 
+// Add a delay function to stagger API calls
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 
 const getStatusPriority = (statusShort: string): number => {
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
@@ -262,28 +265,36 @@ export async function runUpdateTask(env: Env) {
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
 
     try {
-        const hour = new Date().getUTCHours();
-        const sportToProcess = SPORTS_TO_PROCESS[hour % SPORTS_TO_PROCESS.length];
+        const allSportPredictions: SharedPrediction[] = [];
+
+        // Process all sports sequentially with a delay to stagger load
+        for (const sport of SPORTS_TO_PROCESS) {
+            console.log(`[Updater Task] Processing sport: ${sport}`);
+            try {
+                const sportPredictions = await processSport(sport, env);
+                if (sportPredictions && sportPredictions.length > 0) {
+                     allSportPredictions.push(...sportPredictions);
+                }
+            } catch (sportError) {
+                console.error(`[Updater Task] Failed to process sport ${sport}, continuing to next. Error:`, sportError);
+                await env.BOT_STATE.put('last_run_error', JSON.stringify({
+                    timestamp: new Date().toISOString(),
+                    sport: sport,
+                    message: sportError instanceof Error ? sportError.message : String(sportError),
+                    stack: sportError instanceof Error ? sportError.stack : undefined,
+                }));
+            }
+            // Add a delay to stagger the API calls for the next sport
+            await delay(10000); // 10-second delay
+        }
         
-        console.log(`[Updater Task] Current hour is ${hour}, processing sport: ${sportToProcess}`);
-
-        const sportPredictions = await processSport(sportToProcess, env);
-
-        const allPredictionsRaw = await env.BOT_STATE.get('central_predictions:all', { type: 'json' }) as SharedPrediction[] | null;
-        const allPredictions = allPredictionsRaw || [];
-
-        const otherSportsPredictions = allPredictions.filter(p => p.sport.toLowerCase() !== sportToProcess.toLowerCase());
-        const combinedPredictions = [...otherSportsPredictions, ...sportPredictions];
-        
-        // FIX: Use .toLowerCase() on the sport name to create a consistent key, preventing duplicates.
-        const uniqueAllPredictions = Array.from(new Map(combinedPredictions.map(p => [`${p.sport.toLowerCase()}-${p.id}`, p])).values());
+        const uniqueAllPredictions = Array.from(new Map(allSportPredictions.map(p => [`${p.sport.toLowerCase()}-${p.id}`, p])).values());
 
         await env.BOT_STATE.put('central_predictions:all', JSON.stringify(uniqueAllPredictions));
-        console.log(`[Updater Task] Updated '${sportToProcess}'. Total unique predictions now: ${uniqueAllPredictions.length}`);
+        console.log(`[Updater Task] Completed all sports. Total unique predictions now: ${uniqueAllPredictions.length}`);
         
         await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
-        await env.BOT_STATE.delete('last_run_error');
-        console.log('[Updater Task] Successfully recorded run timestamp.');
+        console.log('[Updater Task] Successfully recorded run timestamp for the full cycle.');
 
     } catch (error) {
         console.error(`[Updater Task] A critical error occurred during the update task:`, error);
@@ -292,7 +303,7 @@ export async function runUpdateTask(env: Env) {
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
         }));
-        throw error;
+        throw error; // Re-throw to indicate failure to the runtime.
     }
 }
 

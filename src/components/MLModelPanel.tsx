@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Bet } from '../types';
 import Card from './ui/Card';
 import Button from './ui/Button';
@@ -10,6 +10,34 @@ interface GingerMLPanelProps {
 
 const GingerMLPanel: React.FC<GingerMLPanelProps> = ({ allBets }) => {
     const { learnedPatterns, retrain } = useGingerModel(allBets);
+    const [isTraining, setIsTraining] = useState(false);
+    const [progress, setProgress] = useState(0);
+
+    const handleRetrain = () => {
+        if (isTraining) return;
+
+        setIsTraining(true);
+        setProgress(0);
+
+        const interval = setInterval(() => {
+            setProgress(prev => {
+                if (prev >= 100) {
+                    clearInterval(interval);
+                    return 100;
+                }
+                return prev + 10;
+            });
+        }, 200);
+
+        setTimeout(() => {
+            clearInterval(interval);
+            retrain();
+            setProgress(100);
+            setTimeout(() => {
+                setIsTraining(false);
+            }, 500);
+        }, 2000);
+    };
 
     const topPatterns = learnedPatterns
         .filter(p => p.count >= 3) // Show only patterns with enough data
@@ -32,7 +60,16 @@ const GingerMLPanel: React.FC<GingerMLPanelProps> = ({ allBets }) => {
                            Джинджер — это самообучающаяся модель, которая анализирует вашу историю ставок, чтобы найти самые прибыльные и убыточные паттерны. Она помогает оценить каждый прогноз AI с точки зрения вашей личной эффективности.
                         </p>
                     </div>
-                     <Button onClick={retrain} variant="secondary">Переобучить модель</Button>
+                     <div className="flex flex-col items-center">
+                        <Button onClick={handleRetrain} variant="secondary" disabled={isTraining}>
+                            {isTraining ? 'Обучение...' : 'Переобучить модель'}
+                        </Button>
+                        {isTraining && (
+                            <div className="w-full bg-gray-700 rounded-full h-2.5 mt-2">
+                                <div className="bg-fuchsia-500 h-2.5 rounded-full transition-all duration-200" style={{ width: `${progress}%` }}></div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </Card>
             
