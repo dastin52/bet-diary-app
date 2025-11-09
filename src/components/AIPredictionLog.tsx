@@ -205,7 +205,7 @@ const AIPredictionLog: React.FC = () => {
         
         const aiStats = calculateStatsForType();
         
-        // FIX: Add explicit generic type to the reduce function to ensure correct type inference for the accumulator. This resolves errors where properties were inferred as 'unknown'.
+        // @google/genai-fix: Add explicit generic type to the reduce accumulator to fix type inference issues.
         const statsByAllOutcomes = settled.reduce<Record<string, { correct: number, total: number, correctCoefficients: number[] }>>((acc, p) => {
             try {
                 const data = JSON.parse(p.prediction);

@@ -86,11 +86,11 @@ async function _fetchGamesForDate(sport: string, queryDate: string, env: Env): P
                     time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
                     timestamp: item.fixture.timestamp,
                     timezone: item.fixture.timezone,
-                    status: { long: item.fixture.status.long, short: item.fixture.status.short },
+                    status: { long: item.fixture.status?.long, short: item.fixture.status?.short },
                     league: item.league,
                     teams: item.teams,
-                    scores: item.score.fulltime,
-                    winner: FINISHED_STATUSES.includes(item.fixture.status.short)
+                    scores: item.score?.fulltime,
+                    winner: FINISHED_STATUSES.includes(item.fixture.status?.short)
                         ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw'))
                         : undefined,
                 };
@@ -110,26 +110,9 @@ async function _fetchGamesForDate(sport: string, queryDate: string, env: Env): P
                 if (!scoresObj) {
                     return { home: null, away: null };
                 }
-            
-                let homeScore: any = null;
-                let awayScore: any = null;
-            
-                // Case for nested objects (e.g., basketball { home: { total: 95 } })
-                if (scoresObj.home && typeof scoresObj.home === 'object') {
-                    homeScore = scoresObj.home.total; // will be undefined if no total, which is fine
-                } 
-                // Case for direct numbers
-                else if (typeof scoresObj.home === 'number') {
-                    homeScore = scoresObj.home;
-                }
-            
-                if (scoresObj.away && typeof scoresObj.away === 'object') {
-                    awayScore = scoresObj.away.total;
-                } else if (typeof scoresObj.away === 'number') {
-                    awayScore = scoresObj.away;
-                }
+                const homeScore = scoresObj.home?.total ?? scoresObj.home ?? null;
+                const awayScore = scoresObj.away?.total ?? scoresObj.away ?? null;
                 
-                // Final check to ensure we only return numbers or null
                 return { 
                     home: typeof homeScore === 'number' ? homeScore : null,
                     away: typeof awayScore === 'number' ? awayScore : null,
@@ -144,7 +127,7 @@ async function _fetchGamesForDate(sport: string, queryDate: string, env: Env): P
                 time: item.time,
                 timestamp: item.timestamp,
                 timezone: item.timezone,
-                status: { long: item.status.long, short: item.status.short },
+                status: { long: item.status?.long, short: item.status?.short },
                 league: item.league,
                 teams: item.teams,
                 scores: finalScores,

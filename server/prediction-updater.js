@@ -140,22 +140,8 @@ const getScores = (scoresObj) => {
     if (!scoresObj) {
         return { home: null, away: null };
     }
-
-    let homeScore = null;
-    let awayScore = null;
-
-    if (scoresObj.home && typeof scoresObj.home === 'object') {
-        homeScore = scoresObj.home.total;
-    } 
-    else if (typeof scoresObj.home === 'number') {
-        homeScore = scoresObj.home;
-    }
-
-    if (scoresObj.away && typeof scoresObj.away === 'object') {
-        awayScore = scoresObj.away.total;
-    } else if (typeof scoresObj.away === 'number') {
-        awayScore = scoresObj.away;
-    }
+    const homeScore = scoresObj.home?.total ?? scoresObj.home ?? null;
+    const awayScore = scoresObj.away?.total ?? scoresObj.away ?? null;
     
     return { 
         home: typeof homeScore === 'number' ? homeScore : null,
@@ -199,9 +185,9 @@ async function _fetchGamesForDate(sport, queryDate) {
                     id: item.fixture.id, date: item.fixture.date.split('T')[0],
                     time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
                     timestamp: item.fixture.timestamp, timezone: item.fixture.timezone,
-                    status: { long: item.fixture.status.long, short: item.fixture.status.short },
-                    league: item.league, teams: item.teams, scores: item.score.fulltime,
-                    winner: FINISHED_STATUSES.includes(item.fixture.status.short)
+                    status: { long: item.fixture.status?.long, short: item.fixture.status?.short },
+                    league: item.league, teams: item.teams, scores: item.score?.fulltime,
+                    winner: FINISHED_STATUSES.includes(item.fixture.status?.short)
                         ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw'))
                         : undefined,
                 };
@@ -225,7 +211,7 @@ async function _fetchGamesForDate(sport, queryDate) {
                 time: item.time,
                 timestamp: item.timestamp,
                 timezone: item.timezone,
-                status: { long: item.status.long, short: item.status.short },
+                status: { long: item.status?.long, short: item.status?.short },
                 league: item.league,
                 teams: item.teams,
                 scores: finalScores,
