@@ -78,64 +78,73 @@ async function _fetchGamesForDate(sport: string, queryDate: string, env: Env): P
         
         await logApiActivity(env, { sport, endpoint: url, status: 'success' });
         
-        const games: SportGame[] = data.response.map((item: any): SportGame => {
-            if (sport === 'football') {
+        const games: SportGame[] = data.response.map((item: any): SportGame | null => {
+            try {
+                if (sport === 'football') {
+                    if (!item?.fixture?.id || !item?.teams?.home || !item?.teams?.away || !item?.league) {
+                        console.warn(`[API PARSE] Skipping malformed football fixture:`, item);
+                        return null;
+                    }
+                    return {
+                        id: item.fixture.id,
+                        date: item.fixture.date?.split('T')[0],
+                        time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                        timestamp: item.fixture.timestamp,
+                        timezone: item.fixture.timezone,
+                        status: { long: item.fixture.status?.long, short: item.fixture.status?.short },
+                        league: item.league,
+                        teams: item.teams,
+                        scores: item.score?.fulltime,
+                        winner: FINISHED_STATUSES.includes(item.fixture.status?.short)
+                            ? (item.teams.home?.winner ? 'home' : (item.teams.away?.winner ? 'away' : 'draw'))
+                            : undefined,
+                    };
+                }
+                
+                if (!item?.id || !item?.teams?.home || !item?.teams?.away || !item?.league) {
+                    console.warn(`[API PARSE] Skipping malformed game for ${sport}:`, item);
+                    return null;
+                }
+
+                let gameDateStr = item.date;
+                if (sport === 'nba' && item.date && typeof item.date === 'object' && item.date.start) {
+                    gameDateStr = item.date.start;
+                }
+                if (typeof gameDateStr !== 'string') {
+                    gameDateStr = new Date().toISOString();
+                }
+
+                const getScores = (scoresObj: any): { home: number | null, away: number | null } => {
+                    if (!scoresObj) return { home: null, away: null };
+                    const homeScore = scoresObj.home?.total ?? scoresObj.home ?? null;
+                    const awayScore = scoresObj.away?.total ?? scoresObj.away ?? null;
+                    return {
+                        home: typeof homeScore === 'number' ? homeScore : null,
+                        away: typeof awayScore === 'number' ? awayScore : null,
+                    };
+                };
+
+                const finalScores = getScores(item.scores);
+                
                 return {
-                    id: item.fixture.id,
-                    date: item.fixture.date.split('T')[0],
-                    time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                    timestamp: item.fixture.timestamp,
-                    timezone: item.fixture.timezone,
-                    status: { long: item.fixture.status?.long, short: item.fixture.status?.short },
+                    id: item.id,
+                    date: gameDateStr.split('T')[0],
+                    time: item.time,
+                    timestamp: item.timestamp,
+                    timezone: item.timezone,
+                    status: { long: item.status?.long, short: item.status?.short },
                     league: item.league,
                     teams: item.teams,
-                    scores: item.score?.fulltime,
-                    winner: FINISHED_STATUSES.includes(item.fixture.status?.short)
-                        ? (item.teams.home?.winner ? 'home' : (item.teams.away?.winner ? 'away' : 'draw'))
+                    scores: finalScores,
+                    winner: (finalScores.home !== null && finalScores.away !== null)
+                        ? (finalScores.home > finalScores.away ? 'home' : (finalScores.away > finalScores.home ? 'away' : 'draw'))
                         : undefined,
                 };
+            } catch (e) {
+                console.error(`[API PARSE] Error processing game item for ${sport}:`, e, item);
+                return null;
             }
-            // For hockey, basketball, and nba
-            let gameDateStr = item.date;
-            if (sport === 'nba' && item.date && typeof item.date === 'object' && item.date.start) {
-                gameDateStr = item.date.start;
-            }
-
-            if (typeof gameDateStr !== 'string') {
-                console.warn(`Unexpected date format for game ID ${item.id} in sport ${sport}:`, item.date);
-                gameDateStr = new Date().toISOString();
-            }
-
-            const getScores = (scoresObj: any): { home: number | null, away: number | null } => {
-                if (!scoresObj) {
-                    return { home: null, away: null };
-                }
-                const homeScore = scoresObj.home?.total ?? scoresObj.home ?? null;
-                const awayScore = scoresObj.away?.total ?? scoresObj.away ?? null;
-                
-                return { 
-                    home: typeof homeScore === 'number' ? homeScore : null,
-                    away: typeof awayScore === 'number' ? awayScore : null,
-                };
-            };
-
-            const finalScores = getScores(item.scores);
-            
-            return {
-                id: item.id,
-                date: gameDateStr.split('T')[0],
-                time: item.time,
-                timestamp: item.timestamp,
-                timezone: item.timezone,
-                status: { long: item.status?.long, short: item.status?.short },
-                league: item.league,
-                teams: item.teams,
-                scores: finalScores,
-                winner: (finalScores.home !== null && finalScores.away !== null)
-                    ? (finalScores.home > finalScores.away ? 'home' : (finalScores.away > finalScores.home ? 'away' : 'draw'))
-                    : undefined,
-            };
-        });
+        }).filter((g): g is SportGame => g !== null);
 
         await env.BOT_STATE.put(cacheKey, JSON.stringify(games), { expirationTtl: CACHE_TTL_SECONDS });
         console.log(`[API SUCCESS] Fetched ${games.length} games for ${sport} on date ${queryDate}.`);

@@ -45,8 +45,8 @@ const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-
 const getStatusPriority = (statusShort) => {
+    if (!statusShort) return 3;
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
     if (live.includes(statusShort)) return 1;
     if (['NS', 'TBD'].includes(statusShort)) return 2;
@@ -54,7 +54,7 @@ const getStatusPriority = (statusShort) => {
 };
 
 const getMatchStatusEmoji = (status) => {
-    if (!status) return '⏳';
+    if (!status || !status.short) return '⏳';
     switch (status.short) {
         case '1H': case 'HT': case '2H': case 'ET': case 'BT': case 'P': case 'LIVE': case 'INTR': return '🔴';
         case 'FT': case 'AET': case 'PEN': case 'Finished': return '🏁';
@@ -63,188 +63,81 @@ const getMatchStatusEmoji = (status) => {
 };
 
 // --- MOCK & API SERVICES ---
-function generateMockGames(sport) {
-    console.log(`[MOCK] Generating mock games for ${sport}`);
-    const today = new Date().toISOString().split('T')[0];
-    const baseTimestamp = Math.floor(new Date(`${today}T18:00:00Z`).getTime() / 1000);
-
-    const mocks = {
-        football: [
-            { id: 1001, fixture: { id: 1001, date: `${today}T19:00:00Z`, timestamp: baseTimestamp + 3600, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' } }, league: { id: 39, name: 'Premier League', country: 'England', logo: '', season: 2023 }, teams: { home: { id: 40, name: 'Manchester City', winner: null }, away: { id: 42, name: 'Liverpool', winner: null } }, score: { fulltime: { home: null, away: null } } },
-            { id: 1002, fixture: { id: 1002, date: `${today}T16:00:00Z`, timestamp: baseTimestamp - 7200, timezone: 'UTC', status: { long: 'Match Finished', short: 'FT' } }, league: { id: 140, name: 'La Liga', country: 'Spain', logo: '', season: 2023 }, teams: { home: { id: 529, name: 'Real Madrid', winner: true }, away: { id: 530, name: 'Barcelona', winner: false } }, score: { fulltime: { home: 2, away: 1 } } },
-        ],
-        hockey: [
-            { id: 2001, date: `${today}T18:30:00Z`, time: '18:30', timestamp: baseTimestamp + 1800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 23, name: 'KHL', country: 'Russia', logo: '', season: 2023 }, teams: { home: { id: 198, name: 'CSKA Moscow' }, away: { id: 199, name: 'SKA St. Petersburg' } }, scores: { home: null, away: null } },
-        ],
-        basketball: [
-            { id: 3001, date: `${today}T20:00:00Z`, time: '20:00', timestamp: baseTimestamp + 7200, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 106, name: 'VTB United League', country: 'Russia', logo: '', season: 2023 }, teams: { home: { id: 204, name: 'Anadolu Efes' }, away: { id: 205, name: 'Real Madrid' } }, scores: { home: { total: 85 }, away: { total: 82 } } },
-        ],
-        nba: [
-             { id: 4001, date: `${today}T21:00:00Z`, time: '21:00', timestamp: baseTimestamp + 10800, timezone: 'UTC', status: { long: 'Not Started', short: 'NS' }, league: { id: 12, name: 'NBA', country: 'USA', logo: '', season: 2023 }, teams: { home: { id: 15, name: 'Los Angeles Lakers' }, away: { id: 16, name: 'Los Angeles Clippers' } }, scores: { home: null, away: null } },
-        ]
-    };
-
-    return (mocks[sport] || []).map(item => {
-        const getScores = (scoresObj) => {
-            if (!scoresObj) return { home: null, away: null };
-            if (scoresObj.home && typeof scoresObj.home === 'object' && scoresObj.home.total !== undefined) {
-                return { home: scoresObj.home.total, away: scoresObj.away.total };
-            }
-            if (typeof scoresObj.home === 'number' && typeof scoresObj.away === 'number') {
-                return { home: scoresObj.home, away: scoresObj.away };
-            }
-             if (scoresObj.fulltime) { // for football
-                return scoresObj.fulltime;
-            }
-            return { home: null, away: null };
-        };
-
-        const finalScores = getScores(sport === 'football' ? item.score : item.scores);
-
-        if (sport === 'football') {
-             return {
-                id: item.fixture.id, date: item.fixture.date.split('T')[0],
-                time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                timestamp: item.fixture.timestamp, timezone: item.fixture.timezone,
-                status: { long: item.fixture.status.long, short: item.fixture.status.short },
-                league: item.league, teams: item.teams, scores: finalScores,
-                winner: item.fixture.status.short === 'FT' ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw')) : undefined,
-            };
-        }
-        return {
-            id: item.id, date: item.date.split('T')[0], time: item.time, timestamp: item.timestamp,
-            timezone: item.timezone, status: { long: item.status.long, short: item.status.short },
-            league: item.league, teams: item.teams, scores: finalScores,
-            winner: (finalScores.home !== null && finalScores.away !== null)
-                ? (finalScores.home > finalScores.away ? 'home' : (finalScores.away > finalScores.home ? 'away' : 'draw'))
-                : undefined,
-        };
-    });
-}
-
-const getSportApiConfig = (year) => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const month = now.getMonth(); // 0-11
-    const season = month >= 7 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
-
-    return {
-        'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
-        'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key', params: '' },
-        'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
-        'nba': { host: 'https://v2.nba.api-sports.io', path: 'games', keyName: 'x-apisports-key', params: '' },
-    };
-};
-
-const getScores = (scoresObj) => {
-    if (!scoresObj) {
-        return { home: null, away: null };
-    }
-    const homeScore = scoresObj.home?.total ?? scoresObj.home ?? null;
-    const awayScore = scoresObj.away?.total ?? scoresObj.away ?? null;
-    
-    return { 
-        home: typeof homeScore === 'number' ? homeScore : null,
-        away: typeof awayScore === 'number' ? awayScore : null,
-    };
-};
-
+const getSportApiConfig = (year) => ({
+    'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
+    'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'nba': { host: 'https://v2.nba.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+});
 
 async function _fetchGamesForDate(sport, queryDate) {
-    console.log(`[API] Fetching fresh games for ${sport} for date ${queryDate}.`);
-    
+    console.log(`[Local API] Fetching games for ${sport} for date ${queryDate}.`);
     const year = new Date(queryDate).getFullYear();
     const config = getSportApiConfig(year)[sport];
-    if (!config) {
-         throw new Error(`No API config found for sport: ${sport}`);
-    }
+    if (!config) throw new Error(`No API config found for sport: ${sport}`);
 
-    const queryParams = `date=${queryDate}${config.params ? `&${config.params}` : ''}`;
-    const url = `${config.host}/${config.path}?${queryParams}`;
+    const url = `${config.host}/${config.path}?date=${queryDate}`;
 
     try {
         const response = await fetch(url, { headers: { [config.keyName]: process.env.SPORT_API_KEY } });
-
-        if (!response.ok) {
-            const errorBody = await response.text();
-            throw new Error(`API responded with status ${response.status}: ${errorBody}`);
-        }
+        if (!response.ok) throw new Error(`API responded with status ${response.status}: ${await response.text()}`);
 
         const data = await response.json();
-        const hasErrors = data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0);
-        
-        if (hasErrors || !data.response) {
+        if (data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0)) {
             throw new Error(`API returned logical error: ${JSON.stringify(data.errors)}`);
         }
         
         logApiActivity({ sport, endpoint: url, status: 'success' });
-        
-        const games = data.response.map((item) => {
-            if (sport === 'football') {
+
+        const games = data.response.map(item => {
+             try {
+                if (sport === 'football') {
+                    if (!item?.fixture?.id || !item?.teams?.home || !item?.teams?.away || !item?.league) return null;
+                    return {
+                        id: item.fixture.id, date: item.fixture.date?.split('T')[0],
+                        time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                        timestamp: item.fixture.timestamp, timezone: item.fixture.timezone,
+                        status: { long: item.fixture.status?.long, short: item.fixture.status?.short },
+                        league: item.league, teams: item.teams, scores: item.score?.fulltime,
+                        winner: FINISHED_STATUSES.includes(item.fixture.status?.short) ? (item.teams.home?.winner ? 'home' : (item.teams.away?.winner ? 'away' : 'draw')) : undefined,
+                    };
+                }
+                
+                if (!item?.id || !item?.teams?.home || !item?.teams?.away || !item?.league) return null;
+                let gameDateStr = item.date;
+                if (sport === 'nba' && item.date?.start) gameDateStr = item.date.start;
+                if (typeof gameDateStr !== 'string') gameDateStr = new Date().toISOString();
+
+                const getScores = (s) => (!s ? { home: null, away: null } : { home: s.home?.total ?? s.home ?? null, away: s.away?.total ?? s.away ?? null });
+                const finalScores = getScores(item.scores);
+                
                 return {
-                    id: item.fixture.id, date: item.fixture.date.split('T')[0],
-                    time: new Date(item.fixture.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                    timestamp: item.fixture.timestamp, timezone: item.fixture.timezone,
-                    status: { long: item.fixture.status?.long, short: item.fixture.status?.short },
-                    league: item.league, teams: item.teams, scores: item.score?.fulltime,
-                    winner: FINISHED_STATUSES.includes(item.fixture.status?.short)
-                        ? (item.teams.home?.winner ? 'home' : (item.teams.away?.winner ? 'away' : 'draw'))
-                        : undefined,
+                    id: item.id, date: gameDateStr.split('T')[0], time: item.time, timestamp: item.timestamp,
+                    timezone: item.timezone, status: { long: item.status?.long, short: item.status?.short },
+                    league: item.league, teams: item.teams, scores: finalScores,
+                    winner: (finalScores.home !== null && finalScores.away !== null) ? (finalScores.home > finalScores.away ? 'home' : 'draw') : undefined,
                 };
+            } catch (e) {
+                console.error(`[Local Parser] Error processing game item for ${sport}:`, e, item);
+                return null;
             }
-            
-            let gameDateStr = item.date;
-            if (sport === 'nba' && item.date && typeof item.date === 'object' && item.date.start) {
-                gameDateStr = item.date.start;
-            }
+        }).filter(g => g !== null);
 
-            if (typeof gameDateStr !== 'string') {
-                console.warn(`Unexpected date format for game ID ${item.id} in sport ${sport}:`, item.date);
-                gameDateStr = new Date().toISOString();
-            }
-            
-            const finalScores = getScores(item.scores);
-
-            return {
-                id: item.id,
-                date: gameDateStr.split('T')[0],
-                time: item.time,
-                timestamp: item.timestamp,
-                timezone: item.timezone,
-                status: { long: item.status?.long, short: item.status?.short },
-                league: item.league,
-                teams: item.teams,
-                scores: finalScores,
-                winner: (finalScores.home !== null && finalScores.away !== null)
-                    ? (finalScores.home > finalScores.away ? 'home' : (finalScores.away > finalScores.home ? 'away' : 'draw'))
-                    : undefined,
-            };
-        });
-
-        console.log(`[API SUCCESS] Fetched ${games.length} games for ${sport} on date ${queryDate}.`);
+        console.log(`[Local API SUCCESS] Fetched ${games.length} games for ${sport} on date ${queryDate}.`);
         return games;
 
     } catch (error) {
-        console.error(`[API ERROR] An error occurred while fetching ${sport} games. Error:`, error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logApiActivity({ sport, endpoint: url, status: 'error', errorMessage });
-
-        if (errorMessage.includes("plan") || errorMessage.includes("subscription") || errorMessage.includes("Too many subrequests")) {
-            console.warn(`[API FALLBACK] Subscription/rate-limit issue detected for ${sport}. Falling back to mock data for this run.`);
-            logApiActivity({ sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success', errorMessage: 'Subscription or rate-limit issue' });
-            return generateMockGames(sport);
-        }
-        
+        console.error(`[Local API ERROR] fetching ${sport} games. Error:`, error);
+        logApiActivity({ sport, endpoint: url, status: 'error', errorMessage: error.message });
         throw error;
     }
 }
 
-
 async function getTodaysGamesBySport(sport) {
     if (!process.env.SPORT_API_KEY) {
-        console.log(`[MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
+        console.log(`[Local MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
         logApiActivity({ sport, endpoint: 'MOCK_SPORTS_API', status: 'success' });
-        return generateMockGames(sport);
+        return require('../functions/utils/mockGames').generateMockGames(sport);
     }
     
     const now = new Date();
@@ -310,7 +203,7 @@ async function processSport(sport) {
     const cutoff = now - (48 * 60 * 60 * 1000); // 48 hours ago cutoff
 
     const prunedPredictions = finalPredictions.filter(p => {
-        if (FINISHED_STATUSES.includes(p.status.short)) {
+        if (FINISHED_STATUSES.includes(p.status?.short)) {
             return true;
         }
         if (p.timestamp * 1000 >= cutoff) {

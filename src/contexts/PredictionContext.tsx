@@ -53,7 +53,7 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
       if (isDataStale) {
           if (force) {
               setError("Обновление не вернуло актуальных данных. Возможно, сейчас нет предстоящих матчей или произошла ошибка на сервере. Попробуйте позже или проверьте панель диагностики.");
-              setAllPredictions([]);
+              // Do not clear data on forced update failure
           } else {
               console.warn("Server data is stale or empty. Falling back to client-side mocks for demonstration.");
               setError("Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня.");
@@ -66,16 +66,15 @@ export const PredictionProvider: React.FC<{ children: ReactNode }> = ({ children
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная ошибка.';
       console.error("Failed to fetch predictions:", err);
+      
       if (force) {
+        // On a forced update error, just show the error message.
+        // Do NOT clear existing data.
         setError(`Ошибка принудительного обновления: ${errorMessage}`);
       } else {
+        // On an initial load error, show error and fall back to mocks.
         setError(`Не удалось загрузить актуальные матчи. Отображаются демонстрационные данные на сегодня. Ошибка: ${errorMessage}`);
-      }
-      
-      if (!force) {
         setAllPredictions(generateClientSideMocks());
-      } else {
-        setAllPredictions([]);
       }
     } finally {
       setIsLoading(false);
