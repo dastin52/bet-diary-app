@@ -188,7 +188,7 @@ async function _fetchGamesForDate(sport, queryDate) {
                     status: { long: item.fixture.status?.long, short: item.fixture.status?.short },
                     league: item.league, teams: item.teams, scores: item.score?.fulltime,
                     winner: FINISHED_STATUSES.includes(item.fixture.status?.short)
-                        ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw'))
+                        ? (item.teams.home?.winner ? 'home' : (item.teams.away?.winner ? 'away' : 'draw'))
                         : undefined,
                 };
             }

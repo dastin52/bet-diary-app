@@ -91,7 +91,7 @@ async function _fetchGamesForDate(sport: string, queryDate: string, env: Env): P
                     teams: item.teams,
                     scores: item.score?.fulltime,
                     winner: FINISHED_STATUSES.includes(item.fixture.status?.short)
-                        ? (item.teams.home.winner ? 'home' : (item.teams.away.winner ? 'away' : 'draw'))
+                        ? (item.teams.home?.winner ? 'home' : (item.teams.away?.winner ? 'away' : 'draw'))
                         : undefined,
                 };
             }
