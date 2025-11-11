@@ -17,7 +17,9 @@ type PagesFunction<E = unknown> = (
 
 
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
-const BATCH_SIZE = 15;
+const BATCH_SIZE = 5; // Reduced from 15 to prevent subrequest limits
+const MAX_AI_CALLS_PER_RUN = 25; // Max number of AI calls per run execution to stay safely under 50 subrequests
+let aiCallCount = 0; // Counter for the current run
 
 // Add a delay function to stagger API calls
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -172,6 +174,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                 let existingPrediction = allTimePredictionsMap.get(uniqueGameId) || null;
                 let prediction = existingPrediction ? existingPrediction.prediction : null;
 
+                // 1. Handle finished matches (update result)
                 if (FINISHED_STATUSES.includes(game.status.short) && game.scores && game.scores.home !== null) {
                     if (prediction && prediction.status === AIPredictionStatus.Pending) {
                         const winner = game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw';
@@ -194,35 +197,44 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                             prediction.status = AIPredictionStatus.Incorrect;
                         }
                     }
-                } else if (game.status.short === 'NS' && !prediction) {
-                    try {
-                        const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
-                        const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }], config: { responseMimeType: "application/json", responseSchema: schema } });
-                        const rawPredictionData = JSON.parse(response.text);
+                } 
+                // 2. Handle new predictions
+                else if (game.status.short === 'NS' && !prediction) {
+                    if (aiCallCount < MAX_AI_CALLS_PER_RUN) {
+                        try {
+                            aiCallCount++; // Increment counter
+                            const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
+                            const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }], config: { responseMimeType: "application/json", responseSchema: schema } });
+                            const rawPredictionData = JSON.parse(response.text);
 
-                        if (rawPredictionData && rawPredictionData.market_analysis) {
-                            const marketAnalysis = rawPredictionData.market_analysis;
-                            const remappedAnalysis: Record<string, any> = {};
-                            for (const key in marketAnalysis) {
-                                const readableKey = keyMapping[key] || key;
-                                remappedAnalysis[readableKey] = marketAnalysis[key];
+                            if (rawPredictionData && rawPredictionData.market_analysis) {
+                                const marketAnalysis = rawPredictionData.market_analysis;
+                                const remappedAnalysis: Record<string, any> = {};
+                                for (const key in marketAnalysis) {
+                                    const readableKey = keyMapping[key] || key;
+                                    remappedAnalysis[readableKey] = marketAnalysis[key];
+                                }
+
+                                let mostLikelyKey = 'N/A';
+                                let maxProb = -1;
+                                for (const market in remappedAnalysis) {
+                                    const { probability } = remappedAnalysis[market];
+                                    const prob = parseFloat(probability);
+                                    if (!isNaN(prob) && prob > maxProb) { maxProb = prob; mostLikelyKey = market; }
+                                }
+                                const mostLikelyOutcome = mostLikelyKey;
+
+                                prediction = {
+                                    id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
+                                    matchName: matchName, prediction: JSON.stringify({ market_analysis: remappedAnalysis, most_likely_outcome: mostLikelyOutcome }), status: AIPredictionStatus.Pending,
+                                };
                             }
-
-                            let mostLikelyKey = 'N/A';
-                            let maxProb = -1;
-                            for (const market in remappedAnalysis) {
-                                const { probability } = remappedAnalysis[market];
-                                const prob = parseFloat(probability);
-                                if (!isNaN(prob) && prob > maxProb) { maxProb = prob; mostLikelyKey = market; }
-                            }
-                            const mostLikelyOutcome = mostLikelyKey;
-
-                            prediction = {
-                                id: `${game.id}-${new Date().getTime()}`, createdAt: new Date().toISOString(), sport: sport,
-                                matchName: matchName, prediction: JSON.stringify({ market_analysis: remappedAnalysis, most_likely_outcome: mostLikelyOutcome }), status: AIPredictionStatus.Pending,
-                            };
+                        } catch (error) { 
+                            console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); 
                         }
-                    } catch (error) { console.error(`[CRON] Failed AI prediction for ${matchName}:`, error); }
+                    } else {
+                        console.log(`[CRON] Skipping prediction for ${matchName} due to rate limits (${aiCallCount}/${MAX_AI_CALLS_PER_RUN})`);
+                    }
                 }
 
                 const d = new Date(game.timestamp * 1000);
@@ -243,7 +255,16 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                     winner: (game.scores && game.scores.home !== null) ? (game.scores.home > game.scores.away ? 'home' : game.scores.away > game.scores.home ? 'away' : 'draw') : (existingPrediction?.winner || undefined),
                 });
             });
-            await Promise.all(batchPromises);
+            
+            try {
+                await Promise.all(batchPromises);
+            } catch (batchError) {
+                console.error(`[CRON] Error processing batch for ${sport}:`, batchError);
+                // Continue to next batch/sport instead of crashing entirely
+            }
+            
+            // Add a small delay between batches to be nice to the CPU time limit
+            await delay(1000); 
         }
     }
     
@@ -263,14 +284,22 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
         return false;
     });
 
-    await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify(prunedPredictions));
-    console.log(`[CRON] Pruned ${finalPredictions.length - prunedPredictions.length} old games. Storing ${prunedPredictions.length} total predictions for ${sport}.`);
+    // Save safely
+    try {
+        await env.BOT_STATE.put(centralPredictionsKey, JSON.stringify(prunedPredictions));
+        console.log(`[CRON] Pruned ${finalPredictions.length - prunedPredictions.length} old games. Storing ${prunedPredictions.length} total predictions for ${sport}.`);
+    } catch (saveError) {
+        console.error(`[CRON] Failed to save predictions for ${sport} to KV:`, saveError);
+    }
+    
     return prunedPredictions;
 }
 
 export async function runUpdateTask(env: Env) {
     await env.BOT_STATE.put('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
+    
+    aiCallCount = 0; // Reset counter for this execution
 
     try {
         const allSportPredictions: SharedPrediction[] = [];
@@ -293,7 +322,7 @@ export async function runUpdateTask(env: Env) {
                 }));
             }
             // Add a delay to stagger the API calls for the next sport
-            await delay(10000); // 10-second delay
+            await delay(5000); // 5-second delay
         }
         
         const uniqueAllPredictions = Array.from(new Map(allSportPredictions.map(p => [`${p.sport.toLowerCase()}-${p.id}`, p])).values());

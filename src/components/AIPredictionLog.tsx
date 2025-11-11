@@ -229,7 +229,7 @@ const AIPredictionLog: React.FC = () => {
         }, {});
         
         const detailedOutcomeStats = Object.entries(statsByAllOutcomes)
-            .map(([market, data]) => ({
+            .map(([market, data]: [string, { correct: number, total: number, correctCoefficients: number[] }]) => ({
                 market,
                 accuracy: data.total > 0 ? (data.correct / data.total) * 100 : 0,
                 evaluations: `${data.correct} / ${data.total}`,
