@@ -269,7 +269,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
     }
     
     const finalPredictions = Array.from(allTimePredictionsMap.values())
-        .sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || b.timestamp - a.timestamp);
+        .sort((a,b) => getStatusPriority(a.status?.short) - getStatusPriority(b.status?.short) || b.timestamp - a.timestamp);
         
     const now = Date.now();
     const cutoff = now - (48 * 60 * 60 * 1000); // 48 hours ago cutoff for keeping non-finished games

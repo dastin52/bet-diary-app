@@ -115,7 +115,7 @@ async function _fetchGamesForDate(sport, queryDate) {
                     id: item.id, date: gameDateStr.split('T')[0], time: item.time, timestamp: item.timestamp,
                     timezone: item.timezone, status: { long: item.status?.long, short: item.status?.short },
                     league: item.league, teams: item.teams, scores: finalScores,
-                    winner: (finalScores.home !== null && finalScores.away !== null) ? (finalScores.home > finalScores.away ? 'home' : 'draw') : undefined,
+                    winner: (finalScores.home !== null && finalScores.away !== null) ? (finalScores.home > finalScores.away ? 'home' : (finalScores.away > finalScores.home ? 'away' : 'draw')) : undefined,
                 };
             } catch (e) {
                 console.error(`[Local Parser] Error processing game item for ${sport}:`, e, item);
@@ -197,7 +197,7 @@ async function processSport(sport) {
     });
 
     const finalPredictions = Array.from(existingPredictionsMap.values())
-        .sort((a,b) => getStatusPriority(a.status.short) - getStatusPriority(b.status.short) || b.timestamp - a.timestamp);
+        .sort((a,b) => getStatusPriority(a.status?.short) - getStatusPriority(b.status?.short) || b.timestamp - a.timestamp);
     
     const now = Date.now();
     const cutoff = now - (48 * 60 * 60 * 1000); // 48 hours ago cutoff
