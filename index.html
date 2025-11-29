@@ -20,60 +20,57 @@
           } catch(e) { console.error('TG Init Error:', e); }
       }
 
-      // FAIL-SAFE: Force remove loader after 3 seconds no matter what
+      // FAIL-SAFE: Force remove loader after 4 seconds no matter what
       setTimeout(function() {
         var loader = document.getElementById('app-loader');
         if (loader) {
+          loader.style.transition = 'opacity 0.5s';
           loader.style.opacity = '0';
-          loader.style.pointerEvents = 'none';
           setTimeout(function() { loader.remove(); }, 500);
         }
-      }, 3000);
+      }, 4000);
     </script>
 
-    <!-- 3. Global Error Handler & Logger -->
+    <!-- 3. Global Error Handler & On-Screen Debugger -->
     <script>
-      // Function to send logs to backend
-      function logToBackend(level, message, details) {
-        try {
-          if (typeof fetch === 'function') {
-            fetch('/api/admin/twa-logs', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                level: level,
-                message: message,
-                details: typeof details === 'string' ? details : JSON.stringify(details),
-                timestamp: new Date().toISOString(),
-                userAgent: navigator.userAgent
-              })
-            }).catch(e => {}); 
-          }
-        } catch (e) {}
+      // Log errors to a visible div so we can debug on mobile
+      function showOnScreenError(msg) {
+        var consoleDiv = document.getElementById('debug-console');
+        if (!consoleDiv) {
+            consoleDiv = document.createElement('div');
+            consoleDiv.id = 'debug-console';
+            consoleDiv.style.cssText = 'position:fixed; bottom:0; left:0; width:100%; height:150px; background:rgba(0,0,0,0.85); color:#ff5555; overflow:auto; padding:10px; font-size:10px; font-family:monospace; z-index:10000; pointer-events:none;';
+            document.body.appendChild(consoleDiv);
+        }
+        var line = document.createElement('div');
+        line.innerText = '> ' + msg;
+        line.style.borderBottom = '1px solid #333';
+        consoleDiv.appendChild(line);
       }
 
       window.onerror = function(msg, url, lineNo, columnNo, error) {
-        var errorContainer = document.getElementById('error-container');
-        var errorMsg = document.getElementById('error-message');
-        if (errorContainer && errorMsg) {
-            errorContainer.style.display = 'block';
-            errorMsg.innerText = "Critical Error:\n" + msg + "\nLine: " + lineNo + "\n" + (error ? error.stack : '');
-        }
-        // Force remove loader on error
+        var errorMsg = "Global Error: " + msg + " (" + lineNo + ")";
+        console.error(errorMsg);
+        showOnScreenError(errorMsg);
+        
+        // Remove loader if error happens so user sees the error
         var loader = document.getElementById('app-loader');
         if(loader) loader.style.display = 'none';
-
-        logToBackend('error', 'Global Window Error', { msg, url, lineNo, stack: error ? error.stack : '' });
+        
         return false;
       };
 
       window.addEventListener('unhandledrejection', function(event) {
+        // Ignore ResizeObserver loop limit exceeded
         if (event.reason && event.reason.toString().includes('ResizeObserver')) return;
-        logToBackend('error', 'Unhandled Promise Rejection', { reason: event.reason ? event.reason.toString() : 'Unknown' });
+        
+        var msg = "Promise Rejection: " + (event.reason ? event.reason.toString() : 'Unknown');
+        console.error(msg);
+        showOnScreenError(msg);
       });
     </script>
 
-    <!-- 4. ES Module Shims -->
+    <!-- 4. ES Module Shims (Keep this for browser compatibility) -->
     <script async src="https://ga.jspm.io/npm:es-module-shims@1.10.0/dist/es-module-shims.js"></script>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -125,24 +122,8 @@
     animation: spin 1s linear infinite;
   }
   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  
-  /* Error Container */
-  #error-container {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: #1a1a1a;
-    color: #ff5555;
-    padding: 20px;
-    z-index: 10000;
-    overflow: auto;
-    font-family: monospace;
-    white-space: pre-wrap;
-  }
 </style>
+<!-- REMOVED IMPORTMAP TO PREVENT REACT VERSION CONFLICTS -->
 <script type="importmap">
 {
   "imports": {
@@ -165,14 +146,7 @@
       <p style="margin-top: 20px; opacity: 0.7; font-size: 14px;">Запуск BetDiary...</p>
     </div>
 
-    <!-- Error Display -->
-    <div id="error-container">
-        <h2 style="color: white; border-bottom: 1px solid #555; padding-bottom: 10px;">Application Error</h2>
-        <pre id="error-message" style="margin-top: 20px;"></pre>
-        <p style="color: #999; margin-top: 20px;">Please take a screenshot and send it to support.</p>
-        <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #333; color: white; border: none; cursor: pointer;">Reload App</button>
-    </div>
-
+    <!-- React Root -->
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
   </body>
