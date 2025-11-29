@@ -76,7 +76,7 @@ export function useTelegram() {
     tg: telegram,
     user: telegram?.initDataUnsafe?.user,
     queryId: telegram?.initDataUnsafe?.query_id,
-    initData: telegram?.initData,
+    initData: telegram?.initData || '',
     isTwa: isTwaSession, 
     colorScheme: telegram?.colorScheme,
     themeParams: telegram?.themeParams,
