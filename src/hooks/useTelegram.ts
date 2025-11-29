@@ -19,7 +19,7 @@ export function useTelegram() {
       setIsReady(true);
       
       if (!telegram.isExpanded) {
-          telegram.expand();
+          try { telegram.expand(); } catch(e) {}
       }
 
       // Send debug log once per session
@@ -31,8 +31,9 @@ export function useTelegram() {
               const debugData = {
                   version: telegram.version,
                   platform: telegram.platform,
-                  initData: telegram.initData || 'EMPTY_STRING',
-                  initDataUnsafe: telegram.initDataUnsafe ? JSON.stringify(telegram.initDataUnsafe) : 'NULL',
+                  // Explicitly log the type and value of initData to see if it's truly empty
+                  initDataLength: telegram.initData ? telegram.initData.length : 0,
+                  initData: telegram.initData || 'EMPTY_STRING', 
                   userId: telegram.initDataUnsafe?.user?.id,
                   colorScheme: telegram.colorScheme
               };
@@ -65,6 +66,11 @@ export function useTelegram() {
       }
   }, [telegram]);
 
+  // FIX: Robust check for TWA environment.
+  // If initData is an empty string (common in desktop browsers testing direct URLs), 
+  // we consider it NOT a valid TWA session for auth purposes, falling back to guest mode.
+  const isTwaSession = !!(telegram?.initData && telegram.initData.length > 0);
+
   return {
     onClose,
     onMainButtonClick,
@@ -73,7 +79,7 @@ export function useTelegram() {
     user: telegram?.initDataUnsafe?.user,
     queryId: telegram?.initDataUnsafe?.query_id,
     initData: telegram?.initData,
-    isTwa: !!telegram?.initData, // Only true if initData is present
+    isTwa: isTwaSession, 
     colorScheme: telegram?.colorScheme,
     themeParams: telegram?.themeParams,
     MainButton: telegram?.MainButton,

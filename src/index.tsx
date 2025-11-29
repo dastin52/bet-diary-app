@@ -2,18 +2,19 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Init Telegram
+// Init Telegram (Redundant safety check)
 const initTelegram = () => {
   if (window.Telegram?.WebApp) {
     try {
       window.Telegram.WebApp.ready();
-      window.Telegram.WebApp.expand();
-      console.log("Telegram WebApp initialized successfully");
+      // Ensure color scheme is applied immediately to body to prevent white flash
+      const scheme = window.Telegram.WebApp.colorScheme;
+      if (scheme === 'dark') {
+          document.documentElement.classList.add('dark');
+      }
     } catch (e) {
       console.error("Error initializing Telegram WebApp:", e);
     }
-  } else {
-      console.log("Telegram WebApp not detected");
   }
 };
 
@@ -32,7 +33,6 @@ try {
         <App />
       </React.StrictMode>
     );
-    // Loader removal is now handled inside App.tsx useEffect
 } catch (e: any) {
     console.error("React Render Error:", e);
     // Force showing the error on screen if React fails synchronously

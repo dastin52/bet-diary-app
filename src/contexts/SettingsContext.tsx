@@ -5,7 +5,11 @@ const SettingsContext = createContext<UseSettingsReturn | undefined>(undefined);
 
 export const SettingsProvider: React.FC<{ children: ReactNode; userKey: string; }> = ({ children, userKey }) => {
   const settingsState = useSettings(userKey);
-  return <SettingsContext.Provider value={settingsState}>{children}</SettingsContext.Provider>;
+  // Force isLoading to false for context consumers to prevent blocking entire app
+  // The hook itself manages the data, but for the Provider, we want immediate render
+  const value = { ...settingsState, isLoading: false };
+  
+  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 };
 
 export const useSettingsContext = (): UseSettingsReturn => {
