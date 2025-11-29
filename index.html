@@ -149,16 +149,16 @@
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
     
-    <!-- Safety Timeout: Remove loader if app hangs for more than 8 seconds -->
+    <!-- Safety Timeout: Remove loader after 3 seconds aggressively -->
     <script>
       setTimeout(function() {
         var loader = document.getElementById('app-loader');
         if (loader) {
-          console.warn('Loader safety timeout triggered. React might have failed to mount silently.');
+          console.warn('Loader safety timeout triggered (3s). Force removing loader.');
           loader.style.opacity = '0';
           setTimeout(function() { loader.style.display = 'none'; }, 500);
         }
-      }, 8000);
+      }, 3000);
     </script>
   </body>
 </html>

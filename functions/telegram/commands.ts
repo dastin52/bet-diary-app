@@ -1,7 +1,7 @@
 
 // functions/telegram/commands.ts
 import { TelegramUpdate, UserState, Env, TelegramMessage } from './types';
-import { sendMessage, sendDocument, editMessageText } from './telegramApi';
+import { sendMessage, sendDocument, editMessageText, setChatMenuButton } from './telegramApi';
 import { showMainMenu, showStatsMenu, makeKeyboard } from './ui';
 import { setUserState, updateAndSyncState } from './state';
 import { startManageBets } from './manageBets';
@@ -32,7 +32,9 @@ export async function showLinkAccountInfo(chatId: number, messageId: number, env
     await editMessageText(chatId, messageId, text, env, keyboard);
 }
 
-export async function showStartMenu(chatId: number, env: Env, messageIdToEdit?: number) {
+// --- LEGACY MENU FUNCTION (Preserved as requested) ---
+/* 
+export async function showOldStartMenu(chatId: number, env: Env, messageIdToEdit?: number) {
     const webAppUrl = env.WEBAPP_URL || 'https://betdiary-app.pages.dev';
     
     const text = "👋 Добро пожаловать в BetDiary Bot! \n\nВедите учет ставок, следите за статистикой и получайте прогнозы от AI прямо в Telegram.";
@@ -49,28 +51,47 @@ export async function showStartMenu(chatId: number, env: Env, messageIdToEdit?: 
         await sendMessage(chatId, text, env, keyboard);
     }
 }
+*/
+
+export async function showStartMenu(chatId: number, env: Env, messageIdToEdit?: number) {
+    const webAppUrl = env.WEBAPP_URL || 'https://betdiary-app.pages.dev';
+    
+    // 1. Configure the persistent Menu Button (bottom left)
+    try {
+        await setChatMenuButton(chatId, env, webAppUrl);
+    } catch (e) {
+        console.error("Failed to set chat menu button:", e);
+    }
+
+    const text = "👋 Привет! Я настроил для тебя удобное меню.\n\n👇 Нажми на кнопку **«📱 Открыть Дневник»** слева от поля ввода, чтобы запустить приложение.";
+    
+    // Simple keyboard just in case they don't see the menu button immediately, 
+    // or want to link an existing account.
+    const keyboard = makeKeyboard([
+        [ { text: '📱 Открыть Дневник', web_app: { url: webAppUrl } } ],
+        [ { text: '🔗 Привязать существующий аккаунт', callback_data: CB.SHOW_LINK_INFO } ]
+    ]);
+
+    if (messageIdToEdit) {
+        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
+    } else {
+        await sendMessage(chatId, text, env, keyboard);
+    }
+}
 
 
 export async function handleStart(update: TelegramUpdate, state: UserState, env: Env) {
     const chatId = update.message!.chat.id;
-    if (state.user) {
-        await showMainMenu(chatId, null, env, `С возвращением, ${state.user.nickname}!`);
-    } else {
-        await showStartMenu(chatId, env);
-    }
+    // Always show the start menu to ensure the Menu Button is configured
+    await showStartMenu(chatId, env);
 }
 
 export async function handleHelp(message: TelegramMessage, env: Env) {
     const text = `*Доступные команды:*
-/start - Начало работы и главное меню
-/addbet - Добавить новую ставку
-/stats - Посмотреть статистику
-/manage - Управление ставками
-/goals - Управление целями
-/ai - Чат с AI-аналитиком
-/aipredictions - База прогнозов AI
-/reset - Сброс вашего состояния (если что-то пошло не так)
-/help - Показать это сообщение`;
+/start - Обновить кнопку меню
+/help - Показать это сообщение
+
+Основной функционал доступен в веб-приложении. Нажмите кнопку меню "📱 Открыть Дневник".`;
     await sendMessage(message.chat.id, text, env);
 }
 

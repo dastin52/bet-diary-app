@@ -90,6 +90,21 @@ export async function sendDocument(chatId: number, file: Blob, fileName: string,
     return apiRequest('sendDocument', env.TELEGRAM_BOT_TOKEN, formData, true);
 }
 
+export async function setChatMenuButton(chatId: number | undefined, env: Env, webAppUrl: string) {
+    // If chatId is provided, it sets for specific chat (not supported by all clients yet, usually global)
+    // We will set the default menu button for the user interaction context if possible, or generally.
+    // The Telegram API `setChatMenuButton` accepts `chat_id`.
+    
+    return apiRequest('setChatMenuButton', env.TELEGRAM_BOT_TOKEN, {
+        chat_id: chatId,
+        menu_button: {
+            type: 'web_app',
+            text: '📱 Открыть Дневник',
+            web_app: { url: webAppUrl }
+        }
+    });
+}
+
 
 export async function reportError(chatId: number, env: Env, context: string, error: any) {
     const errorMessage = `🐞 *Произошла ошибка!*
