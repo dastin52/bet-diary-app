@@ -9,17 +9,24 @@
     <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- 2. Immediate Telegram Ready Call -->
+    <!-- 2. BRUTE FORCE Telegram Ready Call -->
     <script>
-      // Tell Telegram we are ready instantly to remove their native spinner
-      // regardless of React status
-      try {
-        if (window.Telegram && window.Telegram.WebApp) {
-            window.Telegram.WebApp.ready();
-            window.Telegram.WebApp.expand();
-            window.Telegram.WebApp.enableClosingConfirmation();
-        }
-      } catch (e) { console.error('TG Init Error', e); }
+      // Force Telegram to remove spinner using an interval to handle race conditions
+      // where the script might load slightly after this inline block.
+      var retryCount = 0;
+      var initInterval = setInterval(function() {
+          try {
+            if (window.Telegram && window.Telegram.WebApp) {
+                window.Telegram.WebApp.ready();
+                window.Telegram.WebApp.expand();
+                window.Telegram.WebApp.enableClosingConfirmation();
+                console.log('TG Ready called via interval');
+            }
+          } catch (e) { console.error(e); }
+          
+          retryCount++;
+          if (retryCount > 50) clearInterval(initInterval); // Stop after 5 seconds
+      }, 100);
     </script>
 
     <!-- 3. Global Error Handler & Logger -->
@@ -116,7 +123,8 @@
     align-items: center;
     background-color: var(--tg-theme-bg-color, #f3f4f6);
     z-index: 9999;
-    /* Self-destruct animation: Force fade out after 2 seconds even if JS fails */
+    /* SELF DESTRUCT: This animation forces the loader to disappear after 2.5s 
+       even if React/JS crashes completely. */
     animation: fadeOutLoader 0.5s ease-out 2.5s forwards;
     pointer-events: all;
   }
