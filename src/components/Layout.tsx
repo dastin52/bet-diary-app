@@ -20,6 +20,7 @@ import BankrollSimulator from './BankrollSimulator';
 import ImportBetsModal from './ImportBetsModal';
 import BetDetailModal from './BetDetailModal';
 import AIPredictionLog from './AIPredictionLog';
+import { useTelegram } from '../hooks/useTelegram';
 
 type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 
@@ -39,8 +40,10 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
   const [isUpdateBankrollModalOpen, setIsUpdateBankrollModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
   const { analytics } = useBetContext();
   const { isAdmin } = useAuthContext();
+  const { isTwa } = useTelegram();
 
   // Reset view to dashboard if user logs out from admin panel
   useEffect(() => {
@@ -119,6 +122,9 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
     }
   };
 
+  // In TWA, sidebar is hidden by default and accessible via menu button. 
+  // Native header might be redundant if we fully adapt, but keeping it for now to maintain shared codebase logic.
+  
   return (
       <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
         <div className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>

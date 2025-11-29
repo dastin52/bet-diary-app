@@ -1,14 +1,13 @@
-
-
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User } from '../types';
 import * as userStore from '../data/userStore';
+import { useTelegram } from '../hooks/useTelegram';
 
 const SESSION_STORAGE_KEY = 'betting_app_session';
 const ADMIN_EMAIL = 'admin@example.com';
 const ADMIN_SECRET_CODE = 'SUPER_ADMIN_2024';
-const REFERRAL_REWARD_FOR_REFERRER = 100; // Вознаграждение пригласившему
-const REFERRAL_BONUS_FOR_INVITEE = 50;   // Бонус новому пользователю
+const REFERRAL_REWARD_FOR_REFERRER = 100; 
+const REFERRAL_BONUS_FOR_INVITEE = 50;   
 
 interface AuthContextType {
   currentUser: User | null;
@@ -17,14 +16,15 @@ interface AuthContextType {
   logout: () => void;
   isAdmin: boolean;
   updateCurrentUser: (updatedData: Partial<User>) => void;
+  isTelegramAuth: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// A mock hashing function. In a real app, use a library like bcrypt on the server.
 const mockHash = (password: string) => `hashed_${password}`;
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { initData, isTwa } = useTelegram();
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
         const session = localStorage.getItem(SESSION_STORAGE_KEY);
@@ -33,34 +33,61 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return null;
     }
   });
+  const [isTelegramAuth, setIsTelegramAuth] = useState(false);
 
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
   
-  // FIX: Add effect to sync auth state across browser tabs.
-  // This effect will sync the currentUser state if another tab updates the user data
+  // TWA Auto-Login Logic
+  useEffect(() => {
+      const authTelegram = async () => {
+          if (isTwa && initData && !currentUser) {
+              try {
+                  const response = await fetch('/api/auth/telegram', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ initData })
+                  });
+                  
+                  if (response.ok) {
+                      const user = await response.json();
+                      setCurrentUser(user);
+                      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+                      setIsTelegramAuth(true);
+                      
+                      // Also ensure this user exists in local storage for compatibility with existing components
+                      // In a real app, you'd sync state from backend, but here we merge.
+                      const existingLocal = userStore.findUserBy(u => u.email === user.email);
+                      if (!existingLocal) {
+                          userStore.addUser(user);
+                      }
+                  }
+              } catch (e) {
+                  console.error("Telegram Auth Failed:", e);
+              }
+          }
+      };
+      authTelegram();
+  }, [isTwa, initData, currentUser]);
+
+
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      // Handle login/logout from other tabs
       if (event.key === SESSION_STORAGE_KEY) {
         if (event.newValue) {
           const newSessionUser = JSON.parse(event.newValue);
-          // Update if the user is different or was null
           if (JSON.stringify(newSessionUser) !== JSON.stringify(currentUser)) {
             setCurrentUser(newSessionUser);
           }
         } else if (currentUser !== null) {
-          // Logged out from another tab
           setCurrentUser(null);
         }
       }
 
-      // Handle updates to user data (e.g., buttercups from a referral)
       if (event.key === 'betting_app_users' && currentUser && event.newValue) {
         const users = JSON.parse(event.newValue);
         const latestUser = users.find((u: User) => u.email === currentUser.email);
         if (latestUser && JSON.stringify(latestUser) !== JSON.stringify(currentUser)) {
           setCurrentUser(latestUser);
-          // Also update the session storage for this tab to keep it in sync
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(latestUser));
         }
       }
@@ -74,7 +101,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (email: string, password_hash: string): Promise<void> => {
     const user = userStore.findUserBy(u => u.email === email);
-    // Note: This is an insecure password check for demonstration only.
     if (user && user.password_hash === mockHash(password_hash)) {
         if (user.status === 'blocked') {
             throw new Error('Этот аккаунт заблокирован.');
@@ -102,7 +128,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     let initialButtercups = 0;
-    // Handle referral logic
     if (referralCode) {
         const referrer = userStore.findUserBy(u => u.referralCode.toLowerCase() === referralCode.toLowerCase());
         if (referrer) {
@@ -113,7 +138,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             userStore.updateUser(updatedReferrer);
             initialButtercups = REFERRAL_BONUS_FOR_INVITEE;
         } else {
-            // FIX: Throw an error if the referral code is invalid.
             throw new Error("Неверный реферальный код.");
         }
     }
@@ -126,6 +150,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         referralCode: `${nickname.toUpperCase().replace(/\s/g, '')}${Date.now().toString().slice(-4)}`,
         buttercups: initialButtercups,
         status: 'active',
+        source: 'web'
     };
     
     userStore.addUser(newUser);
@@ -133,7 +158,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
   };
   
-  // FIX: Add a function to update the current user's state.
   const updateCurrentUser = (updatedData: Partial<User>) => {
       if (currentUser) {
           const updatedUser = { ...currentUser, ...updatedData };
@@ -147,9 +171,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = () => {
     setCurrentUser(null);
     localStorage.removeItem(SESSION_STORAGE_KEY);
+    setIsTelegramAuth(false);
   };
   
-  const value = { currentUser, login, register, logout, isAdmin, updateCurrentUser };
+  const value = { currentUser, login, register, logout, isAdmin, updateCurrentUser, isTelegramAuth };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

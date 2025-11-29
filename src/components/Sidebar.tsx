@@ -123,7 +123,7 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, view, currentView, onCli
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMode, onAuthRequired }) => {
-  const { currentUser, logout, isAdmin } = useAuthContext();
+  const { currentUser, logout, isAdmin, isTelegramAuth } = useAuthContext();
   
   const [isReferralOpen, setIsReferralOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -219,13 +219,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isDemoMo
                         <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{currentUser.nickname}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{currentUser.email}</p>
                     </div>
-                    <button
-                        onClick={logout}
-                        className="w-full flex items-center px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-500 hover:text-white transition-colors duration-200"
-                    >
-                        <LogoutIcon />
-                        <span className="ml-3">Выйти</span>
-                    </button>
+                    {!isTelegramAuth && (
+                        <button
+                            onClick={logout}
+                            className="w-full flex items-center px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-500 hover:text-white transition-colors duration-200"
+                        >
+                            <LogoutIcon />
+                            <span className="ml-3">Выйти</span>
+                        </button>
+                    )}
                 </div>
             ) : (
                  <button
