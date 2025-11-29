@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
@@ -43,7 +44,7 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
   
   const { analytics } = useBetContext();
   const { isAdmin } = useAuthContext();
-  const { isTwa } = useTelegram();
+  const { isTwa, BackButton, onBackButtonClick } = useTelegram();
 
   // Reset view to dashboard if user logs out from admin panel
   useEffect(() => {
@@ -51,6 +52,33 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
       setCurrentView('dashboard');
     }
   }, [isAdmin, currentView]);
+
+  // TWA BackButton Logic
+  useEffect(() => {
+      if (isTwa && BackButton) {
+          const hasModal = isAddEditModalOpen || isChatModalOpen || isCashOutModalOpen || isUpdateBankrollModalOpen || isImportModalOpen || !!betToView;
+          if (hasModal || isSidebarOpen) {
+              BackButton.show();
+          } else {
+              BackButton.hide();
+          }
+      }
+  }, [isTwa, BackButton, isAddEditModalOpen, isChatModalOpen, isCashOutModalOpen, isUpdateBankrollModalOpen, isImportModalOpen, betToView, isSidebarOpen]);
+
+  useEffect(() => {
+      if (isTwa) {
+          return onBackButtonClick(() => {
+              if (isSidebarOpen) { setIsSidebarOpen(false); return; }
+              if (isAddEditModalOpen) { setIsAddEditModalOpen(false); setBetToEdit(null); return; }
+              if (isChatModalOpen) { setIsChatModalOpen(false); setChatBet(null); return; }
+              if (isCashOutModalOpen) { setIsCashOutModalOpen(false); return; }
+              if (isUpdateBankrollModalOpen) { setIsUpdateBankrollModalOpen(false); return; }
+              if (isImportModalOpen) { setIsImportModalOpen(false); return; }
+              if (betToView) { setBetToView(null); return; }
+          });
+      }
+  }, [isTwa, onBackButtonClick, isSidebarOpen, isAddEditModalOpen, isChatModalOpen, isCashOutModalOpen, isUpdateBankrollModalOpen, isImportModalOpen, betToView]);
+
 
   const handleOpenAddModal = () => {
     if (isDemoMode) { onAuthRequired(); return; }
@@ -122,9 +150,6 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
     }
   };
 
-  // In TWA, sidebar is hidden by default and accessible via menu button. 
-  // Native header might be redundant if we fully adapt, but keeping it for now to maintain shared codebase logic.
-  
   return (
       <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
         <div className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>

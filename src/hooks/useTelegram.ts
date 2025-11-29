@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+
+import { useEffect, useState, useCallback } from 'react';
 
 declare global {
   interface Window {
@@ -27,8 +28,28 @@ export function useTelegram() {
     telegram?.close();
   };
 
+  const onMainButtonClick = useCallback((cb: () => void) => {
+      if (telegram?.MainButton) {
+          telegram.MainButton.onClick(cb);
+      }
+      return () => {
+          telegram?.MainButton?.offClick(cb);
+      }
+  }, []);
+
+  const onBackButtonClick = useCallback((cb: () => void) => {
+      if (telegram?.BackButton) {
+          telegram.BackButton.onClick(cb);
+      }
+      return () => {
+          telegram?.BackButton?.offClick(cb);
+      }
+  }, []);
+
   return {
     onClose,
+    onMainButtonClick,
+    onBackButtonClick,
     tg: telegram,
     user: telegram?.initDataUnsafe?.user,
     queryId: telegram?.initDataUnsafe?.query_id,
@@ -36,5 +57,7 @@ export function useTelegram() {
     isTwa: !!telegram?.initData, // True if running inside Telegram
     colorScheme: telegram?.colorScheme,
     themeParams: telegram?.themeParams,
+    MainButton: telegram?.MainButton,
+    BackButton: telegram?.BackButton,
   };
 }

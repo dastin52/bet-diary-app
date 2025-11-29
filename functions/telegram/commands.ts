@@ -1,3 +1,4 @@
+
 // functions/telegram/commands.ts
 import { TelegramUpdate, UserState, Env, TelegramMessage } from './types';
 import { sendMessage, sendDocument, editMessageText } from './telegramApi';
@@ -32,9 +33,13 @@ export async function showLinkAccountInfo(chatId: number, messageId: number, env
 }
 
 export async function showStartMenu(chatId: number, env: Env, messageIdToEdit?: number) {
-    const text = "👋 Добро пожаловать в BetDiary Bot! \n\nВыберите, с чего хотите начать.";
+    const webAppUrl = env.WEBAPP_URL || 'https://betdiary-app.pages.dev';
+    
+    const text = "👋 Добро пожаловать в BetDiary Bot! \n\nВедите учет ставок, следите за статистикой и получайте прогнозы от AI прямо в Telegram.";
+    
     const keyboard = makeKeyboard([
-        [ { text: '🚀 Регистрация в боте', callback_data: CB.BOT_REGISTER } ],
+        [ { text: '🚀 Открыть Дневник Ставок (App)', web_app: { url: webAppUrl } } ],
+        [ { text: '📝 Регистрация в боте', callback_data: CB.BOT_REGISTER } ],
         [ { text: '🔑 Вход по Email/Паролю', callback_data: CB.BOT_LOGIN } ],
         [ { text: '🔗 Привязать веб-аккаунт', callback_data: CB.SHOW_LINK_INFO } ],
     ]);

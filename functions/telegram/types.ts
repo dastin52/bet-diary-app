@@ -1,3 +1,4 @@
+
 // functions/telegram/types.ts
 
 // --- Shared Data Models (from src/types.ts) ---
@@ -162,6 +163,7 @@ export interface Env {
     GEMINI_API_KEY: string;
     BOT_STATE: KVNamespace;
     SPORT_API_KEY?: string;
+    WEBAPP_URL?: string;
 }
 
 export interface TelegramUser {

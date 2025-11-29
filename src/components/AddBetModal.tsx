@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { useBetContext } from '../contexts/BetContext';
 import { Bet, BetLeg, BetStatus, BetType } from '../types';
 import { SPORTS, BOOKMAKERS, BET_STATUS_OPTIONS, BET_TYPE_OPTIONS, MARKETS_BY_SPORT } from '../constants';
@@ -8,6 +9,7 @@ import Input from './ui/Input';
 import Select from './ui/Select';
 import Button from './ui/Button';
 import Label from './ui/Label';
+import { useTelegram } from '../hooks/useTelegram';
 
 interface AddBetModalProps {
   onClose: () => void;
@@ -30,6 +32,7 @@ const defaultFormData: Omit<Bet, 'id' | 'createdAt' | 'event'> = {
 
 const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
   const { addBet, updateBet, bankroll } = useBetContext();
+  const { isTwa, MainButton, onMainButtonClick } = useTelegram();
   const isEditMode = Boolean(betToEdit);
   
   const [formData, setFormData] = useState(defaultFormData);
@@ -132,8 +135,7 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
     return Object.keys(newErrors).length === 0;
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = useCallback(() => {
     if (validateForm()) {
         const tags = tagInput.split(',').map(t => t.trim()).filter(Boolean);
         const submissionData = {
@@ -153,7 +155,34 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
         }
         onClose();
     }
+  }, [formData, tagInput, isEditMode, betToEdit, addBet, updateBet, onClose]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSave();
   };
+
+  // TWA Integration
+  useEffect(() => {
+      if (isTwa && MainButton) {
+          MainButton.setParams({
+              text: isEditMode ? 'ОБНОВИТЬ СТАВКУ' : 'СОХРАНИТЬ СТАВКУ',
+              is_visible: true,
+              color: '#4F46E5', // Indigo-600
+          });
+      }
+      return () => {
+          if (isTwa && MainButton) {
+              MainButton.hide();
+          }
+      }
+  }, [isTwa, MainButton, isEditMode]);
+
+  useEffect(() => {
+      if(isTwa) {
+          return onMainButtonClick(handleSave);
+      }
+  }, [isTwa, onMainButtonClick, handleSave]);
   
   const handleUseRecommended = () => {
       if (recommendedStakeInfo && recommendedStakeInfo.stake > 0) {
@@ -168,7 +197,7 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
 
   return (
     <Modal title={isEditMode ? "Редактировать ставку" : "Добавить новую ставку"} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 pb-12 sm:pb-0">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <Label htmlFor="sport">Вид спорта</Label>
@@ -287,10 +316,13 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Введите отрицательное значение для убытка.</p>
             </div>
         )}
-        <div className="flex justify-end pt-4 space-x-3">
-          <Button type="button" variant="secondary" onClick={onClose}>Отмена</Button>
-          <Button type="submit">{isEditMode ? 'Обновить' : 'Сохранить'}</Button>
-        </div>
+        
+        {!isTwa && (
+            <div className="flex justify-end pt-4 space-x-3">
+              <Button type="button" variant="secondary" onClick={onClose}>Отмена</Button>
+              <Button type="submit">{isEditMode ? 'Обновить' : 'Сохранить'}</Button>
+            </div>
+        )}
       </form>
     </Modal>
   );

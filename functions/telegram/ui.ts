@@ -1,14 +1,21 @@
+
 // functions/telegram/ui.ts
 import { Env } from './types';
 import { editMessageText, sendMessage } from './telegramApi';
 import { CB, buildStatsCb } from './router';
 import { AnalyticsPeriod } from './analytics';
 
-export const makeKeyboard = (options: { text: string, callback_data: string }[][]) => ({ inline_keyboard: options });
+export const makeKeyboard = (options: { text: string, callback_data?: string, web_app?: { url: string }, url?: string }[][]) => ({ inline_keyboard: options });
 
 export async function showMainMenu(chatId: number, messageId: number | null, env: Env, text?: string) {
     const messageText = text || '👋 Чем могу помочь?';
+    
+    const webAppUrl = env.WEBAPP_URL || 'https://betdiary-app.pages.dev'; // Fallback URL
+
     const keyboard = makeKeyboard([
+        [
+            { text: '📱 Открыть Дневник Ставок', web_app: { url: webAppUrl } }
+        ],
         [
             { text: '📊 Статистика', callback_data: CB.SHOW_STATS },
             { text: '📝 Добавить ставку', callback_data: CB.ADD_BET },
