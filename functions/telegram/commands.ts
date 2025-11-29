@@ -42,10 +42,11 @@ export async function showStartMenu(chatId: number, env: Env, messageIdToEdit?: 
         console.error("Failed to set chat menu button:", e);
     }
 
-    const text = "👋 Привет! Я обновил интерфейс.\n\nТеперь приложение открывается через кнопку **«📱 Открыть Дневник»** слева от поля ввода текста (меню).\n\n👇 Нажми на неё, чтобы начать!";
+    const text = "👋 Привет! Добро пожаловать в BetDiary.\n\nИспользуйте кнопку меню слева от поля ввода или кнопку ниже, чтобы открыть приложение.";
     
-    // Minimal keyboard, hiding the old inline "Open App" button to avoid confusion as requested
+    // Fallback inline button in case the menu button is not visible or user prefers inline
     const keyboard = makeKeyboard([
+        [ { text: '📱 Открыть веб-приложение', web_app: { url: webAppUrl } } ],
         [ { text: '🔗 Привязать существующий аккаунт', callback_data: CB.SHOW_LINK_INFO } ]
     ]);
 

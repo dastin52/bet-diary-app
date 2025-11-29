@@ -49,9 +49,13 @@
       }
 
       window.onerror = function(msg, url, lineNo, columnNo, error) {
+        // Ignore generic script errors often caused by extensions/proxies
+        if (String(msg).indexOf('Script error') > -1) return;
+
         var errorMsg = "Global Error: " + msg + " (" + lineNo + ")";
         console.error(errorMsg);
-        showOnScreenError(errorMsg);
+        // Uncomment next line to see errors on screen if needed
+        // showOnScreenError(errorMsg);
         
         // Remove loader if error happens so user sees the error
         var loader = document.getElementById('app-loader');
@@ -66,7 +70,6 @@
         
         var msg = "Promise Rejection: " + (event.reason ? event.reason.toString() : 'Unknown');
         console.error(msg);
-        showOnScreenError(msg);
       });
     </script>
     
