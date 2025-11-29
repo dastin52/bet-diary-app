@@ -33,7 +33,7 @@ export function useTelegram() {
                   platform: telegram.platform,
                   // Explicitly log the type and value of initData to see if it's truly empty
                   initDataLength: telegram.initData ? telegram.initData.length : 0,
-                  initData: telegram.initData || 'EMPTY_STRING', 
+                  initData: telegram.initData || '', 
                   userId: telegram.initDataUnsafe?.user?.id,
                   colorScheme: telegram.colorScheme
               };
@@ -66,9 +66,7 @@ export function useTelegram() {
       }
   }, [telegram]);
 
-  // FIX: Robust check for TWA environment.
-  // If initData is an empty string (common in desktop browsers testing direct URLs), 
-  // we consider it NOT a valid TWA session for auth purposes, falling back to guest mode.
+  // Robust check for TWA environment.
   const isTwaSession = !!(telegram?.initData && telegram.initData.length > 0);
 
   return {
