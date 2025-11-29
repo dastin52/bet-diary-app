@@ -77,8 +77,6 @@
       }
     </script>
     
-    <!-- REMOVED IMPORT MAP to prevent conflict between bundled React 18 and CDN React 19 -->
-
 <style>
   body {
     background-color: var(--tg-theme-bg-color, #f3f4f6);
@@ -106,9 +104,9 @@
     align-items: center;
     background-color: var(--tg-theme-bg-color, #f3f4f6);
     z-index: 9999;
-    /* SELF DESTRUCT: This animation forces the loader to disappear after 2.5s 
+    /* SELF DESTRUCT: This animation forces the loader to disappear after 3s 
        even if React/JS crashes completely. */
-    animation: fadeOutLoader 0.5s ease-out 2.5s forwards;
+    animation: fadeOutLoader 0.5s ease-out 3s forwards;
     pointer-events: all;
   }
   .dark #app-loader {
@@ -152,12 +150,12 @@
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
     "vite": "https://aistudiocdn.com/vite@^7.2.4",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
   }
 }
