@@ -28,13 +28,16 @@ export function useTelegram() {
           // Use the global function defined in index.html for robustness
           // @ts-ignore
           if (window.logToBackend) {
-              // @ts-ignore
-              window.logToBackend('info', 'TWA Initialized', {
+              const debugData = {
                   version: telegram.version,
                   platform: telegram.platform,
-                  initData: telegram.initData,
-                  userId: telegram.initDataUnsafe?.user?.id
-              });
+                  initData: telegram.initData || 'EMPTY_STRING',
+                  initDataUnsafe: telegram.initDataUnsafe ? JSON.stringify(telegram.initDataUnsafe) : 'NULL',
+                  userId: telegram.initDataUnsafe?.user?.id,
+                  colorScheme: telegram.colorScheme
+              };
+              // @ts-ignore
+              window.logToBackend('info', 'TWA Initialized', debugData);
           }
       }
     }
@@ -70,7 +73,7 @@ export function useTelegram() {
     user: telegram?.initDataUnsafe?.user,
     queryId: telegram?.initDataUnsafe?.query_id,
     initData: telegram?.initData,
-    isTwa: !!telegram?.initData,
+    isTwa: !!telegram?.initData, // Only true if initData is present
     colorScheme: telegram?.colorScheme,
     themeParams: telegram?.themeParams,
     MainButton: telegram?.MainButton,

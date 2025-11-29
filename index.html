@@ -20,7 +20,7 @@
             body: JSON.stringify({
               level: level,
               message: message,
-              details: JSON.stringify(details),
+              details: typeof details === 'string' ? details : JSON.stringify(details),
               timestamp: new Date().toISOString(),
               userAgent: navigator.userAgent
             })
@@ -33,15 +33,19 @@
         var errorMsg = document.getElementById('error-message');
         if (errorContainer && errorMsg) {
             errorContainer.style.display = 'block';
-            errorMsg.innerText = "Critical Error:\n" + msg + "\nLine: " + lineNo;
+            errorMsg.innerText = "Critical Error:\n" + msg + "\nLine: " + lineNo + "\n" + (error ? error.stack : '');
         }
+        // Force remove loader on error so user sees the message
+        var loader = document.getElementById('app-loader');
+        if(loader) loader.style.display = 'none';
+
         logToBackend('error', 'Global Window Error', { msg, url, lineNo, stack: error ? error.stack : '' });
         return false;
       };
 
       // Handle Promise Rejections
       window.addEventListener('unhandledrejection', function(event) {
-        logToBackend('error', 'Unhandled Promise Rejection', { reason: event.reason });
+        logToBackend('error', 'Unhandled Promise Rejection', { reason: event.reason ? event.reason.toString() : 'Unknown' });
       });
     </script>
 
@@ -122,6 +126,7 @@
     z-index: 10000;
     overflow: auto;
     font-family: monospace;
+    white-space: pre-wrap;
   }
 </style>
 </head>
@@ -135,12 +140,25 @@
 
     <!-- Error Display -->
     <div id="error-container">
-        <h2 style="color: white;">Application Error</h2>
-        <pre id="error-message"></pre>
+        <h2 style="color: white; border-bottom: 1px solid #555; padding-bottom: 10px;">Application Error</h2>
+        <pre id="error-message" style="margin-top: 20px;"></pre>
         <p style="color: #999; margin-top: 20px;">Please take a screenshot and send it to support.</p>
+        <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #333; color: white; border: none; cursor: pointer;">Reload App</button>
     </div>
 
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
+    
+    <!-- Safety Timeout: Remove loader if app hangs for more than 8 seconds -->
+    <script>
+      setTimeout(function() {
+        var loader = document.getElementById('app-loader');
+        if (loader) {
+          console.warn('Loader safety timeout triggered. React might have failed to mount silently.');
+          loader.style.opacity = '0';
+          setTimeout(function() { loader.style.display = 'none'; }, 500);
+        }
+      }, 8000);
+    </script>
   </body>
 </html>

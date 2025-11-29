@@ -8,6 +8,7 @@ import WelcomeOverlay from './components/WelcomeOverlay';
 import { ThemeProvider } from './contexts/ThemeContext';
 import LoginScreen from './components/auth/LoginScreen';
 import { PredictionProvider } from './contexts/PredictionContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const AppContent: React.FC = () => {
   const { currentUser } = useAuthContext();
@@ -15,6 +16,17 @@ const AppContent: React.FC = () => {
   const [showWelcomeOverlay, setShowWelcomeOverlay] = useState(false);
 
   const isDemoMode = !currentUser;
+
+  // Remove the loader when the AppContent mounts (meaning React has successfully initialized)
+  useEffect(() => {
+      const loader = document.getElementById('app-loader');
+      if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => {
+              loader.remove();
+          }, 500);
+      }
+  }, []);
 
   useEffect(() => {
     const welcomeShown = sessionStorage.getItem('welcomeOverlayShown');
@@ -73,9 +85,11 @@ const AppProviders: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AppProviders />
-    </AuthProvider>
+    <ErrorBoundary>
+        <AuthProvider>
+          <AppProviders />
+        </AuthProvider>
+    </ErrorBoundary>
   );
 };
 
