@@ -1,11 +1,17 @@
+
 <!DOCTYPE html>
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Дневник Ставок</title>
+    <!-- Telegram WebApp Script -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- ES Module Shims for Import Maps compatibility in WebView -->
+    <script async src="https://ga.jspm.io/npm:es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -25,8 +31,19 @@
   }
 }
 </script>
+<style>
+  /* Basic reset to prevent white flash in dark mode */
+  body {
+    background-color: var(--tg-theme-bg-color, #f3f4f6);
+    color: var(--tg-theme-text-color, #1f2937);
+  }
+  .dark body {
+    background-color: #111827;
+    color: #f3f4f6;
+  }
+</style>
 </head>
-  <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100">
+  <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
   </body>

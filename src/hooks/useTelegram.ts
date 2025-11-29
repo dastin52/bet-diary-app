@@ -7,26 +7,27 @@ declare global {
   }
 }
 
-const telegram = window.Telegram?.WebApp;
-
 export function useTelegram() {
   const [isReady, setIsReady] = useState(false);
+  
+  // Access directly in the hook to avoid stale closure issues if loaded lazily
+  const telegram = window.Telegram?.WebApp;
 
   useEffect(() => {
     if (telegram) {
+      // ready() is likely called in index.tsx, but calling it again is safe (idempotent)
       telegram.ready();
       setIsReady(true);
       
-      // Expand to full height
       if (!telegram.isExpanded) {
           telegram.expand();
       }
     }
-  }, []);
+  }, [telegram]);
 
-  const onClose = () => {
+  const onClose = useCallback(() => {
     telegram?.close();
-  };
+  }, [telegram]);
 
   const onMainButtonClick = useCallback((cb: () => void) => {
       if (telegram?.MainButton) {
@@ -35,7 +36,7 @@ export function useTelegram() {
       return () => {
           telegram?.MainButton?.offClick(cb);
       }
-  }, []);
+  }, [telegram]);
 
   const onBackButtonClick = useCallback((cb: () => void) => {
       if (telegram?.BackButton) {
@@ -44,7 +45,7 @@ export function useTelegram() {
       return () => {
           telegram?.BackButton?.offClick(cb);
       }
-  }, []);
+  }, [telegram]);
 
   return {
     onClose,
@@ -59,5 +60,6 @@ export function useTelegram() {
     themeParams: telegram?.themeParams,
     MainButton: telegram?.MainButton,
     BackButton: telegram?.BackButton,
+    isReady
   };
 }
