@@ -27,6 +27,9 @@ if (!rootElement) {
 
 const root = ReactDOM.createRoot(rootElement);
 
+// @ts-ignore
+if (window.logToBackend) { window.logToBackend('info', 'React Mounting...', {}); }
+
 try {
     root.render(
       <React.StrictMode>

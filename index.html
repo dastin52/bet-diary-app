@@ -9,10 +9,9 @@
     <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- 2. Immediate Telegram Init -->
+    <!-- 2. Immediate Telegram Init & Loader Safety -->
     <script>
-      // Call ready() immediately to signal Telegram the app is alive.
-      // This helps remove the native Telegram spinner faster.
+      // Force Telegram ready immediately to stop their spinner
       if (window.Telegram && window.Telegram.WebApp) {
           try {
             window.Telegram.WebApp.ready();
@@ -20,6 +19,16 @@
             window.Telegram.WebApp.enableClosingConfirmation();
           } catch(e) { console.error('TG Init Error:', e); }
       }
+
+      // FAIL-SAFE: Force remove loader after 3 seconds no matter what
+      setTimeout(function() {
+        var loader = document.getElementById('app-loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          loader.style.pointerEvents = 'none';
+          setTimeout(function() { loader.remove(); }, 500);
+        }
+      }, 3000);
     </script>
 
     <!-- 3. Global Error Handler & Logger -->
@@ -27,7 +36,6 @@
       // Function to send logs to backend
       function logToBackend(level, message, details) {
         try {
-          // Check if fetch is available
           if (typeof fetch === 'function') {
             fetch('/api/admin/twa-logs', {
               method: 'POST',
@@ -39,7 +47,7 @@
                 timestamp: new Date().toISOString(),
                 userAgent: navigator.userAgent
               })
-            }).catch(e => {}); // Silent fail
+            }).catch(e => {}); 
           }
         } catch (e) {}
       }
@@ -51,7 +59,7 @@
             errorContainer.style.display = 'block';
             errorMsg.innerText = "Critical Error:\n" + msg + "\nLine: " + lineNo + "\n" + (error ? error.stack : '');
         }
-        // Force remove loader on error so user sees the message
+        // Force remove loader on error
         var loader = document.getElementById('app-loader');
         if(loader) loader.style.display = 'none';
 
@@ -59,15 +67,13 @@
         return false;
       };
 
-      // Handle Promise Rejections
       window.addEventListener('unhandledrejection', function(event) {
-        // Ignore innocuous errors
         if (event.reason && event.reason.toString().includes('ResizeObserver')) return;
         logToBackend('error', 'Unhandled Promise Rejection', { reason: event.reason ? event.reason.toString() : 'Unknown' });
       });
     </script>
 
-    <!-- 4. ES Module Shims (Required for some older webviews, kept for compatibility) -->
+    <!-- 4. ES Module Shims -->
     <script async src="https://ga.jspm.io/npm:es-module-shims@1.10.0/dist/es-module-shims.js"></script>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -104,20 +110,10 @@
     align-items: center;
     background-color: var(--tg-theme-bg-color, #f3f4f6);
     z-index: 9999;
-    /* SELF DESTRUCT: This animation forces the loader to disappear after 3s 
-       even if React/JS crashes completely. */
-    animation: fadeOutLoader 0.5s ease-out 3s forwards;
-    pointer-events: all;
+    transition: opacity 0.5s ease-out;
   }
   .dark #app-loader {
     background-color: #111827;
-  }
-  
-  @keyframes fadeOutLoader {
-    0% { opacity: 1; }
-    80% { opacity: 1; }
-    99% { opacity: 0; pointer-events: none; }
-    100% { opacity: 0; pointer-events: none; visibility: hidden; }
   }
 
   .spinner {
@@ -150,13 +146,13 @@
 <script type="importmap">
 {
   "imports": {
-    "vite": "https://aistudiocdn.com/vite@^7.2.4",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0"
   }
 }
 </script>
