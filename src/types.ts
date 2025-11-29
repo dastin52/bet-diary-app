@@ -1,3 +1,6 @@
+
+// ... existing types ...
+
 // @google/genai-fix: Add SharedPrediction type to be used by the prediction context and components.
 export interface SportLeague {
   id: number;
@@ -210,4 +213,12 @@ export interface ApiActivityLog {
   sport: string;
   status: 'success' | 'error';
   errorMessage?: string;
+}
+
+export interface TwaLog {
+    timestamp: string;
+    level: 'info' | 'error' | 'warn';
+    message: string;
+    details: string; // JSON string
+    userAgent: string;
 }

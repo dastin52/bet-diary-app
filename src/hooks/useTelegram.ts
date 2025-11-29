@@ -1,5 +1,5 @@
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 declare global {
   interface Window {
@@ -9,18 +9,33 @@ declare global {
 
 export function useTelegram() {
   const [isReady, setIsReady] = useState(false);
+  const sentLog = useRef(false);
   
-  // Access directly in the hook to avoid stale closure issues if loaded lazily
   const telegram = window.Telegram?.WebApp;
 
   useEffect(() => {
     if (telegram) {
-      // ready() is likely called in index.tsx, but calling it again is safe (idempotent)
       telegram.ready();
       setIsReady(true);
       
       if (!telegram.isExpanded) {
           telegram.expand();
+      }
+
+      // Send debug log once per session
+      if (!sentLog.current) {
+          sentLog.current = true;
+          // Use the global function defined in index.html for robustness
+          // @ts-ignore
+          if (window.logToBackend) {
+              // @ts-ignore
+              window.logToBackend('info', 'TWA Initialized', {
+                  version: telegram.version,
+                  platform: telegram.platform,
+                  initData: telegram.initData,
+                  userId: telegram.initDataUnsafe?.user?.id
+              });
+          }
       }
     }
   }, [telegram]);
@@ -55,7 +70,7 @@ export function useTelegram() {
     user: telegram?.initDataUnsafe?.user,
     queryId: telegram?.initDataUnsafe?.query_id,
     initData: telegram?.initData,
-    isTwa: !!telegram?.initData, // True if running inside Telegram
+    isTwa: !!telegram?.initData,
     colorScheme: telegram?.colorScheme,
     themeParams: telegram?.themeParams,
     MainButton: telegram?.MainButton,

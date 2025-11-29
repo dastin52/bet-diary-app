@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useAdminData } from '../hooks/useAdminData';
 import Card from './ui/Card';
@@ -11,10 +12,10 @@ import ActivityTimeline from './ActivityTimeline';
 import RequestsChart from './RequestsChart';
 import DiagnosticsPanel from './DiagnosticsPanel';
 
-type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics' | 'diagnostics';
+type AdminView = 'stats' | 'users' | 'ml_model' | 'team_analytics' | 'diagnostics' | 'twa_logs';
 
 const AdminPanel: React.FC = () => {
-  const { users, analytics, activityLog, isLoading, updateUserStatus } = useAdminData();
+  const { users, analytics, activityLog, twaLogs, isLoading, updateUserStatus, refreshTwaLogs } = useAdminData();
   const [activeTab, setActiveTab] = useState<AdminView>('stats');
   const [diagnosticsRefreshKey, setDiagnosticsRefreshKey] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -184,6 +185,28 @@ const AdminPanel: React.FC = () => {
               return <TeamAnalyticsPanel teamStats={analytics.teamAnalytics} />;
           case 'diagnostics':
               return <DiagnosticsPanel refreshKey={diagnosticsRefreshKey} onForceUpdate={handleForceUpdate} isUpdating={isUpdating} updateMessage={updateMessage} />;
+          case 'twa_logs':
+              return (
+                  <Card>
+                      <div className="flex justify-between items-center mb-4">
+                          <h2 className="text-xl font-semibold">Логи Telegram WebApp</h2>
+                          <Button onClick={refreshTwaLogs}>Обновить</Button>
+                      </div>
+                      <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                          {twaLogs.length === 0 ? <p className="text-gray-500">Нет логов.</p> : twaLogs.map((log, i) => (
+                              <div key={i} className={`p-3 rounded-lg border text-xs font-mono break-all ${log.level === 'error' ? 'bg-red-900/20 border-red-800' : 'bg-gray-800 border-gray-700'}`}>
+                                  <div className="flex justify-between text-gray-400 mb-1">
+                                      <span>{new Date(log.timestamp).toLocaleString()}</span>
+                                      <span className="uppercase font-bold">{log.level}</span>
+                                  </div>
+                                  <div className="font-bold mb-1 text-white">{log.message}</div>
+                                  <div className="text-gray-300">{log.details}</div>
+                                  <div className="mt-2 text-gray-500">{log.userAgent}</div>
+                              </div>
+                          ))}
+                      </div>
+                  </Card>
+              )
       }
   }
 
@@ -191,10 +214,11 @@ const AdminPanel: React.FC = () => {
     <div className="space-y-6">
         <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-3">
             <Button variant={activeTab === 'stats' ? 'primary' : 'secondary'} onClick={() => setActiveTab('stats')}>Статистика</Button>
-            <Button variant={activeTab === 'users' ? 'primary' : 'secondary'} onClick={() => setActiveTab('users')}>Управление пользователями</Button>
-            <Button variant={activeTab === 'ml_model' ? 'primary' : 'secondary'} onClick={() => setActiveTab('ml_model')}>Джинджер (ML)</Button>
-            <Button variant={activeTab === 'team_analytics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('team_analytics')}>Аналитика команд</Button>
+            <Button variant={activeTab === 'users' ? 'primary' : 'secondary'} onClick={() => setActiveTab('users')}>Пользователи</Button>
+            <Button variant={activeTab === 'ml_model' ? 'primary' : 'secondary'} onClick={() => setActiveTab('ml_model')}>ML</Button>
+            <Button variant={activeTab === 'team_analytics' ? 'primary' : 'secondary'} onClick={() => setActiveTab('team_analytics')}>Команды</Button>
             <Button variant={activeTab === 'diagnostics' ? 'primary' : 'secondary'} onClick={() => { setActiveTab('diagnostics'); setDiagnosticsRefreshKey(k => k + 1); }}>Диагностика</Button>
+            <Button variant={activeTab === 'twa_logs' ? 'primary' : 'secondary'} onClick={() => { setActiveTab('twa_logs'); refreshTwaLogs(); }}>TWA Debug</Button>
         </div>
         <div>
             {renderContent()}

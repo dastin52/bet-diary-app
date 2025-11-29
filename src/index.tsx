@@ -3,26 +3,21 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Initialize Telegram Web App SDK immediately.
-// This is critical to remove the loading spinner in Telegram.
+// Init Telegram
 const initTelegram = () => {
   if (window.Telegram?.WebApp) {
     try {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
-      
-      // Optional: Set header color to match app theme if possible (v6.1+)
-      if (window.Telegram.WebApp.setHeaderColor) {
-         // We can default to a neutral color or rely on theme params
-         // window.Telegram.WebApp.setHeaderColor('#ffffff'); 
-      }
+      console.log("Telegram WebApp initialized successfully");
     } catch (e) {
       console.error("Error initializing Telegram WebApp:", e);
     }
+  } else {
+      console.log("Telegram WebApp not detected");
   }
 };
 
-// Call it before rendering React
 initTelegram();
 
 const rootElement = document.getElementById('root');
@@ -31,8 +26,32 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+
+// Wrap in try-catch to ensure we catch render errors
+try {
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
+
+    // Remove the loader once React starts rendering
+    // We verify this by checking if root has content or simply scheduling removal
+    requestAnimationFrame(() => {
+        const loader = document.getElementById('app-loader');
+        if (loader) {
+            loader.style.opacity = '0';
+            setTimeout(() => loader.remove(), 500);
+        }
+    });
+
+} catch (e: any) {
+    console.error("React Render Error:", e);
+    // Force showing the error on screen if React fails
+    const errorContainer = document.getElementById('error-container');
+    const errorMsg = document.getElementById('error-message');
+    if (errorContainer && errorMsg) {
+        errorContainer.style.display = 'block';
+        errorMsg.innerText = "React Render Error:\n" + e.message + "\n" + e.stack;
+    }
+}

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
   <head>
@@ -6,10 +5,47 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Дневник Ставок</title>
-    <!-- Telegram WebApp Script -->
+    
+    <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- ES Module Shims for Import Maps compatibility in WebView -->
+    <!-- 2. Global Error Handler & Logger -->
+    <script>
+      // Function to send logs to backend
+      function logToBackend(level, message, details) {
+        try {
+          fetch('/api/admin/twa-logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              level: level,
+              message: message,
+              details: JSON.stringify(details),
+              timestamp: new Date().toISOString(),
+              userAgent: navigator.userAgent
+            })
+          }).catch(e => console.error("Failed to send log", e));
+        } catch (e) {}
+      }
+
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        var errorContainer = document.getElementById('error-container');
+        var errorMsg = document.getElementById('error-message');
+        if (errorContainer && errorMsg) {
+            errorContainer.style.display = 'block';
+            errorMsg.innerText = "Critical Error:\n" + msg + "\nLine: " + lineNo;
+        }
+        logToBackend('error', 'Global Window Error', { msg, url, lineNo, stack: error ? error.stack : '' });
+        return false;
+      };
+
+      // Handle Promise Rejections
+      window.addEventListener('unhandledrejection', function(event) {
+        logToBackend('error', 'Unhandled Promise Rejection', { reason: event.reason });
+      });
+    </script>
+
+    <!-- 3. ES Module Shims -->
     <script async src="https://ga.jspm.io/npm:es-module-shims@1.10.0/dist/es-module-shims.js"></script>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -32,18 +68,78 @@
 }
 </script>
 <style>
-  /* Basic reset to prevent white flash in dark mode */
   body {
     background-color: var(--tg-theme-bg-color, #f3f4f6);
     color: var(--tg-theme-text-color, #1f2937);
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
   .dark body {
     background-color: #111827;
     color: #f3f4f6;
   }
+  
+  /* Loading Screen Styles */
+  #app-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--tg-theme-bg-color, #f3f4f6);
+    z-index: 9999;
+    transition: opacity 0.5s ease-out;
+  }
+  .dark #app-loader {
+    background-color: #111827;
+  }
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e5e7eb;
+    border-top: 4px solid #4f46e5;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  
+  /* Error Container */
+  #error-container {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #1a1a1a;
+    color: #ff5555;
+    padding: 20px;
+    z-index: 10000;
+    overflow: auto;
+    font-family: monospace;
+  }
 </style>
 </head>
   <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 antialiased">
+    
+    <!-- Fallback Loader -->
+    <div id="app-loader">
+      <div class="spinner"></div>
+      <p style="margin-top: 20px; opacity: 0.7;">Загрузка BetDiary...</p>
+    </div>
+
+    <!-- Error Display -->
+    <div id="error-container">
+        <h2 style="color: white;">Application Error</h2>
+        <pre id="error-message"></pre>
+        <p style="color: #999; margin-top: 20px;">Please take a screenshot and send it to support.</p>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
   </body>

@@ -1,7 +1,7 @@
 
-
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Bet, User, BetStatus, TeamStats, ApiActivityLog } from '../types';
+// @google/genai-fix: Import ApiActivityLog type.
+import { Bet, User, BetStatus, TeamStats, ApiActivityLog, TwaLog } from '../types';
 import { getUsers, updateUserStatus } from '../data/userStore';
 import { loadUserData } from '../data/betStore';
 
@@ -23,14 +23,17 @@ export interface UseAdminDataReturn {
   allBets: Bet[];
   analytics: AdminAnalytics | null;
   activityLog: ApiActivityLog[];
+  twaLogs: TwaLog[];
   isLoading: boolean;
   updateUserStatus: (email: string, status: 'active' | 'blocked') => void;
+  refreshTwaLogs: () => Promise<void>;
 }
 
 export const useAdminData = (): UseAdminDataReturn => {
   const [users, setUsers] = useState<User[]>([]);
   const [allBets, setAllBets] = useState<Bet[]>([]);
   const [activityLog, setActivityLog] = useState<ApiActivityLog[]>([]);
+  const [twaLogs, setTwaLogs] = useState<TwaLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -48,8 +51,11 @@ export const useAdminData = (): UseAdminDataReturn => {
             const activityResponse = await fetch('/api/admin/activity');
             const activityData = await activityResponse.json();
             setActivityLog(Array.isArray(activityData) ? activityData : []);
+            
+            // 4. Fetch TWA Logs
+            await refreshTwaLogs();
 
-            // 4. Combine and de-duplicate users
+            // 5. Combine and de-duplicate users
             const allUsersMap = new Map<string, User>();
             [...webUsers, ...botUsers].forEach(user => {
                 if(user && user.email) {
@@ -62,7 +68,7 @@ export const useAdminData = (): UseAdminDataReturn => {
             const allUniqueUsers = Array.from(allUsersMap.values());
             setUsers(allUniqueUsers.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()));
 
-            // 5. Aggregate bets from all users
+            // 6. Aggregate bets from all users
             let collectedBets: Bet[] = [];
             for (const user of allUniqueUsers) {
                 const { bets } = loadUserData(user.email);
@@ -77,6 +83,18 @@ export const useAdminData = (): UseAdminDataReturn => {
     };
     fetchData();
   }, []);
+  
+  const refreshTwaLogs = async () => {
+      try {
+          const response = await fetch('/api/admin/twa-logs');
+          if (response.ok) {
+              const logs = await response.json();
+              setTwaLogs(logs);
+          }
+      } catch (e) {
+          console.error("Failed to fetch TWA logs", e);
+      }
+  }
   
   const updateUserStatusInState = useCallback((email: string, status: 'active' | 'blocked') => {
     updateUserStatus(email, status);
@@ -236,5 +254,5 @@ export const useAdminData = (): UseAdminDataReturn => {
     };
   }, [allBets, users, isLoading]);
 
-  return { users, allBets, analytics, activityLog, isLoading, updateUserStatus: updateUserStatusInState };
+  return { users, allBets, analytics, activityLog, twaLogs, isLoading, updateUserStatus: updateUserStatusInState, refreshTwaLogs };
 };
