@@ -10,16 +10,19 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null
-  };
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null
+    };
+  }
 
-  public static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
     // Attempt to log to backend via the global function defined in index.html
     // @ts-ignore
@@ -33,7 +36,7 @@ class ErrorBoundary extends Component<Props, State> {
     }
   }
 
-  public render() {
+  render() {
     if (this.state.hasError) {
       return (
         <div className="p-6 bg-red-900/10 min-h-screen flex flex-col items-center justify-center text-center">

@@ -19,13 +19,16 @@ const AppContent: React.FC = () => {
 
   // Remove the loader when the AppContent mounts (meaning React has successfully initialized)
   useEffect(() => {
-      const loader = document.getElementById('app-loader');
-      if (loader) {
-          loader.style.opacity = '0';
-          setTimeout(() => {
-              loader.remove();
-          }, 500);
-      }
+      // Use requestAnimationFrame to ensure the render has painted
+      requestAnimationFrame(() => {
+          const loader = document.getElementById('app-loader');
+          if (loader) {
+              loader.style.opacity = '0';
+              setTimeout(() => {
+                  loader.remove();
+              }, 500);
+          }
+      });
   }, []);
 
   useEffect(() => {
