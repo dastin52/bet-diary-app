@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User } from '../types';
 import * as userStore from '../data/userStore';
@@ -40,7 +41,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // TWA Auto-Login Logic
   useEffect(() => {
       const authTelegram = async () => {
-          if (isTwa && initData && !currentUser) {
+          // IMPORTANT: Only attempt auth if we have actual data string. 
+          // If initData is empty string (dev/desktop browser fallback), treat as Demo Mode immediately.
+          if (isTwa && initData && initData.length > 0 && !currentUser) {
               try {
                   const response = await fetch('/api/auth/telegram', {
                       method: 'POST',
@@ -54,15 +57,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
                       setIsTelegramAuth(true);
                       
-                      // Also ensure this user exists in local storage for compatibility with existing components
-                      // In a real app, you'd sync state from backend, but here we merge.
                       const existingLocal = userStore.findUserBy(u => u.email === user.email);
                       if (!existingLocal) {
                           userStore.addUser(user);
                       }
+                  } else {
+                      console.warn("Telegram auth failed, falling back to guest/demo mode");
                   }
               } catch (e) {
-                  console.error("Telegram Auth Failed:", e);
+                  console.error("Telegram Auth Network Failed:", e);
               }
           }
       };

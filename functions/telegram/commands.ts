@@ -32,43 +32,20 @@ export async function showLinkAccountInfo(chatId: number, messageId: number, env
     await editMessageText(chatId, messageId, text, env, keyboard);
 }
 
-// --- LEGACY MENU FUNCTION (Preserved as requested) ---
-/* 
-export async function showOldStartMenu(chatId: number, env: Env, messageIdToEdit?: number) {
-    const webAppUrl = env.WEBAPP_URL || 'https://betdiary-app.pages.dev';
-    
-    const text = "👋 Добро пожаловать в BetDiary Bot! \n\nВедите учет ставок, следите за статистикой и получайте прогнозы от AI прямо в Telegram.";
-    
-    const keyboard = makeKeyboard([
-        [ { text: '🚀 Открыть Дневник Ставок (App)', web_app: { url: webAppUrl } } ],
-        [ { text: '📝 Регистрация в боте', callback_data: CB.BOT_REGISTER } ],
-        [ { text: '🔑 Вход по Email/Паролю', callback_data: CB.BOT_LOGIN } ],
-        [ { text: '🔗 Привязать веб-аккаунт', callback_data: CB.SHOW_LINK_INFO } ],
-    ]);
-    if (messageIdToEdit) {
-        await editMessageText(chatId, messageIdToEdit, text, env, keyboard);
-    } else {
-        await sendMessage(chatId, text, env, keyboard);
-    }
-}
-*/
-
 export async function showStartMenu(chatId: number, env: Env, messageIdToEdit?: number) {
     const webAppUrl = env.WEBAPP_URL || 'https://betdiary-app.pages.dev';
     
-    // 1. Configure the persistent Menu Button (bottom left)
+    // 1. Configure the persistent Menu Button (bottom left) - This is the PRIMARY entry point now
     try {
         await setChatMenuButton(chatId, env, webAppUrl);
     } catch (e) {
         console.error("Failed to set chat menu button:", e);
     }
 
-    const text = "👋 Привет! Я настроил для тебя удобное меню.\n\n👇 Нажми на кнопку **«📱 Открыть Дневник»** слева от поля ввода, чтобы запустить приложение.";
+    const text = "👋 Привет! Я обновил интерфейс.\n\nТеперь приложение открывается через кнопку **«📱 Открыть Дневник»** слева от поля ввода текста (меню).\n\n👇 Нажми на неё, чтобы начать!";
     
-    // Simple keyboard just in case they don't see the menu button immediately, 
-    // or want to link an existing account.
+    // Minimal keyboard, hiding the old inline "Open App" button to avoid confusion as requested
     const keyboard = makeKeyboard([
-        [ { text: '📱 Открыть Дневник', web_app: { url: webAppUrl } } ],
         [ { text: '🔗 Привязать существующий аккаунт', callback_data: CB.SHOW_LINK_INFO } ]
     ]);
 
@@ -88,7 +65,7 @@ export async function handleStart(update: TelegramUpdate, state: UserState, env:
 
 export async function handleHelp(message: TelegramMessage, env: Env) {
     const text = `*Доступные команды:*
-/start - Обновить кнопку меню
+/start - Обновить кнопку меню и перезапустить бота
 /help - Показать это сообщение
 
 Основной функционал доступен в веб-приложении. Нажмите кнопку меню "📱 Открыть Дневник".`;
@@ -120,10 +97,7 @@ export async function handleAuth(message: TelegramMessage, code: string, env: En
 export async function handleAddBet(update: TelegramUpdate, state: UserState, env: Env) {
     const message = update.message || update.callback_query?.message;
     if (!message) return;
-    
-    // In a real implementation, this would trigger a multi-step dialog.
     await startAddBetDialog(message.chat.id, state, env, message.message_id);
-    // await sendMessage(message.chat.id, "Добавление ставок через бота находится в разработке. Пожалуйста, используйте веб-интерфейс.", env);
 }
 
 export async function handleStats(update: TelegramUpdate, state: UserState, env: Env) {
@@ -154,7 +128,6 @@ export async function handleStats(update: TelegramUpdate, state: UserState, env:
     switch (action) {
         case 'detailed':
             await sendMessage(message.chat.id, formatDetailedReportText(analytics), env);
-            // After sending detailed, we don't want to edit the main menu away.
             return;
         case 'download':
             const html = generateAnalyticsHtml(analytics);
@@ -205,5 +178,4 @@ export async function handlePredictions(update: TelegramUpdate, state: UserState
     await startPredictionLog(update, state, env);
 }
 
-// This now correctly points to the new entry point for the matches feature
 export { handleMatches };

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ru">
   <head>
@@ -9,7 +10,16 @@
     <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- 2. Global Error Handler & Logger -->
+    <!-- 2. Immediate Telegram Ready Call -->
+    <script>
+      // Tell Telegram we are ready instantly to remove their native spinner
+      if (window.Telegram && window.Telegram.WebApp) {
+          window.Telegram.WebApp.ready();
+          window.Telegram.WebApp.expand();
+      }
+    </script>
+
+    <!-- 3. Global Error Handler & Logger -->
     <script>
       // Function to send logs to backend
       function logToBackend(level, message, details) {
@@ -49,7 +59,7 @@
       });
     </script>
 
-    <!-- 3. ES Module Shims -->
+    <!-- 4. ES Module Shims -->
     <script async src="https://ga.jspm.io/npm:es-module-shims@1.10.0/dist/es-module-shims.js"></script>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -98,6 +108,7 @@
     background-color: var(--tg-theme-bg-color, #f3f4f6);
     z-index: 9999;
     transition: opacity 0.5s ease-out;
+    pointer-events: all; /* Blocks clicks initially */
   }
   .dark #app-loader {
     background-color: #111827;
@@ -149,16 +160,19 @@
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
     
-    <!-- Safety Timeout: Remove loader after 3 seconds aggressively -->
+    <!-- Aggressive Safety Timeout: Remove loader after 1.5 seconds NO MATTER WHAT -->
     <script>
       setTimeout(function() {
         var loader = document.getElementById('app-loader');
         if (loader) {
-          console.warn('Loader safety timeout triggered (3s). Force removing loader.');
+          console.warn('Loader safety timeout triggered (1.5s). Force removing loader.');
           loader.style.opacity = '0';
-          setTimeout(function() { loader.style.display = 'none'; }, 500);
+          loader.style.pointerEvents = 'none'; // Crucial: allow clicks through even if visual removal lags
+          setTimeout(function() { 
+              if(loader.parentNode) loader.parentNode.removeChild(loader); 
+          }, 500);
         }
-      }, 3000);
+      }, 1500);
     </script>
   </body>
 </html>
