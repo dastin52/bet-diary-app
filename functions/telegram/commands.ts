@@ -42,7 +42,7 @@ export async function showStartMenu(chatId: number, env: Env, messageIdToEdit?: 
         console.error("Failed to set chat menu button:", e);
     }
 
-    const text = "👋 Привет! Добро пожаловать в BetDiary.\n\nИспользуйте кнопку меню слева от поля ввода или кнопку ниже, чтобы открыть приложение.";
+    const text = "👋 Привет! Добро пожаловать в BetDiary.\n\nНажмите кнопку ниже или используйте меню слева, чтобы запустить приложение.";
     
     // Fallback inline button in case the menu button is not visible or user prefers inline
     const keyboard = makeKeyboard([
