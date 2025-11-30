@@ -20,15 +20,15 @@
           } catch(e) { console.error('TG Init Error:', e); }
       }
 
-      // FAIL-SAFE: Force remove loader after 4 seconds no matter what
+      // FAIL-SAFE: Force remove loader after 5 seconds no matter what
       setTimeout(function() {
         var loader = document.getElementById('app-loader');
         if (loader) {
-          loader.style.transition = 'opacity 0.5s';
-          loader.style.opacity = '0';
-          setTimeout(function() { loader.remove(); }, 500);
+          loader.innerHTML = '<div style="color:red; text-align:center; padding:20px;"><h3>Запуск затянулся...</h3><p>Если приложение не появится через пару секунд, попробуйте перезапустить.</p></div>';
+          loader.style.backgroundColor = 'rgba(0,0,0,0.8)';
+          setTimeout(function() { loader.remove(); }, 3000);
         }
-      }, 4000);
+      }, 5000);
     </script>
 
     <!-- 3. Global Error Handler & On-Screen Debugger -->
@@ -36,8 +36,6 @@
       // Global logging function for components to use
       window.logToBackend = function(level, message, details) {
           try {
-              // Only log if inside Telegram or if explicitly enabled
-              // We use a fire-and-forget fetch to avoid blocking
               if(window.location.hostname !== 'localhost') {
                   fetch('/api/admin/twa-logs', {
                       method: 'POST',
@@ -58,35 +56,19 @@
         // Ignore generic script errors often caused by extensions/proxies
         if (String(msg).indexOf('Script error') > -1) return;
 
-        var errorMsg = "Global Error: " + msg + " (" + lineNo + ")";
-        console.error(errorMsg);
+        var errorMsg = msg + " (" + lineNo + ")";
+        console.error("Global Error:", errorMsg);
         
-        // Log to backend
         window.logToBackend('error', msg, { url: url, line: lineNo, stack: error ? error.stack : '' });
         
-        // Remove loader if error happens so user sees the error
+        // Show error on screen for debug (Critical for white screen debugging)
         var loader = document.getElementById('app-loader');
-        if(loader) loader.style.display = 'none';
-        
-        // Show error on screen for debug
-        var debugDiv = document.getElementById('debug-console');
-        if(!debugDiv) {
-            debugDiv = document.createElement('div');
-            debugDiv.id = 'debug-console';
-            debugDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:rgba(200,0,0,0.9);color:white;padding:10px;z-index:10000;font-size:12px;';
-            document.body.appendChild(debugDiv);
+        if(loader) {
+            loader.innerHTML = '<div style="color:red; background:white; padding:20px; border-radius:8px; text-align:left; font-family:monospace; font-size:12px; margin:20px;"><strong>CRITICAL ERROR:</strong><br/>' + errorMsg + '</div>';
         }
-        debugDiv.innerText = "Error: " + msg;
 
         return false;
       };
-
-      window.addEventListener('unhandledrejection', function(event) {
-        if (event.reason && event.reason.toString().includes('ResizeObserver')) return;
-        var msg = "Promise Rejection: " + (event.reason ? event.reason.toString() : 'Unknown');
-        console.error(msg);
-        window.logToBackend('error', 'Unhandled Rejection', msg);
-      });
     </script>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -139,13 +121,14 @@
   }
   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
+<!-- REMOVED CONFLICTING IMPORTMAP HERE -->
 <script type="importmap">
 {
   "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
     "vite": "https://aistudiocdn.com/vite@^7.2.4",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0"
