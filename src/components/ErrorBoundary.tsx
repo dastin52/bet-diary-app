@@ -1,4 +1,4 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 interface Props {
   children?: ReactNode;
@@ -9,9 +9,9 @@ interface State {
   error: Error | null;
 }
 
-// @google/genai-fix: Use React.Component to ensure props and state are correctly inherited and recognized by TypeScript.
-class ErrorBoundary extends React.Component<Props, State> {
-  // @google/genai-fix: Initialize state as a class property for better type inference and to resolve "property does not exist" errors.
+// @google/genai-fix: Use Component named import to ensure proper inheritance and resolution of props/state types.
+class ErrorBoundary extends Component<Props, State> {
+  // @google/genai-fix: Explicitly define state as a class property for better type inference and to resolve "property does not exist" errors.
   public state: State = {
     hasError: false,
     error: null
@@ -39,7 +39,7 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   public render() {
-    // @google/genai-fix: Accessing this.state which is now properly recognized as part of React.Component.
+    // @google/genai-fix: Accessing this.state which is inherited from the base Component class.
     if (this.state.hasError) {
       return (
         <div className="p-6 bg-red-900/10 min-h-screen flex flex-col items-center justify-center text-center">
@@ -59,7 +59,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // @google/genai-fix: Accessing this.props.children which is now properly recognized.
+    // @google/genai-fix: Correctly accessing this.props.children which is inherited from the base Component class.
     return this.props.children;
   }
 }

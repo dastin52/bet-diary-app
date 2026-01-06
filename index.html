@@ -37,6 +37,18 @@
 
       window.logToBackend = function(level, message, details) {
           console.log("[" + level.toUpperCase() + "]", message, details);
+          // Отправка логов на бэкенд, если необходимо
+          fetch('/api/admin/twa-logs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              timestamp: new Date().toISOString(),
+              level: level,
+              message: message,
+              details: JSON.stringify(details),
+              userAgent: navigator.userAgent
+            })
+          }).catch(() => {});
       };
     </script>
     
@@ -81,6 +93,7 @@
         display: flex; flex-direction: column; justify-content: center; align-items: center;
         background-color: var(--tg-theme-bg-color, #f3f4f6);
         z-index: 9999;
+        transition: opacity 0.5s ease;
       }
       .dark #app-loader { background-color: #111827; }
 
@@ -96,13 +109,13 @@
   <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
     "vite": "https://esm.sh/vite@^7.3.0",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
   }
 }
 </script>
@@ -110,10 +123,11 @@
   <body class="antialiased">
     <div id="app-loader">
       <div class="spinner"></div>
-      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px;">Загрузка данных...</p>
+      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px;">Загрузка системы...</p>
     </div>
 
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <!-- Важно: указываем путь к файлу в папке src, так как в нем логика инициализации Telegram -->
+    <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>
