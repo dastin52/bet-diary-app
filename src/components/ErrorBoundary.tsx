@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 
 interface Props {
   children?: ReactNode;
@@ -9,11 +9,17 @@ interface State {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<Props, State> {
+// @google/genai-fix: Use React.Component to ensure props and state are correctly inherited and recognized by TypeScript.
+class ErrorBoundary extends React.Component<Props, State> {
+  // @google/genai-fix: Initialize state as a class property for better type inference and to resolve "property does not exist" errors.
   public state: State = {
     hasError: false,
     error: null
   };
+
+  constructor(props: Props) {
+    super(props);
+  }
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
@@ -21,7 +27,6 @@ class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    // Attempt to log to backend via the global function defined in index.html
     // @ts-ignore
     if (window.logToBackend) {
         // @ts-ignore
@@ -34,24 +39,27 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public render() {
+    // @google/genai-fix: Accessing this.state which is now properly recognized as part of React.Component.
     if (this.state.hasError) {
       return (
         <div className="p-6 bg-red-900/10 min-h-screen flex flex-col items-center justify-center text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Что-то пошло не так</h1>
           <p className="text-gray-700 dark:text-gray-300 mb-4">Приложение столкнулось с критической ошибкой.</p>
-          <pre className="bg-gray-800 text-red-300 p-4 rounded text-left text-xs overflow-auto max-w-full max-h-60 mb-6">
+          <div className="bg-gray-800 text-red-300 p-4 rounded text-left text-xs overflow-auto max-w-full max-h-60 mb-6 font-mono">
+            {/* @google/genai-fix: Accessing state.error property. */}
             {this.state.error?.toString()}
-          </pre>
+          </div>
           <button
-            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-lg"
             onClick={() => window.location.reload()}
           >
-            Перезагрузить приложение
+            Обновить приложение
           </button>
         </div>
       );
     }
 
+    // @google/genai-fix: Accessing this.props.children which is now properly recognized.
     return this.props.children;
   }
 }

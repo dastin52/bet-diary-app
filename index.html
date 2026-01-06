@@ -9,65 +9,34 @@
     <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- 2. Immediate Telegram Init & Loader Safety -->
+    <!-- 2. Immediate Telegram Init -->
     <script>
-      // Force Telegram ready immediately to stop their spinner
       if (window.Telegram && window.Telegram.WebApp) {
           try {
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
-            window.Telegram.WebApp.enableClosingConfirmation();
           } catch(e) { console.error('TG Init Error:', e); }
       }
-
-      // FAIL-SAFE: Force remove loader after 5 seconds no matter what
-      setTimeout(function() {
-        var loader = document.getElementById('app-loader');
-        if (loader) {
-          loader.innerHTML = '<div style="color:red; text-align:center; padding:20px;"><h3>Запуск затянулся...</h3><p>Если приложение не появится через пару секунд, попробуйте перезапустить.</p></div>';
-          loader.style.backgroundColor = 'rgba(0,0,0,0.8)';
-          setTimeout(function() { loader.remove(); }, 3000);
-        }
-      }, 5000);
     </script>
 
-    <!-- 3. Global Error Handler & On-Screen Debugger -->
+    <!-- 3. Global Error Handler for Debugging -->
     <script>
-      // Global logging function for components to use
-      window.logToBackend = function(level, message, details) {
-          try {
-              if(window.location.hostname !== 'localhost') {
-                  fetch('/api/admin/twa-logs', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                          timestamp: new Date().toISOString(),
-                          level: level,
-                          message: message,
-                          details: typeof details === 'string' ? details : JSON.stringify(details),
-                          userAgent: navigator.userAgent
-                      })
-                  }).catch(err => console.warn('Failed to send log', err));
-              }
-          } catch(e) {}
-      };
-
       window.onerror = function(msg, url, lineNo, columnNo, error) {
-        // Ignore generic script errors often caused by extensions/proxies
-        if (String(msg).indexOf('Script error') > -1) return;
-
-        var errorMsg = msg + " (" + lineNo + ")";
-        console.error("Global Error:", errorMsg);
-        
-        window.logToBackend('error', msg, { url: url, line: lineNo, stack: error ? error.stack : '' });
-        
-        // Show error on screen for debug (Critical for white screen debugging)
+        if (msg.indexOf('Script error') > -1) return;
+        var errorMsg = msg + " (Строка: " + lineNo + ")";
         var loader = document.getElementById('app-loader');
         if(loader) {
-            loader.innerHTML = '<div style="color:red; background:white; padding:20px; border-radius:8px; text-align:left; font-family:monospace; font-size:12px; margin:20px;"><strong>CRITICAL ERROR:</strong><br/>' + errorMsg + '</div>';
+            loader.innerHTML = '<div style="color:#ef4444; background:#1f2937; padding:20px; border-radius:12px; margin:20px; border:1px solid #ef4444; font-family:monospace;">' +
+                               '<h3 style="margin-top:0">Ошибка запуска</h3>' +
+                               '<p style="font-size:12px">' + errorMsg + '</p>' +
+                               '<button onclick="location.reload()" style="background:#ef4444; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer">Перезагрузить</button>' +
+                               '</div>';
         }
-
         return false;
+      };
+
+      window.logToBackend = function(level, message, details) {
+          console.log("[" + level.toUpperCase() + "]", message, details);
       };
     </script>
     
@@ -75,77 +44,76 @@
     <script>
       tailwind.config = {
         darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              tg: {
+                bg: 'var(--tg-theme-bg-color, #f3f4f6)',
+                text: 'var(--tg-theme-text-color, #1f2937)',
+                hint: 'var(--tg-theme-hint-color, #9ca3af)',
+                link: 'var(--tg-theme-link-color, #4f46e5)',
+                button: 'var(--tg-theme-button-color, #4f46e5)',
+                'button-text': 'var(--tg-theme-button-text-color, #ffffff)',
+              }
+            }
+          }
+        }
       }
     </script>
     
-<style>
-  body {
-    background-color: var(--tg-theme-bg-color, #f3f4f6);
-    color: var(--tg-theme-text-color, #1f2937);
-    margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    overscroll-behavior: none;
-  }
-  .dark body {
-    background-color: #111827;
-    color: #f3f4f6;
-  }
-  
-  /* Loading Screen Styles */
-  #app-loader {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    background-color: var(--tg-theme-bg-color, #f3f4f6);
-    z-index: 9999;
-    transition: opacity 0.5s ease-out;
-  }
-  .dark #app-loader {
-    background-color: #111827;
-  }
+    <style>
+      body {
+        background-color: var(--tg-theme-bg-color, #f3f4f6);
+        color: var(--tg-theme-text-color, #1f2937);
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        overscroll-behavior: none;
+      }
+      .dark body {
+        background-color: #111827;
+        color: #f3f4f6;
+      }
+      
+      #app-loader {
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        display: flex; flex-direction: column; justify-content: center; align-items: center;
+        background-color: var(--tg-theme-bg-color, #f3f4f6);
+        z-index: 9999;
+      }
+      .dark #app-loader { background-color: #111827; }
 
-  .spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #e5e7eb;
-    border-top: 4px solid #4f46e5;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-</style>
-<!-- REMOVED CONFLICTING IMPORTMAP HERE -->
-<script type="importmap">
+      .spinner {
+        width: 40px; height: 40px;
+        border: 4px solid #e5e7eb;
+        border-top: 4px solid #4f46e5;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+  <script type="importmap">
 {
   "imports": {
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "vite": "https://aistudiocdn.com/vite@^7.2.4",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0"
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
 </script>
 </head>
-  <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 antialiased">
-    
-    <!-- Fallback Loader -->
+  <body class="antialiased">
     <div id="app-loader">
       <div class="spinner"></div>
-      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px;">Запуск BetDiary...</p>
+      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px;">Загрузка данных...</p>
     </div>
 
-    <!-- React Root -->
     <div id="root"></div>
-    <script type="module" src="/src/index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
