@@ -1,4 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+import React, { ErrorInfo, ReactNode } from 'react';
 
 interface Props {
   children?: ReactNode;
@@ -9,8 +10,8 @@ interface State {
   error: Error | null;
 }
 
-// @google/genai-fix: Explicitly extend the 'Component' class from React to ensure that inherited properties like 'props' and 'state' are correctly recognized by the TypeScript compiler.
-class ErrorBoundary extends Component<Props, State> {
+// @google/genai-fix: Explicitly extend React.Component with Props and State generics to ensure inherited properties like 'props' and 'state' are correctly recognized by the TypeScript compiler.
+class ErrorBoundary extends React.Component<Props, State> {
   // @google/genai-fix: Initialize 'state' as a class property with explicit 'State' type to ensure consistency and satisfy strict type checking.
   public state: State = {
     hasError: false,
@@ -39,7 +40,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public render() {
-    // @google/genai-fix: Correctly access 'this.state' inherited from the base React Component class.
+    // @google/genai-fix: Correctly access 'this.state' inherited from the base React.Component class.
     if (this.state.hasError) {
       return (
         <div className="p-6 bg-red-900/10 min-h-screen flex flex-col items-center justify-center text-center">
@@ -59,7 +60,8 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // @google/genai-fix: Return 'this.props.children' as expected for a standard ErrorBoundary implementation. Inheriting from Component ensures 'props' is available.
+    // @google/genai-fix: Return 'this.props.children' which is available through standard React class component inheritance. 
+    // If the compiler still struggles, we ensure it is treated as the generic props type.
     return this.props.children;
   }
 }
