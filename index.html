@@ -9,35 +9,12 @@
     <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- 2. Immediate Telegram Init -->
+    <!-- 2. Глобальный логгер ошибок (до загрузки чего-либо еще) -->
     <script>
-      if (window.Telegram && window.Telegram.WebApp) {
-          try {
-            window.Telegram.WebApp.ready();
-            window.Telegram.WebApp.expand();
-          } catch(e) { console.error('TG Init Error:', e); }
-      }
-    </script>
-
-    <!-- 3. Global Error Handler for Debugging -->
-    <script>
-      window.onerror = function(msg, url, lineNo, columnNo, error) {
-        if (msg.indexOf('Script error') > -1) return;
-        var errorMsg = msg + " (Строка: " + lineNo + ")";
-        var loader = document.getElementById('app-loader');
-        if(loader) {
-            loader.innerHTML = '<div style="color:#ef4444; background:#1f2937; padding:20px; border-radius:12px; margin:20px; border:1px solid #ef4444; font-family:monospace;">' +
-                               '<h3 style="margin-top:0">Ошибка запуска</h3>' +
-                               '<p style="font-size:12px">' + errorMsg + '</p>' +
-                               '<button onclick="location.reload()" style="background:#ef4444; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer">Перезагрузить</button>' +
-                               '</div>';
-        }
-        return false;
-      };
-
-      window.logToBackend = function(level, message, details) {
+      (function() {
+        var logs = [];
+        window.logToBackend = function(level, message, details) {
           console.log("[" + level.toUpperCase() + "]", message, details);
-          // Отправка логов на бэкенд, если необходимо
           fetch('/api/admin/twa-logs', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -45,11 +22,51 @@
               timestamp: new Date().toISOString(),
               level: level,
               message: message,
-              details: JSON.stringify(details),
-              userAgent: navigator.userAgent
+              details: details ? (typeof details === 'string' ? details : JSON.stringify(details)) : '',
+              userAgent: navigator.userAgent,
+              url: window.location.href
             })
-          }).catch(() => {});
-      };
+          }).catch(function(e) { console.error("Reporting failed", e); });
+        };
+
+        window.onerror = function(msg, url, line, col, error) {
+          var details = "Line: " + line + ", Col: " + col + ", Stack: " + (error ? error.stack : 'N/A');
+          window.logToBackend('error', 'Runtime Error: ' + msg, details);
+          
+          // Показываем ошибку на экране для пользователя в TG
+          var loader = document.getElementById('app-loader');
+          if (loader) {
+            loader.innerHTML = '<div style="padding:20px; color:#f87171; font-family:monospace; font-size:12px; background:#111827; height:100vh;">' +
+              '<h3 style="color:white">Критическая ошибка запуска</h3>' +
+              '<p>' + msg + '</p>' +
+              '<p style="opacity:0.6">' + details + '</p>' +
+              '<button onclick="location.reload()" style="background:#4f46e5; color:white; border:none; padding:10px 20px; border-radius:5px; margin-top:20px;">Перезагрузить</button>' +
+              '</div>';
+          }
+          return false;
+        };
+
+        window.onunhandledrejection = function(event) {
+          window.logToBackend('error', 'Unhandled Promise Rejection', event.reason);
+        };
+
+        // Инициализация TG
+        if (window.Telegram && window.Telegram.WebApp) {
+          try {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+            window.logToBackend('info', 'Telegram WebApp Ready', {
+              platform: window.Telegram.WebApp.platform,
+              version: window.Telegram.WebApp.version,
+              initData: !!window.Telegram.WebApp.initData
+            });
+          } catch(e) {
+            window.logToBackend('error', 'Telegram Init Error', e.message);
+          }
+        } else {
+          window.logToBackend('warn', 'Telegram WebApp Object Not Found');
+        }
+      })();
     </script>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -77,31 +94,19 @@
       body {
         background-color: var(--tg-theme-bg-color, #f3f4f6);
         color: var(--tg-theme-text-color, #1f2937);
-        margin: 0;
-        padding: 0;
+        margin: 0; padding: 0; overscroll-behavior: none;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        overscroll-behavior: none;
       }
-      .dark body {
-        background-color: #111827;
-        color: #f3f4f6;
-      }
-      
+      .dark body { background-color: #111827; color: #f3f4f6; }
       #app-loader {
-        position: fixed;
-        top: 0; left: 0; width: 100%; height: 100%;
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
-        background-color: var(--tg-theme-bg-color, #f3f4f6);
-        z-index: 9999;
-        transition: opacity 0.5s ease;
+        background-color: var(--tg-theme-bg-color, #f3f4f6); z-index: 9999;
       }
       .dark #app-loader { background-color: #111827; }
-
       .spinner {
-        width: 40px; height: 40px;
-        border: 4px solid #e5e7eb;
-        border-top: 4px solid #4f46e5;
-        border-radius: 50%;
+        width: 40px; height: 40px; border: 4px solid #e5e7eb;
+        border-top: 4px solid #4f46e5; border-radius: 50%;
         animation: spin 1s linear infinite;
       }
       @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -123,11 +128,11 @@
   <body class="antialiased">
     <div id="app-loader">
       <div class="spinner"></div>
-      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px;">Загрузка системы...</p>
+      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px;">Инициализация BetDiary...</p>
     </div>
 
     <div id="root"></div>
-    <!-- Важно: указываем путь к файлу в папке src, так как в нем логика инициализации Telegram -->
+    <!-- Используем абсолютный путь для Vite -->
     <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

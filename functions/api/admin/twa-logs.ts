@@ -1,4 +1,3 @@
-
 import { Env } from '../../telegram/types';
 
 interface EventContext<E> {
@@ -13,28 +12,38 @@ export const onRequestPost = async ({ request, env }: EventContext<Env>) => {
         
         let logs: any[] = [];
         try {
-            logs = await env.BOT_STATE.get(logsKey, { type: 'json' }) || [];
-        } catch {}
+            const existing = await env.BOT_STATE.get(logsKey, { type: 'json' });
+            logs = Array.isArray(existing) ? existing : [];
+        } catch (e) {
+            console.error("KV Read Error:", e);
+        }
 
-        // Add new log to the beginning
+        // Добавляем новый лог в начало
         logs.unshift(body);
         
-        // Keep last 50 logs
-        logs = logs.slice(0, 50);
+        // Ограничиваем историю 100 записями
+        logs = logs.slice(0, 100);
 
         await env.BOT_STATE.put(logsKey, JSON.stringify(logs));
 
-        return new Response('Logged', { status: 200 });
+        return new Response(JSON.stringify({ status: 'ok' }), { 
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        });
     } catch (e) {
-        return new Response('Error logging', { status: 500 });
+        return new Response(JSON.stringify({ error: String(e) }), { status: 500 });
     }
 };
 
 export const onRequestGet = async ({ env }: EventContext<Env>) => {
-    const logsKey = 'twa_debug_logs';
-    const logs = await env.BOT_STATE.get(logsKey, { type: 'json' }) || [];
-    return new Response(JSON.stringify(logs), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-    });
+    try {
+        const logsKey = 'twa_debug_logs';
+        const logs = await env.BOT_STATE.get(logsKey, { type: 'json' }) || [];
+        return new Response(JSON.stringify(logs), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    } catch (e) {
+        return new Response(JSON.stringify([]), { status: 200 });
+    }
 };

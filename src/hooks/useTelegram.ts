@@ -1,9 +1,9 @@
-
 import { useEffect, useState, useCallback, useRef } from 'react';
 
 declare global {
   interface Window {
     Telegram: any;
+    logToBackend?: (level: string, message: string, details?: any) => void;
   }
 }
 
@@ -15,30 +15,29 @@ export function useTelegram() {
 
   useEffect(() => {
     if (telegram) {
-      telegram.ready();
-      setIsReady(true);
-      
-      if (!telegram.isExpanded) {
-          try { telegram.expand(); } catch(e) {}
-      }
+      try {
+        telegram.ready();
+        setIsReady(true);
+        
+        if (!telegram.isExpanded) {
+            telegram.expand();
+        }
 
-      // Send debug log once per session
-      if (!sentLog.current) {
-          sentLog.current = true;
-          // Use the global function defined in index.html for robustness
-          // @ts-ignore
+        if (!sentLog.current) {
+            sentLog.current = true;
+            if (window.logToBackend) {
+                window.logToBackend('info', 'TWA Hook Initialized', {
+                    platform: telegram.platform,
+                    initDataExist: !!telegram.initData,
+                    version: telegram.version,
+                    colorScheme: telegram.colorScheme
+                });
+            }
+        }
+      } catch (e: any) {
+          console.error("TWA Hook Error:", e);
           if (window.logToBackend) {
-              const debugData = {
-                  version: telegram.version,
-                  platform: telegram.platform,
-                  // Explicitly log the type and value of initData to see if it's truly empty
-                  initDataLength: telegram.initData ? telegram.initData.length : 0,
-                  initData: telegram.initData || '', 
-                  userId: telegram.initDataUnsafe?.user?.id,
-                  colorScheme: telegram.colorScheme
-              };
-              // @ts-ignore
-              window.logToBackend('info', 'TWA Initialized', debugData);
+              window.logToBackend('error', 'TWA Hook Init Failed', e.message);
           }
       }
     }
@@ -66,7 +65,7 @@ export function useTelegram() {
       }
   }, [telegram]);
 
-  // Robust check for TWA environment.
+  // Проверка на среду Telegram
   const isTwaSession = !!(telegram?.initData && telegram.initData.length > 0);
 
   return {
