@@ -9,10 +9,9 @@
     <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- 2. Глобальный логгер ошибок (до загрузки чего-либо еще) -->
+    <!-- 2. Глобальный логгер ошибок -->
     <script>
       (function() {
-        var logs = [];
         window.logToBackend = function(level, message, details) {
           console.log("[" + level.toUpperCase() + "]", message, details);
           fetch('/api/admin/twa-logs', {
@@ -33,11 +32,10 @@
           var details = "Line: " + line + ", Col: " + col + ", Stack: " + (error ? error.stack : 'N/A');
           window.logToBackend('error', 'Runtime Error: ' + msg, details);
           
-          // Показываем ошибку на экране для пользователя в TG
           var loader = document.getElementById('app-loader');
           if (loader) {
-            loader.innerHTML = '<div style="padding:20px; color:#f87171; font-family:monospace; font-size:12px; background:#111827; height:100vh;">' +
-              '<h3 style="color:white">Критическая ошибка запуска</h3>' +
+            loader.innerHTML = '<div style="padding:20px; color:#f87171; font-family:monospace; font-size:12px; background:#111827; height:100vh; overflow:auto;">' +
+              '<h3 style="color:white">Ошибка запуска</h3>' +
               '<p>' + msg + '</p>' +
               '<p style="opacity:0.6">' + details + '</p>' +
               '<button onclick="location.reload()" style="background:#4f46e5; color:white; border:none; padding:10px 20px; border-radius:5px; margin-top:20px;">Перезагрузить</button>' +
@@ -46,25 +44,13 @@
           return false;
         };
 
-        window.onunhandledrejection = function(event) {
-          window.logToBackend('error', 'Unhandled Promise Rejection', event.reason);
-        };
-
-        // Инициализация TG
         if (window.Telegram && window.Telegram.WebApp) {
           try {
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
-            window.logToBackend('info', 'Telegram WebApp Ready', {
-              platform: window.Telegram.WebApp.platform,
-              version: window.Telegram.WebApp.version,
-              initData: !!window.Telegram.WebApp.initData
-            });
           } catch(e) {
-            window.logToBackend('error', 'Telegram Init Error', e.message);
+            console.error('TG Init Error:', e);
           }
-        } else {
-          window.logToBackend('warn', 'Telegram WebApp Object Not Found');
         }
       })();
     </script>
@@ -130,9 +116,7 @@
       <div class="spinner"></div>
       <p style="margin-top: 20px; opacity: 0.7; font-size: 14px;">Инициализация BetDiary...</p>
     </div>
-
     <div id="root"></div>
-    <!-- Используем абсолютный путь для Vite -->
     <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

@@ -9,9 +9,9 @@ interface State {
   error: Error | null;
 }
 
-// @google/genai-fix: Explicitly extend React.Component to ensure the compiler correctly identifies the base class and provides access to 'props' and 'state' properties.
-class ErrorBoundary extends React.Component<Props, State> {
-  // @google/genai-fix: Define 'state' as a class property to satisfy strict type checks and provide necessary initial values.
+// @google/genai-fix: Explicitly extend the 'Component' class from React to ensure that inherited properties like 'props' and 'state' are correctly recognized by the TypeScript compiler.
+class ErrorBoundary extends Component<Props, State> {
+  // @google/genai-fix: Initialize 'state' as a class property with explicit 'State' type to ensure consistency and satisfy strict type checking.
   public state: State = {
     hasError: false,
     error: null
@@ -39,14 +39,14 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   public render() {
-    // @google/genai-fix: Access 'this.state' inherited from the React.Component base class.
+    // @google/genai-fix: Correctly access 'this.state' inherited from the base React Component class.
     if (this.state.hasError) {
       return (
         <div className="p-6 bg-red-900/10 min-h-screen flex flex-col items-center justify-center text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Что-то пошло не так</h1>
           <p className="text-gray-700 dark:text-gray-300 mb-4">Приложение столкнулось с критической ошибкой.</p>
           <div className="bg-gray-800 text-red-300 p-4 rounded text-left text-xs overflow-auto max-w-full max-h-60 mb-6 font-mono">
-            {/* @google/genai-fix: Safely access and display the error message from the component state. */}
+            {/* @google/genai-fix: Display the error message stored in the component state. */}
             {this.state.error?.toString()}
           </div>
           <button
@@ -59,7 +59,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // @google/genai-fix: Correctly return 'this.props.children', which is now properly recognized through explicit inheritance from React.Component.
+    // @google/genai-fix: Return 'this.props.children' as expected for a standard ErrorBoundary implementation. Inheriting from Component ensures 'props' is available.
     return this.props.children;
   }
 }
