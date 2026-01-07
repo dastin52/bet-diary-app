@@ -1,16 +1,23 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
-}
+console.log('TWA: Entry point index.tsx started');
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  console.error("FATAL: Root element '#root' not found in DOM.");
+} else {
+  try {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
+    console.log('TWA: React render triggered');
+  } catch (err: any) {
+    console.error("TWA: Failed to mount React app", err);
+  }
+}

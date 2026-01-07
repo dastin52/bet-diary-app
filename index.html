@@ -4,14 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>BetDiary Diagnostics</title>
+    <title>BetDiary</title>
     
-    <!-- 1. Telegram Script First -->
+    <!-- 1. Telegram SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
     <script>
       (function() {
-        // Глобальное хранилище логов для отладки
         window.twaDebugLogs = [];
         const originalLog = console.log;
         const originalError = console.error;
@@ -26,12 +25,11 @@
           window.twaDebugLogs.push(entry);
           if (window.twaUpdateDebugUI) window.twaUpdateDebugUI();
           
-          // Отправка на бэкенд (если возможно)
-          fetch('/api/admin/twa-logs', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(entry)
-          }).catch(() => {});
+          // Если произошла фатальная ошибка, сразу показываем консоль
+          if (level === 'fatal' || level === 'error') {
+            const consoleEl = document.getElementById('debug-console');
+            if (consoleEl) consoleEl.style.display = 'block';
+          }
         }
 
         console.log = function() {
@@ -44,21 +42,28 @@
         };
 
         window.onerror = function(msg, url, line, col, error) {
-          const details = `Line: ${line}, Col: ${col}, File: ${url}, Stack: ${error ? error.stack : 'N/A'}`;
-          addToDebug('fatal', 'Runtime: ' + msg, details);
+          addToDebug('fatal', 'Runtime Error: ' + msg, `Line: ${line}, File: ${url}`);
           return false;
         };
 
-        // Проверка инициализации TG
-        setTimeout(() => {
+        // Проверка инициализации
+        window.addEventListener('load', () => {
           if (window.Telegram && window.Telegram.WebApp) {
-            console.log("TG WebApp detected. Platform:", window.Telegram.WebApp.platform);
+            console.log("TG WebApp Initialized. Platform: " + window.Telegram.WebApp.platform);
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
           } else {
-            console.error("Telegram script NOT detected or window.Telegram is empty!");
+            console.error("Telegram SDK not found or not in TWA mode");
           }
-        }, 100);
+        });
+
+        // Таймер на случай зависания React
+        setTimeout(() => {
+          const loader = document.getElementById('app-loader');
+          if (loader && loader.style.opacity !== '0') {
+            console.error("Загрузка приложения заняла слишком много времени. Проверьте консоль отладки.");
+          }
+        }, 8000);
       })();
     </script>
     
@@ -95,6 +100,7 @@
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
         background-color: var(--tg-theme-bg-color, #f3f4f6); z-index: 9999;
+        transition: opacity 0.5s ease;
       }
       .dark #app-loader { background-color: #111827; }
       .spinner {
@@ -105,37 +111,39 @@
       @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
       
       #debug-console {
-        position: fixed; bottom: 0; left: 0; width: 100%; max-height: 50%;
-        background: #000; color: #0f0; font-family: monospace; font-size: 10px;
-        overflow-y: auto; z-index: 10000; display: none; padding: 10px;
-        border-top: 2px solid #333;
+        position: fixed; bottom: 0; left: 0; width: 100%; max-height: 70%;
+        background: #1a1a1a; color: #00ff00; font-family: monospace; font-size: 11px;
+        overflow-y: auto; z-index: 10000; display: none; padding: 15px;
+        border-top: 2px solid #444; box-shadow: 0 -10px 20px rgba(0,0,0,0.5);
       }
     </style>
-  <script type="importmap">
+    <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "react": "https://esm.sh/react@^18.2.0",
+    "react-dom": "https://esm.sh/react-dom@^18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "recharts": "https://esm.sh/recharts@^2.12.7",
+    "@google/genai": "https://esm.sh/@google/genai@^1.25.0",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
 </script>
-</head>
+  </head>
   <body class="antialiased">
     <div id="app-loader">
       <div class="spinner"></div>
-      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px; font-weight: 500;">Загрузка BetDiary...</p>
-      <button onclick="document.getElementById('debug-console').style.display='block'" style="margin-top: 20px; font-size: 11px; opacity: 0.5; text-decoration: underline;">Показать отладку</button>
+      <p style="margin-top: 20px; opacity: 0.8; font-size: 14px;">Инициализация...</p>
+      <button onclick="document.getElementById('debug-console').style.display='block'" style="margin-top: 30px; font-size: 11px; opacity: 0.4; text-decoration: underline;">Диагностика</button>
     </div>
 
     <div id="debug-console">
-      <div class="flex justify-between border-b border-gray-700 mb-2 pb-1">
-        <b>TWA DEBUG CONSOLE</b>
-        <button onclick="document.getElementById('debug-console').style.display='none'">[X] Закрыть</button>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px;">
+        <b style="color: #fff;">TWA SYSTEM LOGS</b>
+        <button onclick="document.getElementById('debug-console').style.display='none'" style="color: #ff4444;">[ЗАКРЫТЬ]</button>
       </div>
       <div id="debug-content"></div>
     </div>
@@ -145,18 +153,16 @@
         const content = document.getElementById('debug-content');
         if (!content) return;
         content.innerHTML = window.twaDebugLogs.map(log => 
-          `<div class="mb-1 ${log.level === 'error' || log.level === 'fatal' ? 'text-red-400' : ''}">
+          `<div style="margin-bottom: 5px; color: ${log.level === 'error' || log.level === 'fatal' ? '#ff6666' : '#99ff99'}">
             [${log.timestamp}] [${log.level.toUpperCase()}] ${log.message} 
-            ${log.details ? `<br/><span class="opacity-50">${log.details}</span>` : ''}
+            ${log.details ? `<div style="opacity: 0.6; padding-left: 10px; font-size: 10px;">${log.details}</div>` : ''}
           </div>`
         ).join('');
         content.scrollTop = content.scrollHeight;
       };
-      window.twaUpdateDebugUI();
     </script>
 
     <div id="root"></div>
-
-    <script type="module" src="/src/index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
