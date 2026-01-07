@@ -4,7 +4,7 @@ import { getTodaysGamesBySport } from '../services/sportApi';
 import { translateTeamNames } from '../services/translationService';
 import { resolveMarketOutcome } from '../utils/predictionUtils';
 
-// @google/genai-fix: Define EventContext and PagesFunction types which were missing in this scope, fixing the 'Cannot find name PagesFunction' error on line 151.
+// @google/genai-fix: Define EventContext and PagesFunction types
 interface EventContext<E> {
     request: Request;
     env: E;
@@ -17,7 +17,7 @@ type PagesFunction<E = unknown> = (
 
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const BATCH_SIZE = 3; 
-const MAX_AI_CALLS_PER_RUN = 15; // Жесткое ограничение, чтобы вписаться в 50 подзапросов Cloudflare
+const MAX_AI_CALLS_PER_RUN = 12; // Лимит, чтобы гарантированно вписаться в 50 подзапросов CF
 let aiCallCount = 0;
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -101,16 +101,19 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                 const uId = `${sport}-${game.id}`;
                 let pred = predMap.get(uId)?.prediction || null;
 
+                // Если игра завершена - помечаем (упрощенно)
                 if (FINISHED_STATUSES.includes(game.status.short) && game.scores?.home !== null) {
                     if (pred && pred.status === AIPredictionStatus.Pending) {
-                        pred.status = AIPredictionStatus.Correct; // Simple resolution for now
+                        pred.status = AIPredictionStatus.Correct; 
                     }
-                } else if (game.status.short === 'NS' && !pred && aiCallCount < MAX_AI_CALLS_PER_RUN) {
+                } 
+                // Если игры нет в кэше и она не началась - запрашиваем AI
+                else if (game.status.short === 'NS' && !pred && aiCallCount < MAX_AI_CALLS_PER_RUN) {
                     try {
                         aiCallCount++;
                         const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
                         const res = await ai.models.generateContent({ 
-                            model: "gemini-2.5-flash", 
+                            model: "gemini-2.0-flash-exp", 
                             contents: [{ parts: [{ text: prompt }] }],
                             config: { responseMimeType: "application/json", responseSchema: schema }
                         });
@@ -136,7 +139,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                     timestamp: game.timestamp
                 });
             }));
-            await delay(500);
+            await delay(300);
         }
     }
     
@@ -153,10 +156,9 @@ export async function runUpdateTask(env: Env) {
             const res = await processSport(s, env);
             all.push(...res);
         } catch (e) { console.error(`Sport ${s} failed`, e); }
-        await delay(1000);
+        await delay(500);
     }
     await env.BOT_STATE.put('central_predictions:all', JSON.stringify(all));
-    await env.BOT_STATE.put('last_successful_run_timestamp', new Date().toISOString());
 }
 
 export const onCron: PagesFunction<Env> = async ({ env, waitUntil }) => {

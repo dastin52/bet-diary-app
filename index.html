@@ -9,15 +9,9 @@
     <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- 2. Глобальный логгер ошибок и отладка -->
+    <!-- 2. Глобальный логгер ошибок (Критически важно для отладки "белого экрана") -->
     <script>
       (function() {
-        // Сигнал готовности для TG
-        if (window.Telegram && window.Telegram.WebApp) {
-            window.Telegram.WebApp.ready();
-            window.Telegram.WebApp.expand();
-        }
-
         window.logToBackend = function(level, message, details) {
           console.log("[" + level.toUpperCase() + "]", message, details);
           fetch('/api/admin/twa-logs', {
@@ -40,24 +34,20 @@
           
           var loader = document.getElementById('app-loader');
           if (loader) {
-            loader.innerHTML = '<div style="padding:20px; color:#f87171; font-family:monospace; font-size:11px; background:#111827; height:100vh; overflow:auto;">' +
-              '<h3 style="color:white; font-size:14px; margin-bottom:10px;">Критическая ошибка запуска</h3>' +
-              '<p style="margin-bottom:10px;">' + msg + '</p>' +
-              '<p style="opacity:0.6; font-size:10px;">' + details + '</p>' +
+            loader.innerHTML = '<div style="padding:20px; color:#f87171; font-family:monospace; font-size:12px; background:#111827; height:100vh; overflow:auto;">' +
+              '<h3 style="color:white; margin-bottom:10px;">Ошибка запуска приложения</h3>' +
+              '<p><b>Сообщение:</b> ' + msg + '</p>' +
+              '<p style="opacity:0.6"><b>Детали:</b> ' + details + '</p>' +
               '<button onclick="location.reload()" style="background:#4f46e5; color:white; border:none; padding:10px 20px; border-radius:5px; margin-top:20px; width:100%;">Перезагрузить</button>' +
               '</div>';
           }
           return false;
         };
 
-        // Проверка зависания загрузки
-        setTimeout(function() {
-            if (!document.getElementById('root').innerHTML) {
-                window.logToBackend('warn', 'App loading timeout - likely JS execution error');
-                var text = document.querySelector('#app-loader p');
-                if (text) text.innerText = 'Приложение загружается дольше обычного... Попробуйте перезагрузить.';
-            }
-        }, 8000);
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+        }
       })();
     </script>
     
@@ -120,12 +110,12 @@
   <body class="antialiased">
     <div id="app-loader">
       <div class="spinner"></div>
-      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px; font-weight: 500;">BetDiary загружается...</p>
+      <p style="margin-top: 20px; opacity: 0.7; font-size: 14px; font-weight: 500;">Загрузка BetDiary...</p>
     </div>
 
     <div id="root"></div>
 
-    <!-- 3. Correct entry point (no src prefix for build compatibility) -->
-    <script type="module" src="/index.tsx"></script>
+    <!-- Исправленный путь: Vite ожидает /src/index.tsx если он в папке src -->
+    <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

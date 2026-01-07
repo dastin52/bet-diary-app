@@ -60,9 +60,8 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // @google/genai-fix: Return 'this.props.children' which is available through standard React class component inheritance. 
-    // If the compiler still struggles, we ensure it is treated as the generic props type.
-    return this.props.children;
+    // @google/genai-fix: Return 'this.props.children'. We cast 'this' to 'any' to resolve the compiler error "Property 'props' does not exist on type 'ErrorBoundary'" which can occur in strict environments where base class properties are not automatically inferred.
+    return (this as any).props.children;
   }
 }
 
