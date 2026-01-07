@@ -19,7 +19,8 @@ const rootElement = document.getElementById('root');
 if (!rootElement) {
     const err = "Root element not found";
     console.error(err);
-    if (window.logToBackend) window.logToBackend('error', err);
+    // @google/genai-fix: Cast window to any to access logToBackend safely before full environment initialization.
+    if ((window as any).logToBackend) (window as any).logToBackend('error', err);
 } else {
     const root = ReactDOM.createRoot(rootElement);
     try {
@@ -31,6 +32,7 @@ if (!rootElement) {
         console.log('TWA: React render called');
     } catch (e: any) {
         console.error("TWA: React Mount Error", e);
-        if (window.logToBackend) window.logToBackend('error', 'React Mount Error: ' + e.message);
+        // @google/genai-fix: Cast window to any to access logToBackend for error reporting.
+        if ((window as any).logToBackend) (window as any).logToBackend('error', 'React Mount Error: ' + e.message);
     }
 }

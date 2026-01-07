@@ -4,50 +4,61 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Дневник Ставок</title>
+    <title>BetDiary Diagnostics</title>
     
     <!-- 1. Telegram Script First -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
-    <!-- 2. Глобальный логгер ошибок (Критически важно для отладки "белого экрана") -->
     <script>
       (function() {
-        window.logToBackend = function(level, message, details) {
-          console.log("[" + level.toUpperCase() + "]", message, details);
+        // Глобальное хранилище логов для отладки
+        window.twaDebugLogs = [];
+        const originalLog = console.log;
+        const originalError = console.error;
+
+        function addToDebug(level, msg, details) {
+          const entry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: level,
+            message: msg,
+            details: details || ''
+          };
+          window.twaDebugLogs.push(entry);
+          if (window.twaUpdateDebugUI) window.twaUpdateDebugUI();
+          
+          // Отправка на бэкенд (если возможно)
           fetch('/api/admin/twa-logs', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              timestamp: new Date().toISOString(),
-              level: level,
-              message: message,
-              details: details ? (typeof details === 'string' ? details : JSON.stringify(details)) : '',
-              userAgent: navigator.userAgent,
-              url: window.location.href
-            })
-          }).catch(function(e) { });
+            body: JSON.stringify(entry)
+          }).catch(() => {});
+        }
+
+        console.log = function() {
+          originalLog.apply(console, arguments);
+          addToDebug('info', Array.from(arguments).join(' '));
+        };
+        console.error = function() {
+          originalError.apply(console, arguments);
+          addToDebug('error', Array.from(arguments).join(' '));
         };
 
         window.onerror = function(msg, url, line, col, error) {
-          var details = "Line: " + line + ", Col: " + col + ", Stack: " + (error ? error.stack : 'N/A');
-          window.logToBackend('error', 'Runtime Error: ' + msg, details);
-          
-          var loader = document.getElementById('app-loader');
-          if (loader) {
-            loader.innerHTML = '<div style="padding:20px; color:#f87171; font-family:monospace; font-size:12px; background:#111827; height:100vh; overflow:auto;">' +
-              '<h3 style="color:white; margin-bottom:10px;">Ошибка запуска приложения</h3>' +
-              '<p><b>Сообщение:</b> ' + msg + '</p>' +
-              '<p style="opacity:0.6"><b>Детали:</b> ' + details + '</p>' +
-              '<button onclick="location.reload()" style="background:#4f46e5; color:white; border:none; padding:10px 20px; border-radius:5px; margin-top:20px; width:100%;">Перезагрузить</button>' +
-              '</div>';
-          }
+          const details = `Line: ${line}, Col: ${col}, File: ${url}, Stack: ${error ? error.stack : 'N/A'}`;
+          addToDebug('fatal', 'Runtime: ' + msg, details);
           return false;
         };
 
-        if (window.Telegram && window.Telegram.WebApp) {
+        // Проверка инициализации TG
+        setTimeout(() => {
+          if (window.Telegram && window.Telegram.WebApp) {
+            console.log("TG WebApp detected. Platform:", window.Telegram.WebApp.platform);
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
-        }
+          } else {
+            console.error("Telegram script NOT detected or window.Telegram is empty!");
+          }
+        }, 100);
       })();
     </script>
     
@@ -92,6 +103,13 @@
         animation: spin 1s linear infinite;
       }
       @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      
+      #debug-console {
+        position: fixed; bottom: 0; left: 0; width: 100%; max-height: 50%;
+        background: #000; color: #0f0; font-family: monospace; font-size: 10px;
+        overflow-y: auto; z-index: 10000; display: none; padding: 10px;
+        border-top: 2px solid #333;
+      }
     </style>
   <script type="importmap">
 {
@@ -100,9 +118,9 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
     "recharts": "https://esm.sh/recharts@^3.6.0",
-    "vite": "https://esm.sh/vite@^7.3.0",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>
@@ -111,11 +129,34 @@
     <div id="app-loader">
       <div class="spinner"></div>
       <p style="margin-top: 20px; opacity: 0.7; font-size: 14px; font-weight: 500;">Загрузка BetDiary...</p>
+      <button onclick="document.getElementById('debug-console').style.display='block'" style="margin-top: 20px; font-size: 11px; opacity: 0.5; text-decoration: underline;">Показать отладку</button>
     </div>
+
+    <div id="debug-console">
+      <div class="flex justify-between border-b border-gray-700 mb-2 pb-1">
+        <b>TWA DEBUG CONSOLE</b>
+        <button onclick="document.getElementById('debug-console').style.display='none'">[X] Закрыть</button>
+      </div>
+      <div id="debug-content"></div>
+    </div>
+
+    <script>
+      window.twaUpdateDebugUI = function() {
+        const content = document.getElementById('debug-content');
+        if (!content) return;
+        content.innerHTML = window.twaDebugLogs.map(log => 
+          `<div class="mb-1 ${log.level === 'error' || log.level === 'fatal' ? 'text-red-400' : ''}">
+            [${log.timestamp}] [${log.level.toUpperCase()}] ${log.message} 
+            ${log.details ? `<br/><span class="opacity-50">${log.details}</span>` : ''}
+          </div>`
+        ).join('');
+        content.scrollTop = content.scrollHeight;
+      };
+      window.twaUpdateDebugUI();
+    </script>
 
     <div id="root"></div>
 
-    <!-- Исправленный путь: Vite ожидает /src/index.tsx если он в папке src -->
     <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

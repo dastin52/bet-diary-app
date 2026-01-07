@@ -3,84 +3,74 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 declare global {
   interface Window {
     Telegram: any;
+    twaDebugLogs: any[];
+    twaUpdateDebugUI: () => void;
+    // @google/genai-fix: Augment Window interface to include logToBackend, fixing TS errors in index.tsx.
     logToBackend?: (level: string, message: string, details?: any) => void;
   }
 }
 
 export function useTelegram() {
   const [isReady, setIsReady] = useState(false);
-  const sentLog = useRef(false);
-  
   const telegram = window.Telegram?.WebApp;
 
   useEffect(() => {
+    console.log("useTelegram Hook: Initializing...");
+    
     if (telegram) {
       try {
+        console.log("useTelegram Hook: Telegram script found. Version:", telegram.version);
         telegram.ready();
-        setIsReady(true);
         
-        if (!telegram.isExpanded) {
-            telegram.expand();
+        // Log basic info
+        console.log("useTelegram Hook: Ready signal sent.");
+        console.log("Platform:", telegram.platform);
+        console.log("Theme Params:", JSON.stringify(telegram.themeParams));
+        
+        if (telegram.initData) {
+            console.log("useTelegram Hook: initData length:", telegram.initData.length);
+        } else {
+            console.warn("useTelegram Hook: initData is MISSING (Empty string). Are you running in a browser?");
         }
 
-        if (!sentLog.current) {
-            sentLog.current = true;
-            if (window.logToBackend) {
-                window.logToBackend('info', 'TWA Hook Initialized', {
-                    platform: telegram.platform,
-                    initDataExist: !!telegram.initData,
-                    version: telegram.version,
-                    colorScheme: telegram.colorScheme
-                });
-            }
-        }
+        setIsReady(true);
+        telegram.expand();
       } catch (e: any) {
-          console.error("TWA Hook Error:", e);
-          if (window.logToBackend) {
-              window.logToBackend('error', 'TWA Hook Init Failed', e.message);
-          }
+          console.error("useTelegram Hook Error during initialization:", e);
       }
+    } else {
+        console.error("useTelegram Hook: window.Telegram.WebApp is UNDEFINED.");
     }
-  }, [telegram]);
-
-  const onClose = useCallback(() => {
-    telegram?.close();
   }, [telegram]);
 
   const onMainButtonClick = useCallback((cb: () => void) => {
       if (telegram?.MainButton) {
           telegram.MainButton.onClick(cb);
       }
-      return () => {
-          telegram?.MainButton?.offClick(cb);
-      }
+      return () => telegram?.MainButton?.offClick(cb);
   }, [telegram]);
 
   const onBackButtonClick = useCallback((cb: () => void) => {
       if (telegram?.BackButton) {
           telegram.BackButton.onClick(cb);
       }
-      return () => {
-          telegram?.BackButton?.offClick(cb);
-      }
+      return () => telegram?.BackButton?.offClick(cb);
   }, [telegram]);
 
-  // Проверка на среду Telegram
-  const isTwaSession = !!(telegram?.initData && telegram.initData.length > 0);
+  // We consider it a TWA session if initData exists and is not a local test string
+  const isTwaSession = !!(telegram?.initData && telegram.initData.length > 20);
 
   return {
-    onClose,
-    onMainButtonClick,
-    onBackButtonClick,
     tg: telegram,
     user: telegram?.initDataUnsafe?.user,
-    queryId: telegram?.initDataUnsafe?.query_id,
     initData: telegram?.initData || '',
     isTwa: isTwaSession, 
     colorScheme: telegram?.colorScheme,
-    themeParams: telegram?.themeParams,
     MainButton: telegram?.MainButton,
     BackButton: telegram?.BackButton,
+    // @google/genai-fix: Added missing event handler registration functions to return object.
+    onMainButtonClick,
+    onBackButtonClick,
     isReady
   };
 }

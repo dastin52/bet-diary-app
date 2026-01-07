@@ -9,6 +9,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import LoginScreen from './components/auth/LoginScreen';
 import { PredictionProvider } from './contexts/PredictionContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import TwaDebugger from './components/TwaDebugger';
 
 const AppContent: React.FC = () => {
   const { currentUser } = useAuthContext();
@@ -17,19 +18,15 @@ const AppContent: React.FC = () => {
 
   const isDemoMode = !currentUser;
 
-  // Remove the loader when the AppContent mounts (meaning React has successfully initialized)
   useEffect(() => {
-      // Use standard setTimeout to clear it from the macro task queue
       const timer = setTimeout(() => {
           const loader = document.getElementById('app-loader');
           if (loader) {
               loader.style.opacity = '0';
               loader.style.pointerEvents = 'none';
-              setTimeout(() => {
-                  loader.remove();
-              }, 500);
+              setTimeout(() => loader.remove(), 500);
           }
-      }, 100); // Small delay to allow initial paint
+      }, 500);
       return () => clearTimeout(timer);
   }, []);
 
@@ -43,13 +40,8 @@ const AppContent: React.FC = () => {
     }
   }, [isDemoMode]);
 
-  const handleAuthRequired = () => {
-    setIsLoginModalOpen(true);
-  };
-  
-  const handleLoginSuccess = () => {
-    setIsLoginModalOpen(false);
-  }
+  const handleAuthRequired = () => setIsLoginModalOpen(true);
+  const handleLoginSuccess = () => setIsLoginModalOpen(false);
 
   const handleStartFromWelcome = () => {
     setShowWelcomeOverlay(false);
@@ -59,6 +51,7 @@ const AppContent: React.FC = () => {
 
   return (
     <>
+      <TwaDebugger />
       {showWelcomeOverlay && <WelcomeOverlay onStart={handleStartFromWelcome} />}
       <Layout isDemoMode={isDemoMode} onAuthRequired={handleAuthRequired} />
       {isLoginModalOpen && (
