@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Brain, Play, RotateCcw } from 'lucide-react';
+import { User, Brain, Play, RotateCcw, AlertCircle } from 'lucide-react';
 import Button from '../ui/Button';
+import { fetchPokerAnalysis } from '../../services/aiService';
 
 interface PokerCard {
   suit: 'hearts' | 'diamonds' | 'clubs' | 'spades';
@@ -18,6 +19,7 @@ const PokerTable: React.FC = () => {
   const [heroStack] = useState(5000);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const getSuitIcon = (suit: string) => {
     switch (suit) {
@@ -39,20 +41,37 @@ const PokerTable: React.FC = () => {
       { suit: 'clubs', value: 'J' },
       { suit: 'hearts', value: '10' }
     ]);
+    setAnalysis(null);
+    setError(null);
   };
 
   const resetTable = () => {
     setBoard([]);
     setAnalysis(null);
+    setError(null);
   };
 
-  const analyzeHand = () => {
+  const analyzeHand = async () => {
     setIsAnalyzing(true);
-    // Simulate AI analysis
-    setTimeout(() => {
-      setAnalysis("У вас отличная рука (Big Slick). На таком флопе у вас натсовое стрит-дро. Рекомендуемая стратегия: продолженная ставка (C-bet) в 1/2 пота для создания давления на оппонента и максимизации велью при доезде.");
+    setError(null);
+    
+    const handDescription = `
+      Мои карты: ${heroCards.map(c => `${c.value}${getSuitIcon(c.suit)}`).join(', ')}
+      Стол: ${board.length > 0 ? board.map(c => `${c.value}${getSuitIcon(c.suit)}`).join(', ') : 'Пусто (Префлоп)'}
+      Пот: $${pot}
+      Мой стек: $${heroStack}
+      Ситуация: Флоп. У меня натсовое стрит-дро (Broadway). Что мне делать?
+    `;
+
+    try {
+      const result = await fetchPokerAnalysis(handDescription);
+      setAnalysis(result);
+    } catch (err) {
+      console.error(err);
+      setError("Не удалось получить анализ от ИИ. Пожалуйста, проверьте подключение или попробуйте позже.");
+    } finally {
       setIsAnalyzing(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -135,13 +154,28 @@ const PokerTable: React.FC = () => {
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="absolute left-8 bottom-8 max-w-xs bg-slate-900/90 backdrop-blur-xl border border-purple-500/30 p-4 rounded-2xl shadow-2xl"
+            className="absolute left-8 bottom-8 max-w-xs bg-slate-900/90 backdrop-blur-xl border border-purple-500/30 p-4 rounded-2xl shadow-2xl z-20"
           >
             <div className="flex items-center gap-2 mb-2 text-purple-400 font-bold text-xs uppercase tracking-wider">
               <Brain size={14} /> AI Coach Advice
             </div>
-            <p className="text-slate-200 text-sm leading-relaxed italic">
-              "{analysis}"
+            <div className="text-slate-200 text-sm leading-relaxed italic max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+              {analysis}
+            </div>
+          </motion.div>
+        )}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="absolute left-8 bottom-8 max-w-xs bg-red-900/90 backdrop-blur-xl border border-red-500/30 p-4 rounded-2xl shadow-2xl z-20"
+          >
+            <div className="flex items-center gap-2 mb-2 text-red-400 font-bold text-xs uppercase tracking-wider">
+              <AlertCircle size={14} /> Error
+            </div>
+            <p className="text-slate-200 text-sm leading-relaxed">
+              {error}
             </p>
           </motion.div>
         )}

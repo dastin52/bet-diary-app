@@ -105,7 +105,7 @@ export const fetchAIStrategy = async (analytics: UseBetsReturn['analytics']): Pr
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: { systemInstruction },
         });
@@ -122,7 +122,7 @@ export const fetchMatchAnalysis = async (match: SharedPrediction): Promise<{ tex
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
                 systemInstruction: generalSystemInstruction(currentDate),
@@ -143,7 +143,7 @@ export const fetchAIPredictionAnalysis = async (analytics: string): Promise<stri
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: { systemInstruction },
         });
@@ -151,6 +151,27 @@ export const fetchAIPredictionAnalysis = async (analytics: string): Promise<stri
     } catch (error) {
         console.error("Ошибка при запросе анализа прогнозов от AI:", error);
         throw new Error("Не удалось получить анализ прогнозов от AI.");
+    }
+};
+
+export const fetchPokerAnalysis = async (handData: string): Promise<string> => {
+    const systemInstruction = `Вы — профессиональный тренер по покеру и эксперт по GTO (Game Theory Optimal). 
+Анализируйте раздачи пользователя, предоставленные в текстовом виде. 
+Давайте четкие рекомендации по действиям (Fold, Call, Raise), объясняйте математическое ожидание (EV), шансы банка и потенциальные диапазоны оппонентов. 
+Ваш тон должен быть профессиональным, обучающим и конструктивным. Отвечайте на русском языке.`;
+    
+    const prompt = `Проанализируй следующую ситуацию за покерным столом и дай совет:\n\n${handData}`;
+    
+    try {
+        const response = await callApiProxy('generateContent', {
+            model: "gemini-3.1-pro-preview",
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: { systemInstruction },
+        });
+        return response.text;
+    } catch (error) {
+        console.error("Ошибка при запросе анализа покера от AI:", error);
+        throw new Error("Не удалось получить анализ покера от AI.");
     }
 };
 
@@ -183,7 +204,7 @@ export const getAIChatResponse = async (
 
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: contents,
             config: {
                 systemInstruction: systemInstructionText,

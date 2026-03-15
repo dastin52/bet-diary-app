@@ -15,9 +15,22 @@ import {
 import PokerTable from './PokerTable';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
+import Modal from '../ui/Modal';
 
 const PokerAcademy: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'training' | 'theory' | 'analysis'>('training');
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [selectedLesson, setSelectedLesson] = useState<{title: string, cat: string} | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<string | null>(null);
+
+  const handleFileUpload = () => {
+    setIsUploading(true);
+    setTimeout(() => {
+      setIsUploading(false);
+      setUploadResult("История раздач успешно загружена! Мы обнаружили 42 раздачи. Перейдите во вкладку 'Тренировка', чтобы разобрать наиболее интересные из них с ИИ-тренером.");
+    }, 2000);
+  };
 
   const trainingModules = [
     {
@@ -59,10 +72,18 @@ const PokerAcademy: React.FC = () => {
             Полноценная подготовка к играм, глубокий анализ стратегий и персональный ИИ-тренер для вашего прогресса.
           </p>
           <div className="flex gap-4">
-            <Button variant="primary" className="flex items-center gap-2">
+            <Button 
+              onClick={() => setActiveTab('training')}
+              variant="primary" 
+              className="flex items-center gap-2"
+            >
               <PlayCircle size={18} /> Начать обучение
             </Button>
-            <Button variant="secondary" className="bg-white/5 border-white/10 hover:bg-white/10">
+            <Button 
+              onClick={() => setActiveTab('analysis')}
+              variant="secondary" 
+              className="bg-white/5 border-white/10 hover:bg-white/10"
+            >
               Мой прогресс
             </Button>
           </div>
@@ -153,7 +174,12 @@ const PokerAcademy: React.FC = () => {
               <div className="relative z-10">
                 <h3 className="font-bold text-lg mb-2">Готовы к турниру?</h3>
                 <p className="text-white/80 text-xs mb-4">Пройдите финальный тест и получите сертификат Академии.</p>
-                <Button className="bg-white text-amber-500 hover:bg-slate-100 w-full font-bold">Пройти тест</Button>
+                <Button 
+                  onClick={() => setShowTestModal(true)}
+                  className="bg-white text-amber-500 hover:bg-slate-100 w-full font-bold"
+                >
+                  Пройти тест
+                </Button>
               </div>
               <Trophy size={120} className="absolute -right-8 -bottom-8 text-white/10 rotate-12" />
             </Card>
@@ -171,7 +197,11 @@ const PokerAcademy: React.FC = () => {
             { title: 'GTO vs Exploitative', cat: 'Theory', icon: <Zap /> },
             { title: 'Специфика MTT', cat: 'Tournament', icon: <Trophy /> }
           ].map((item, i) => (
-            <Card key={i} className="p-6 hover:border-amber-500/50 transition-colors cursor-pointer group">
+            <Card 
+              key={i} 
+              onClick={() => setSelectedLesson(item)}
+              className="p-6 hover:border-amber-500/50 transition-colors cursor-pointer group"
+            >
               <div className="flex items-center gap-4 mb-4">
                 <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-400 group-hover:bg-amber-500 group-hover:text-white transition-all">
                   {item.icon}
@@ -197,14 +227,37 @@ const PokerAcademy: React.FC = () => {
             <p className="text-slate-500">Загрузите историю раздачи или введите данные вручную для глубокого ИИ-анализа ваших решений.</p>
           </div>
           
-          <Card className="p-8 border-dashed border-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30 flex flex-col items-center justify-center text-center">
-            <div className="p-4 bg-white dark:bg-slate-800 rounded-full shadow-md mb-4">
+          <Card 
+            onClick={handleFileUpload}
+            className={`p-8 border-dashed border-2 ${isUploading ? 'border-amber-500 bg-amber-500/5' : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30'} flex flex-col items-center justify-center text-center cursor-pointer transition-all`}
+          >
+            <div className={`p-4 bg-white dark:bg-slate-800 rounded-full shadow-md mb-4 ${isUploading ? 'animate-pulse' : ''}`}>
               <BarChart3 size={32} className="text-amber-500" />
             </div>
-            <h3 className="font-bold text-xl mb-2">Перетащите файл сюда</h3>
+            <h3 className="font-bold text-xl mb-2">
+              {isUploading ? 'Обработка...' : 'Перетащите файл сюда'}
+            </h3>
             <p className="text-slate-500 text-sm mb-6">Поддерживаются форматы PokerStars, GG Poker, Winamax</p>
-            <Button variant="primary">Выбрать файл</Button>
+            <Button variant="primary" disabled={isUploading}>
+              {isUploading ? 'Загрузка...' : 'Выбрать файл'}
+            </Button>
           </Card>
+
+          {uploadResult && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-6 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600 dark:text-emerald-400 flex items-start gap-4"
+            >
+              <div className="p-2 bg-emerald-500/20 rounded-lg">
+                <Target size={20} />
+              </div>
+              <div>
+                <h4 className="font-bold mb-1">Анализ завершен</h4>
+                <p className="text-sm opacity-80">{uploadResult}</p>
+              </div>
+            </motion.div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="p-6">
@@ -258,6 +311,53 @@ const PokerAcademy: React.FC = () => {
             </Card>
           </div>
         </div>
+      )}
+      {/* Test Modal */}
+      {showTestModal && (
+        <Modal title="Тестирование Академии" onClose={() => setShowTestModal(false)}>
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400">
+              <p className="text-sm font-medium">
+                Тестирование будет доступно в следующем обновлении! 
+              </p>
+              <p className="text-xs mt-1 opacity-80">
+                Мы готовим интерактивный экзамен, который поможет вам закрепить полученные знания и получить сертификат.
+              </p>
+            </div>
+            <Button onClick={() => setShowTestModal(false)} className="w-full">
+              Понятно
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Lesson Modal */}
+      {selectedLesson && (
+        <Modal title={selectedLesson.title} onClose={() => setSelectedLesson(null)}>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-amber-500 text-xs font-bold uppercase tracking-widest">
+              <BookOpen size={14} /> {selectedLesson.cat} Lesson
+            </div>
+            <div className="prose dark:prose-invert max-w-none">
+              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                Это подробный урок по теме <strong>{selectedLesson.title}</strong>. В этом модуле мы разберем ключевые концепции, математические модели и психологические аспекты, которые помогут вам принимать более взвешенные решения.
+              </p>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-slate-500 mt-4">
+                <li>Основные определения и терминология</li>
+                <li>Математическое обоснование стратегии</li>
+                <li>Примеры из реальных игр (High Stakes)</li>
+                <li>Типичные ошибки новичков и как их избежать</li>
+              </ul>
+            </div>
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setSelectedLesson(null)}>Закрыть</Button>
+              <Button variant="primary" onClick={() => {
+                setSelectedLesson(null);
+                setActiveTab('training');
+              }}>Перейти к практике</Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

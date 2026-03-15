@@ -6,7 +6,7 @@ import AICard from './AICard';
 import KpiCard from './ui/KpiCard';
 import UpcomingMatches from './UpcomingMatches';
 import MatchDetailsModal from './MatchDetailsModal';
-import { Goal, SharedPrediction } from '../types';
+import { Goal, SharedPrediction, View } from '../types';
 import { LineChartTooltip, BarChartTooltip, StackedBarChartTooltip, OddsPerformanceTooltip } from './charts/ChartTooltip';
 import { getGoalProgress } from '../utils/goalUtils';
 
@@ -66,9 +66,10 @@ const GoalProgressCard: React.FC<GoalProgressCardProps> = ({ goals }) => {
 
 interface DashboardProps {
   onOpenAIChat: () => void;
+  onNavigate: (view: View) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat, onNavigate }) => {
   const { analytics, bankroll, goals } = useBetContext();
   const { totalProfit, roi, betCount, balanceHistory, profitBySport, profitByBetType, winLossBySport, performanceByOdds } = analytics;
   const [selectedMatch, setSelectedMatch] = useState<SharedPrediction | null>(null);
@@ -88,7 +89,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat }) => {
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <AICard onClick={onOpenAIChat} />
-        <Card className="bg-gradient-to-tr from-amber-500/10 via-white to-white dark:from-amber-900/20 dark:via-gray-800/50 dark:to-gray-800/50 border-amber-500/20">
+        <Card 
+          onClick={() => onNavigate('poker_academy')}
+          className="bg-gradient-to-tr from-amber-500/10 via-white to-white dark:from-amber-900/20 dark:via-gray-800/50 dark:to-gray-800/50 border-amber-500/20 cursor-pointer hover:shadow-md transition-shadow"
+        >
           <div className="flex items-center gap-4 h-full">
             <div className="p-3 bg-amber-500/20 rounded-full text-amber-600">
               <TrophyIcon />

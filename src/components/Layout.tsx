@@ -125,13 +125,13 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard onOpenAIChat={handleOpenGeneralChatModal} />;
+        return <Dashboard onOpenAIChat={handleOpenGeneralChatModal} onNavigate={setCurrentView} />;
       case 'log':
         return <BetLog onEditBet={handleOpenEditModal} onViewBet={handleOpenViewModal} onDiscussBet={handleOpenChatModal} onImportBets={handleOpenImportModal} isDemoMode={isDemoMode} onAuthRequired={onAuthRequired} />;
       case 'bank_history':
         return <BankHistoryPanel />;
       case 'admin':
-        return isAdmin ? <AdminPanel /> : <Dashboard onOpenAIChat={handleOpenGeneralChatModal} />;
+        return isAdmin ? <AdminPanel /> : <Dashboard onOpenAIChat={handleOpenGeneralChatModal} onNavigate={setCurrentView} />;
       case 'competition':
         return <CompetitionPanel />;
       case 'settings':
@@ -147,7 +147,7 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
       case 'bank_simulator':
         return <BankrollSimulator />;
       default:
-        return <Dashboard onOpenAIChat={handleOpenGeneralChatModal} />;
+        return <Dashboard onOpenAIChat={handleOpenGeneralChatModal} onNavigate={setCurrentView} />;
     }
   };
 
