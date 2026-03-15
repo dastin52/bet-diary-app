@@ -41,6 +41,11 @@
           addToDebug('error', Array.from(arguments).join(' '));
         };
 
+        // @google/genai-fix: Implement logToBackend to pipe logs to the TWA diagnostic console.
+        window.logToBackend = function(level, message, details) {
+          addToDebug(level, message, details ? JSON.stringify(details) : '');
+        };
+
         window.onerror = function(msg, url, line, col, error) {
           addToDebug('fatal', 'Runtime Error: ' + msg, `Line: ${line}, File: ${url}`);
           return false;
@@ -117,21 +122,6 @@
         border-top: 2px solid #444; box-shadow: 0 -10px 20px rgba(0,0,0,0.5);
       }
     </style>
-    <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^18.2.0",
-    "react-dom": "https://esm.sh/react-dom@^18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "recharts": "https://esm.sh/recharts@^2.12.7",
-    "@google/genai": "https://esm.sh/@google/genai@^1.25.0",
-    "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
-  }
-}
-</script>
   </head>
   <body class="antialiased">
     <div id="app-loader">
@@ -163,6 +153,6 @@
     </script>
 
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>
