@@ -3,6 +3,8 @@ import { User } from '../types';
 import * as userStore from '../data/userStore';
 import { useTelegram } from '../hooks/useTelegram';
 
+import { safeStorage } from '../utils/storage';
+
 const SESSION_STORAGE_KEY = 'betting_app_session';
 const ADMIN_EMAIL = 'admin@example.com';
 const ADMIN_SECRET_CODE = 'SUPER_ADMIN_2024';
@@ -24,7 +26,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { initData, isTwa } = useTelegram();
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
-        const session = localStorage.getItem(SESSION_STORAGE_KEY);
+        const session = safeStorage.getItem(SESSION_STORAGE_KEY);
         return session ? JSON.parse(session) : null;
     } catch { return null; }
   });
@@ -47,7 +49,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                       const user = await response.json();
                       console.log("AuthContext: TWA Auth Success", user.nickname);
                       setCurrentUser(user);
-                      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+                      safeStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
                       setIsTelegramAuth(true);
                   } else {
                       const errData = await response.json().catch(() => ({}));
@@ -68,7 +70,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (user && user.password_hash === mockHash(password_hash)) {
         if (user.status === 'blocked') throw new Error('Аккаунт заблокирован');
         setCurrentUser(user);
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+        safeStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
     } else throw new Error('Неверные данные');
   };
 
@@ -83,7 +85,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     userStore.addUser(newUser);
     setCurrentUser(newUser);
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
+    safeStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
   };
   
   const updateCurrentUser = (updatedData: Partial<User>) => {
@@ -91,13 +93,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const updated = { ...currentUser, ...updatedData };
           userStore.updateUser(updated);
           setCurrentUser(updated);
-          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updated));
+          safeStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updated));
       }
   };
 
   const logout = () => {
     setCurrentUser(null);
-    localStorage.removeItem(SESSION_STORAGE_KEY);
+    safeStorage.removeItem(SESSION_STORAGE_KEY);
     setIsTelegramAuth(false);
   };
   

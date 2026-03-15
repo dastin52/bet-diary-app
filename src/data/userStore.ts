@@ -1,10 +1,12 @@
 import { User } from '../types';
 
+import { safeStorage } from '../utils/storage';
+
 const USERS_STORAGE_KEY = 'betting_app_users';
 
 export const getUsers = (): User[] => {
   try {
-    const users = localStorage.getItem(USERS_STORAGE_KEY);
+    const users = safeStorage.getItem(USERS_STORAGE_KEY);
     return users ? JSON.parse(users) : [];
   } catch {
     return [];
@@ -13,9 +15,9 @@ export const getUsers = (): User[] => {
 
 export const saveUsers = (users: User[]): void => {
   try {
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
   } catch (error) {
-    console.error("Failed to save users to localStorage", error);
+    console.error("Failed to save users to storage", error);
   }
 };
 

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "lint": "tsc --noEmit",
     "postbuild": "rm -f dist/_routes.json",
     "preview": "vite preview"
   },
