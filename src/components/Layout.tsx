@@ -10,7 +10,7 @@ import AddBetModal from './AddBetModal';
 import AIChatModal from './AIChatModal';
 import CashOutModal from './CashOutModal';
 import UpdateBankrollModal from './UpdateBankrollModal';
-import { Bet } from '../types';
+import { Bet, View } from '../types';
 import { useBetContext } from '../contexts/BetContext';
 import { useAuthContext } from '../contexts/AuthContext';
 import SettingsPanel from './SettingsPanel';
@@ -21,9 +21,8 @@ import BankrollSimulator from './BankrollSimulator';
 import ImportBetsModal from './ImportBetsModal';
 import BetDetailModal from './BetDetailModal';
 import AIPredictionLog from './AIPredictionLog';
+import PokerAcademy from './poker/PokerAcademy';
 import { useTelegram } from '../hooks/useTelegram';
-
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 
 interface LayoutProps {
   isDemoMode: boolean;
@@ -143,6 +142,8 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
         return <AIStrategyBuilder />;
       case 'ai_prediction_log':
         return <AIPredictionLog />;
+      case 'poker_academy':
+        return <PokerAcademy />;
       case 'bank_simulator':
         return <BankrollSimulator />;
       default:

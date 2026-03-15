@@ -1,6 +1,7 @@
 import React from 'react';
 import Button from './ui/Button';
 import { useBetContext } from '../contexts/BetContext';
+import { View } from '../types';
 
 const PlusIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 mr-2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -11,7 +12,6 @@ const MenuIcon = () => (
 );
 
 
-type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log';
 interface HeaderProps {
   onAddBetClick: () => void;
   onCashOutClick: () => void;
@@ -60,6 +60,10 @@ const viewTitles: Record<View, { title: string; subtitle: string }> = {
     ai_prediction_log: {
         title: 'База прогнозов AI',
         subtitle: 'Анализируйте точность прогнозов искусственного интеллекта.'
+    },
+    poker_academy: {
+        title: 'Академия Покера',
+        subtitle: 'Обучение, симуляции и ИИ-анализ вашей игры.'
     }
 }
 

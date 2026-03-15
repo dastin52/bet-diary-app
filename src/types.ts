@@ -222,3 +222,24 @@ export interface TwaLog {
     details: string; // JSON string
     userAgent: string;
 }
+
+export interface PokerHand {
+  id: string;
+  timestamp: string;
+  gameType: 'cash' | 'tournament';
+  heroCards: string[];
+  board: string[];
+  action: string;
+  result: number;
+  analysis?: string;
+}
+
+export interface PokerLesson {
+  id: string;
+  title: string;
+  category: 'basics' | 'cash' | 'tournament' | 'advanced';
+  content: string;
+  difficulty: 'beginner' | 'intermediate' | 'pro';
+}
+
+export type View = 'dashboard' | 'log' | 'admin' | 'competition' | 'settings' | 'bank_history' | 'goals' | 'ai_strategy' | 'bank_simulator' | 'ai_prediction_log' | 'poker_academy';

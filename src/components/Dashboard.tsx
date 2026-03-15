@@ -86,7 +86,20 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat }) => {
 
       <GoalProgressCard goals={goals} />
       
-      <AICard onClick={onOpenAIChat} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <AICard onClick={onOpenAIChat} />
+        <Card className="bg-gradient-to-tr from-amber-500/10 via-white to-white dark:from-amber-900/20 dark:via-gray-800/50 dark:to-gray-800/50 border-amber-500/20">
+          <div className="flex items-center gap-4 h-full">
+            <div className="p-3 bg-amber-500/20 rounded-full text-amber-600">
+              <TrophyIcon />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold">Академия Покера</h3>
+              <p className="text-sm text-gray-500">Повысьте свой винрейт с ИИ-тренером.</p>
+            </div>
+          </div>
+        </Card>
+      </div>
 
       <UpcomingMatches onMatchClick={setSelectedMatch} />
 
