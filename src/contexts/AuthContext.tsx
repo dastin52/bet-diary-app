@@ -35,6 +35,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const authTelegram = async () => {
           // Проверяем, что мы действительно в Telegram и initData не пустая
           if (isTwa && initData && initData !== 'EMPTY_STRING' && !currentUser) {
+              console.log("AuthContext: Starting TWA Auth...");
               try {
                   const response = await fetch('/api/auth/telegram', {
                       method: 'POST',
@@ -44,11 +45,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   
                   if (response.ok) {
                       const user = await response.json();
+                      console.log("AuthContext: TWA Auth Success", user.nickname);
                       setCurrentUser(user);
                       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
                       setIsTelegramAuth(true);
+                  } else {
+                      const errData = await response.json().catch(() => ({}));
+                      console.error("AuthContext: TWA Auth Server Error", response.status, errData);
                   }
-              } catch (e) { console.error("TWA Auth failed", e); }
+              } catch (e: any) { 
+                  console.error("AuthContext: TWA Auth Network Error", e.message); 
+              }
+          } else if (isTwa && !initData) {
+              console.warn("AuthContext: isTwa is true but initData is missing. Check Telegram SDK.");
           }
       };
       authTelegram();
