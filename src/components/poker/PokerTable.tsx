@@ -10,13 +10,10 @@ interface PokerCard {
 }
 
 const PokerTable: React.FC = () => {
-  const [heroCards] = useState<PokerCard[]>([
-    { suit: 'hearts', value: 'A' },
-    { suit: 'spades', value: 'K' }
-  ]);
+  const [heroCards, setHeroCards] = useState<PokerCard[]>([]);
   const [board, setBoard] = useState<PokerCard[]>([]);
-  const [pot] = useState(1250);
-  const [heroStack] = useState(5000);
+  const [pot, setPot] = useState(0);
+  const [heroStack, setHeroStack] = useState(5000);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,18 +32,49 @@ const PokerTable: React.FC = () => {
     return (suit === 'hearts' || suit === 'diamonds') ? 'text-red-500' : 'text-slate-900';
   };
 
-  const dealFlop = () => {
-    setBoard([
-      { suit: 'diamonds', value: 'Q' },
-      { suit: 'clubs', value: 'J' },
-      { suit: 'hearts', value: '10' }
-    ]);
+  const getRandomCard = (): PokerCard => {
+    const suits: PokerCard['suit'][] = ['hearts', 'diamonds', 'clubs', 'spades'];
+    const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+    return {
+      suit: suits[Math.floor(Math.random() * suits.length)],
+      value: values[Math.floor(Math.random() * values.length)]
+    };
+  };
+
+  const dealHand = () => {
+    setHeroCards([getRandomCard(), getRandomCard()]);
+    setPot(150); // Blinds
+    setAnalysis(null);
+    setError(null);
+  };
+
+  const dealNext = () => {
+    if (heroCards.length === 0) {
+      dealHand();
+      return;
+    }
+    if (board.length === 0) {
+      setBoard([getRandomCard(), getRandomCard(), getRandomCard()]);
+    } else if (board.length < 5) {
+      setBoard(prev => [...prev, getRandomCard()]);
+    }
     setAnalysis(null);
     setError(null);
   };
 
   const resetTable = () => {
     setBoard([]);
+    setHeroCards([]);
+    setPot(0);
+    setAnalysis(null);
+    setError(null);
+  };
+
+  const handleAction = (action: string) => {
+    if (action === 'Bet') {
+      setHeroStack(prev => prev - 500);
+      setPot(prev => prev + 500);
+    }
     setAnalysis(null);
     setError(null);
   };
@@ -54,21 +82,24 @@ const PokerTable: React.FC = () => {
   const analyzeHand = async () => {
     setIsAnalyzing(true);
     setError(null);
+    setAnalysis(null);
+    
+    const street = board.length === 0 ? 'Префлоп' : board.length === 3 ? 'Флоп' : board.length === 4 ? 'Терн' : 'Ривер';
     
     const handDescription = `
       Мои карты: ${heroCards.map(c => `${c.value}${getSuitIcon(c.suit)}`).join(', ')}
-      Стол: ${board.length > 0 ? board.map(c => `${c.value}${getSuitIcon(c.suit)}`).join(', ') : 'Пусто (Префлоп)'}
+      Стол: ${board.length > 0 ? board.map(c => `${c.value}${getSuitIcon(c.suit)}`).join(', ') : 'Пусто'}
       Пот: $${pot}
       Мой стек: $${heroStack}
-      Ситуация: Флоп. У меня натсовое стрит-дро (Broadway). Что мне делать?
+      Ситуация: ${street}. Дай краткий совет по GTO.
     `;
 
     try {
       const result = await fetchPokerAnalysis(handDescription);
       setAnalysis(result);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Не удалось получить анализ от ИИ. Пожалуйста, проверьте подключение или попробуйте позже.");
+      setError(err.message || "Не удалось получить анализ от ИИ. Пожалуйста, проверьте подключение.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -127,23 +158,59 @@ const PokerTable: React.FC = () => {
       </div>
 
       {/* Controls Overlay */}
-      <div className="absolute right-8 bottom-8 flex flex-col gap-3">
-        {board.length === 0 ? (
-          <Button onClick={dealFlop} variant="primary" className="flex items-center gap-2">
-            <Play size={18} /> Сдать флоп
+      <div className="absolute right-8 bottom-8 flex flex-col gap-4 items-end">
+        {/* Game Actions */}
+        <div className="flex gap-2 bg-black/20 backdrop-blur-md p-2 rounded-2xl border border-white/5">
+          <Button 
+            onClick={() => handleAction('Fold')} 
+            className="bg-red-500/20 hover:bg-red-500/40 text-red-400 border border-red-500/30 px-6 py-2 rounded-xl font-bold transition-all"
+          >
+            Фолд
           </Button>
-        ) : (
-          <Button onClick={resetTable} variant="secondary" className="flex items-center gap-2">
-            <RotateCcw size={18} /> Сбросить
+          <Button 
+            onClick={() => handleAction('Check')} 
+            className="bg-slate-700/50 hover:bg-slate-700 text-white border border-white/10 px-6 py-2 rounded-xl font-bold transition-all"
+          >
+            Чек
           </Button>
-        )}
+          <Button 
+            onClick={() => handleAction('Bet')} 
+            className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-blue-600/20 transition-all"
+          >
+            Бет $500
+          </Button>
+        </div>
+
+        {/* Table Management */}
+        <div className="flex gap-2">
+          {board.length < 5 && (
+            <Button 
+              onClick={dealNext} 
+              variant="primary" 
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-6 py-3 rounded-2xl font-bold shadow-xl shadow-emerald-900/40"
+            >
+              <Play size={20} fill="currentColor" /> 
+              {heroCards.length === 0 ? 'Раздать карты' : board.length === 0 ? 'Сдать флоп' : board.length === 3 ? 'Сдать терн' : 'Сдать ривер'}
+            </Button>
+          )}
+          <Button 
+            onClick={resetTable} 
+            variant="secondary" 
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border-white/10 px-6 py-3 rounded-2xl font-bold"
+          >
+            <RotateCcw size={20} /> Сбросить
+          </Button>
+        </div>
+
+        {/* AI Assistant */}
         <Button 
           onClick={analyzeHand} 
           variant="primary" 
-          className="bg-purple-600 hover:bg-purple-700 flex items-center gap-2"
+          className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 flex items-center justify-center gap-3 py-4 rounded-2xl font-bold shadow-2xl shadow-purple-900/40 border border-white/10"
           disabled={isAnalyzing}
         >
-          <Brain size={18} /> {isAnalyzing ? 'Анализ...' : 'ИИ Тренер'}
+          <Brain size={24} className={isAnalyzing ? 'animate-pulse' : ''} /> 
+          {isAnalyzing ? 'Анализирую ситуацию...' : 'Спросить ИИ Тренера'}
         </Button>
       </div>
 
@@ -171,8 +238,13 @@ const PokerTable: React.FC = () => {
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             className="absolute left-8 bottom-8 max-w-xs bg-red-900/90 backdrop-blur-xl border border-red-500/30 p-4 rounded-2xl shadow-2xl z-20"
           >
-            <div className="flex items-center gap-2 mb-2 text-red-400 font-bold text-xs uppercase tracking-wider">
-              <AlertCircle size={14} /> Error
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-red-400 font-bold text-xs uppercase tracking-wider">
+                <AlertCircle size={14} /> Error
+              </div>
+              <button onClick={() => setError(null)} className="text-white/50 hover:text-white">
+                <RotateCcw size={14} />
+              </button>
             </div>
             <p className="text-slate-200 text-sm leading-relaxed">
               {error}

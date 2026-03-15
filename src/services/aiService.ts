@@ -164,7 +164,7 @@ export const fetchPokerAnalysis = async (handData: string): Promise<string> => {
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-3.1-pro-preview",
+            model: "gemini-3-flash-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: { systemInstruction },
         });
