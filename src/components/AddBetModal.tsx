@@ -173,6 +173,7 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
               is_active: true,
               color: '#4F46E5', // Indigo-600
           });
+          MainButton.show();
       }
       return () => {
           if (isTwa && MainButton) {

@@ -87,7 +87,7 @@ const logApiActivity = (logEntry: any) => {
 
 // --- CONSTANTS & HELPERS ---
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
-const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished', 'AOT', 'AP', 'CANC', 'ABD', 'AWD', 'WO', 'POST'];
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getStatusPriority = (statusShort: string | null) => {
@@ -153,7 +153,24 @@ async function _fetchGamesForDate(sport: string, queryDate: string) {
                 if (sport === 'nba' && item.date?.start) gameDateStr = item.date.start;
                 if (typeof gameDateStr !== 'string') gameDateStr = new Date().toISOString();
 
-                const getScores = (s: any) => (!s ? { home: null, away: null } : { home: s.home?.total ?? s.home ?? null, away: s.away?.total ?? s.away ?? null });
+                const getScores = (s: any) => {
+                    if (!s) return { home: null, away: null };
+                    
+                    const extract = (val: any) => {
+                        if (val === null || val === undefined) return null;
+                        if (typeof val === 'number') return val;
+                        if (typeof val === 'object') {
+                            return val.total ?? val.points ?? val.score ?? val.goals ?? null;
+                        }
+                        const parsed = parseFloat(val);
+                        return isNaN(parsed) ? null : parsed;
+                    };
+
+                    return { 
+                        home: extract(s.home), 
+                        away: extract(s.away) 
+                    };
+                };
                 const finalScores = getScores(item.scores);
                 
                 return {
@@ -214,9 +231,9 @@ async function processSport(sport: string) {
     const lastFetched = cache.getPersistent(lastFetchedKey);
     const now = Date.now();
     
-    // Only fetch from API if more than 30 minutes passed, unless it's a manual trigger
-    // (We'll handle manual trigger by checking a flag if needed, but for now let's stick to 30m)
-    if (lastFetched && (now - lastFetched < 30 * 60 * 1000) && process.env.SPORT_API_KEY) {
+    // Only fetch from API if more than 15 minutes passed, unless it's a manual trigger
+    // (We'll handle manual trigger by checking a flag if needed, but for now let's stick to 15m)
+    if (lastFetched && (now - lastFetched < 15 * 60 * 1000) && process.env.SPORT_API_KEY) {
         console.log(`[Updater] Skipping API fetch for ${sport}, last fetch was less than 30m ago.`);
         return cache.getPersistent(`central_predictions:${sport}`) || [];
     }

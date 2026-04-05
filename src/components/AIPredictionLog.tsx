@@ -52,17 +52,20 @@ const PredictionDetails: React.FC<{ prediction: string, confidence: number | nul
                         </p>
                     )}
                     <details className="text-xs pt-1">
-                        <summary className="cursor-pointer text-gray-500 hover:text-gray-300">Подробнее об исходах</summary>
-                        <div className="mt-2 space-y-1 p-2 bg-gray-900/50 rounded-md max-h-40 overflow-y-auto">
+                        <summary className="cursor-pointer text-gray-500 hover:text-gray-300 font-medium py-1">Подробнее об исходах</summary>
+                        <div className="mt-2 space-y-1 p-2 bg-gray-900/50 rounded-md max-h-48 overflow-y-auto border border-gray-700/30">
                             {Object.entries(market_analysis).map(([key, value]: [string, any]) => (
-                                <div key={key} className="p-1 rounded" title={`Обоснование: ${value.justification}`}>
+                                <div key={key} className="p-1.5 rounded bg-gray-800/30 mb-1" title={`Обоснование: ${value.justification}`}>
                                     <div className="flex justify-between items-center">
-                                        <span className="font-medium">{key}</span>
-                                        <div>
-                                            <span className="text-cyan-300">{(value.probability * 100).toFixed(1)}%</span>
-                                            <span className="text-amber-400 font-mono ml-2">@{value.coefficient.toFixed(2)}</span>
+                                        <span className="font-medium text-gray-300">{key}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-cyan-300 font-bold">{(value.probability * 100).toFixed(0)}%</span>
+                                            <span className="text-amber-400 font-mono text-[10px] bg-amber-400/10 px-1 rounded">@{value.coefficient.toFixed(2)}</span>
                                         </div>
                                     </div>
+                                    {value.justification && (
+                                        <p className="text-[10px] text-gray-500 mt-1 leading-tight italic">{value.justification}</p>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -124,8 +127,8 @@ const AIPredictionLog: React.FC = () => {
                     ...pred,
                     leagueName: p.eventName,
                     // @google/genai-fix: Correctly map matchResult from SharedPrediction if not in AIPrediction
-                    matchResult: pred.matchResult || (p.scores && p.winner ? { 
-                        scores: p.scores, 
+                    matchResult: pred.matchResult || (p.scores && p.scores.home !== null && p.scores.away !== null && p.winner ? { 
+                        scores: p.scores as { home: number; away: number }, 
                         winner: p.winner 
                     } : undefined),
                     matchName: p.teams,

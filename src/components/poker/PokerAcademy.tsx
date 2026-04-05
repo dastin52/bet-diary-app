@@ -34,25 +34,107 @@ const PokerAcademy: React.FC = () => {
 
   const trainingModules = [
     {
-      title: 'Кэш-игры: Основы',
-      description: 'Изучите основы игры за кэш-столами, управление стеком и позиционную игру.',
+      title: 'Кэш-игры: Основы GTO',
+      description: 'Изучите основы теории оптимальной игры (GTO), управление стеком и построение диапазонов открытия.',
       icon: <TrendingUp className="text-emerald-500" />,
       difficulty: 'Beginner',
+      lessons: 15
+    },
+    {
+      title: 'Турнирная стратегия (MTT) & ICM',
+      description: 'Как выживать и побеждать в многостоловых турнирах. Глубокий разбор ICM-модели и стадий турнира.',
+      icon: <Trophy className="text-amber-500" />,
+      difficulty: 'Intermediate',
+      lessons: 22
+    },
+    {
+      title: 'Эксплуатация и Психология',
+      description: 'Как находить слабости оппонентов и использовать их. Работа с тильтом и психология победителя.',
+      icon: <Brain className="text-purple-500" />,
+      difficulty: 'Pro',
       lessons: 12
     },
     {
-      title: 'Турнирная стратегия (MTT)',
-      description: 'Как выживать и побеждать в многостоловых турнирах. Стадии турнира и ICM.',
-      icon: <Trophy className="text-amber-500" />,
-      difficulty: 'Intermediate',
-      lessons: 18
+      title: 'Путь к вершине: Стать лучшим',
+      description: 'Пошаговый план развития от новичка до хайроллера на основе практик мировых чемпионов.',
+      icon: <Target className="text-red-500" />,
+      difficulty: 'Elite',
+      lessons: 10
+    }
+  ];
+
+  const theoryLessons = [
+    { 
+      title: 'Математика Покера: Шансы и Эквити', 
+      cat: 'Основы', 
+      icon: <BarChart3 />,
+      content: `
+        Математика — это фундамент покера. Чтобы стать лучшим, вы должны понимать:
+        1. **Pot Odds (Шансы банка):** Отношение текущего размера банка к стоимости вашего колла.
+        2. **Equity (Эквити):** Ваша доля в банке на основе вероятности выигрыша руки.
+        3. **Expected Value (EV):** Математическое ожидание каждого вашего действия.
+        
+        *Практика:* Если банк $100, и вам нужно доставить $25, ваши шансы банка 4:1 (20%). Если ваше эквити выше 20%, колл математически выгоден.`
     },
-    {
-      title: 'Продвинутый блеф',
-      description: 'Математика блефа, чтение диапазонов и использование слабостей оппонентов.',
-      icon: <Zap className="text-purple-500" />,
-      difficulty: 'Pro',
-      lessons: 8
+    { 
+      title: 'GTO vs Эксплуатация', 
+      cat: 'Стратегия', 
+      icon: <Zap />,
+      content: `
+        **GTO (Game Theory Optimal)** — это стратегия, которую невозможно эксплуатировать.
+        **Эксплуатационный стиль** — это отклонение от GTO для максимизации прибыли против конкретных ошибок оппонента.
+        
+        *Совет:* Начинайте с GTO базы, но всегда ищите, где ваш оппонент перефолживает или слишком много блефует, чтобы забрать его деньги.`
+    },
+    { 
+      title: 'Психология: Победить Тильт', 
+      cat: 'Мышление', 
+      icon: <Brain />,
+      content: `
+        Лучшие игроки мира отличаются не только техникой, но и железной дисциплиной.
+        - **Тильт** — это эмоциональное состояние, ведущее к плохим решениям.
+        - **Дисперсия** — неизбежные колебания удачи.
+        
+        *Техника:* Используйте метод "стоп-лосс" по времени или бай-инам. Если чувствуете гнев — немедленно закрывайте столы.`
+    },
+    { 
+      title: 'Чтение диапазонов (Hand Reading)', 
+      cat: 'Продвинутый', 
+      icon: <Target />,
+      content: `
+        Вы никогда не играете против конкретной руки, вы играете против **диапазона**.
+        - Сужайте диапазон оппонента на каждой улице (префлоп, флоп, терн, ривер).
+        - Учитывайте позицию, размер ставок и предыдущую историю игрока.
+        
+        *Упражнение:* Задайте себе вопрос: "Какие руки из его диапазона стали бы делать такую ставку на этом борде?"`
+    },
+    { 
+      title: 'Банкролл Менеджмент (БРМ)', 
+      cat: 'Управление', 
+      icon: <Shield />,
+      content: `
+        Без БРМ даже лучший игрок в мире обанкротится.
+        - Для кэш-игр: минимум 40-50 бай-инов лимита.
+        - Для турниров: 100+ бай-инов.
+        
+        *Правило:* Никогда не играйте на деньги, которые вы не можете позволить себе проиграть.`
+    },
+    { 
+      title: 'Путь Чемпиона: 10 шагов', 
+      cat: 'Elite', 
+      icon: <Trophy />,
+      content: `
+        Как стать лучшим на планете:
+        1. Освойте префлоп чарты до автоматизма.
+        2. Изучите математику (Pot Odds, Implied Odds).
+        3. Работайте в солверах (PioSolver, GTO Wizard).
+        4. Анализируйте каждую сессию.
+        5. Найдите тренера или группу единомышленников.
+        6. Развивайте физическую выносливость.
+        7. Учитесь читать "теллсы" (в живой игре).
+        8. Понимайте динамику стола.
+        9. Будьте готовы к даунстрикам.
+        10. Никогда не прекращайте учиться.`
     }
   ];
 
@@ -69,7 +151,7 @@ const PokerAcademy: React.FC = () => {
             Академия Покера <span className="text-amber-500">Pro</span>
           </motion.h1>
           <p className="text-slate-400 text-base md:text-lg mb-6">
-            Полноценная подготовка к играм, глубокий анализ стратегий и персональный ИИ-тренер для вашего прогресса.
+            Станьте лучшим игроком на планете с помощью современных методик GTO, психологической подготовки и глубокого анализа раздач.
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
             <Button 
@@ -77,14 +159,14 @@ const PokerAcademy: React.FC = () => {
               variant="primary" 
               className="flex items-center justify-center gap-2"
             >
-              <PlayCircle size={18} /> Начать обучение
+              <PlayCircle size={18} /> Начать практику
             </Button>
             <Button 
-              onClick={() => setActiveTab('analysis')}
+              onClick={() => setActiveTab('theory')}
               variant="secondary" 
               className="bg-white/5 border-white/10 hover:bg-white/10 flex items-center justify-center"
             >
-              Мой прогресс
+              Изучить теорию
             </Button>
           </div>
         </div>
@@ -96,7 +178,7 @@ const PokerAcademy: React.FC = () => {
       {/* Navigation Tabs */}
       <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-xl w-full sm:w-fit overflow-x-auto no-scrollbar">
         {[
-          { id: 'training', label: 'Тренировка', icon: <Target size={16} /> },
+          { id: 'training', label: 'Практика', icon: <Target size={16} /> },
           { id: 'theory', label: 'Теория', icon: <BookOpen size={16} /> },
           { id: 'analysis', label: 'Анализ рук', icon: <BarChart3 size={16} /> }
         ].map(tab => (
@@ -122,9 +204,9 @@ const PokerAcademy: React.FC = () => {
           <div className="lg:col-span-2 space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold flex items-center gap-2">
-                <PlayCircle className="text-amber-500" /> Практический симулятор
+                <PlayCircle className="text-amber-500" /> Интерактивный симулятор
               </h2>
-              <div className="text-sm text-slate-500 italic">Режим: Безлимитный Холдем</div>
+              <div className="text-sm text-slate-500 italic">Режим: GTO Тренировка</div>
             </div>
             <PokerTable />
             
@@ -134,9 +216,9 @@ const PokerAcademy: React.FC = () => {
                   <Brain size={24} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg mb-1">ИИ Тренер: Совет дня</h3>
+                  <h3 className="font-bold text-lg mb-1">Совет от ИИ-Чемпиона</h3>
                   <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
-                    В турнирах на ранних стадиях играйте тайтово. Ваша задача — сохранить стек для поздних стадий, где блайнды будут иметь большее значение. Не рискуйте всем стеком без натсовой руки.
+                    "Покер — это игра не карт, а людей. Но чтобы побеждать людей, вы должны сначала выучить математику карт. Никогда не позволяйте эмоциям диктовать размер вашей ставки."
                   </p>
                 </div>
               </div>
@@ -145,7 +227,7 @@ const PokerAcademy: React.FC = () => {
 
           {/* Sidebar Modules */}
           <div className="space-y-6">
-            <h2 className="text-2xl font-bold">Модули обучения</h2>
+            <h2 className="text-2xl font-bold">Программа обучения</h2>
             <div className="space-y-4">
               {trainingModules.map((module, idx) => (
                 <motion.div
@@ -173,13 +255,13 @@ const PokerAcademy: React.FC = () => {
 
             <Card className="p-6 bg-amber-500 text-white border-none overflow-hidden relative">
               <div className="relative z-10">
-                <h3 className="font-bold text-lg mb-2">Готовы к турниру?</h3>
-                <p className="text-white/80 text-xs mb-4">Пройдите финальный тест и получите сертификат Академии.</p>
+                <h3 className="font-bold text-lg mb-2">Экзамен на Pro</h3>
+                <p className="text-white/80 text-xs mb-4">Проверьте свои знания и получите доступ к закрытому сообществу.</p>
                 <Button 
                   onClick={() => setShowTestModal(true)}
                   className="bg-white text-amber-500 hover:bg-slate-100 w-full font-bold"
                 >
-                  Пройти тест
+                  Начать тест
                 </Button>
               </div>
               <Trophy size={120} className="absolute -right-8 -bottom-8 text-white/10 rotate-12" />
@@ -190,17 +272,10 @@ const PokerAcademy: React.FC = () => {
 
       {activeTab === 'theory' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[
-            { title: 'Математика Покера', cat: 'Basics', icon: <BarChart3 /> },
-            { title: 'Психология и Тильт', cat: 'Mindset', icon: <Brain /> },
-            { title: 'Банкролл Менеджмент', cat: 'Strategy', icon: <Shield /> },
-            { title: 'Чтение оппонентов', cat: 'Advanced', icon: <Target /> },
-            { title: 'GTO vs Exploitative', cat: 'Theory', icon: <Zap /> },
-            { title: 'Специфика MTT', cat: 'Tournament', icon: <Trophy /> }
-          ].map((item, i) => (
+          {theoryLessons.map((item, i) => (
             <Card 
               key={i} 
-              onClick={() => setSelectedLesson(item)}
+              onClick={() => setSelectedLesson(item as any)}
               className="p-6 hover:border-amber-500/50 transition-colors cursor-pointer group"
             >
               <div className="flex items-center gap-4 mb-4">
@@ -212,9 +287,11 @@ const PokerAcademy: React.FC = () => {
                   <h3 className="font-bold text-lg">{item.title}</h3>
                 </div>
               </div>
-              <p className="text-sm text-slate-500 mb-4">Детальное руководство по теме с примерами и видео-разборами.</p>
+              <p className="text-sm text-slate-500 mb-4 line-clamp-3">
+                {item.content.split('\n')[1].trim()}
+              </p>
               <div className="flex items-center text-amber-500 text-sm font-bold gap-1">
-                Читать далее <ChevronRight size={16} />
+                Изучить <ChevronRight size={16} />
               </div>
             </Card>
           ))}
@@ -224,8 +301,8 @@ const PokerAcademy: React.FC = () => {
       {activeTab === 'analysis' && (
         <div className="max-w-4xl mx-auto space-y-8">
           <div className="text-center space-y-4">
-            <h2 className="text-3xl font-bold">Анализатор раздач</h2>
-            <p className="text-slate-500">Загрузите историю раздачи или введите данные вручную для глубокого ИИ-анализа ваших решений.</p>
+            <h2 className="text-3xl font-bold">ИИ-Анализатор раздач</h2>
+            <p className="text-slate-500">Загрузите историю раздач для выявления ликов (ошибок) в вашей стратегии.</p>
           </div>
           
           <Card 
@@ -236,9 +313,9 @@ const PokerAcademy: React.FC = () => {
               <BarChart3 size={32} className="text-amber-500" />
             </div>
             <h3 className="font-bold text-xl mb-2">
-              {isUploading ? 'Обработка...' : 'Перетащите файл сюда'}
+              {isUploading ? 'Анализирую...' : 'Загрузите историю раздач'}
             </h3>
-            <p className="text-slate-500 text-sm mb-6">Поддерживаются форматы PokerStars, GG Poker, Winamax</p>
+            <p className="text-slate-500 text-sm mb-6">Поддерживаются форматы PokerStars, GG Poker, Winamax, CoinPoker</p>
             <Button variant="primary" disabled={isUploading}>
               {isUploading ? 'Загрузка...' : 'Выбрать файл'}
             </Button>
@@ -334,28 +411,22 @@ const PokerAcademy: React.FC = () => {
 
       {/* Lesson Modal */}
       {selectedLesson && (
-        <Modal title={selectedLesson.title} onClose={() => setSelectedLesson(null)}>
+        <Modal title={(selectedLesson as any).title} onClose={() => setSelectedLesson(null)}>
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-amber-500 text-xs font-bold uppercase tracking-widest">
-              <BookOpen size={14} /> {selectedLesson.cat} Lesson
+              <BookOpen size={14} /> Урок: {(selectedLesson as any).cat}
             </div>
             <div className="prose dark:prose-invert max-w-none">
-              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-                Это подробный урок по теме <strong>{selectedLesson.title}</strong>. В этом модуле мы разберем ключевые концепции, математические модели и психологические аспекты, которые помогут вам принимать более взвешенные решения.
-              </p>
-              <ul className="list-disc pl-5 space-y-2 text-sm text-slate-500 mt-4">
-                <li>Основные определения и терминология</li>
-                <li>Математическое обоснование стратегии</li>
-                <li>Примеры из реальных игр (High Stakes)</li>
-                <li>Типичные ошибки новичков и как их избежать</li>
-              </ul>
+              <div className="text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap">
+                {(selectedLesson as any).content}
+              </div>
             </div>
             <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setSelectedLesson(null)}>Закрыть</Button>
               <Button variant="primary" onClick={() => {
                 setSelectedLesson(null);
                 setActiveTab('training');
-              }}>Перейти к практике</Button>
+              }}>К практике</Button>
             </div>
           </div>
         </Modal>
