@@ -1,11 +1,15 @@
 // server/prediction-updater.js
-const fs = require('fs');
-const path = require('path');
-const { GoogleGenAI, Type } = require('@google/genai');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { GoogleGenAI } from '@google/genai';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // --- CACHE IMPLEMENTATION (mimics KV) ---
 const cacheFilePath = path.join(__dirname, '..', '.cache.json');
-let cacheStore = {};
+let cacheStore: any = {};
 try {
     if (fs.existsSync(cacheFilePath)) {
         cacheStore = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
@@ -14,26 +18,26 @@ try {
     console.error('Could not load cache file.', e);
 }
 
-const cache = {
-    get: (key) => {
+export const cache = {
+    get: (key: string) => {
         const entry = cacheStore[key];
         if (entry && entry.expiry > Date.now()) return entry.value;
         return null;
     },
-    put: (key, value, ttlSeconds) => {
+    put: (key: string, value: any, ttlSeconds: number) => {
         const expiry = Date.now() + ttlSeconds * 1000;
         cacheStore[key] = { value, expiry };
         fs.writeFileSync(cacheFilePath, JSON.stringify(cacheStore, null, 2));
     },
-    getPersistent: (key) => cacheStore[key] || null,
-    putPersistent: (key, value) => {
+    getPersistent: (key: string) => cacheStore[key] || null,
+    putPersistent: (key: string, value: any) => {
         cacheStore[key] = value;
         fs.writeFileSync(cacheFilePath, JSON.stringify(cacheStore, null, 2));
     },
 };
 
 // --- LOGGING ---
-const logApiActivity = (logEntry) => {
+const logApiActivity = (logEntry: any) => {
     const newLog = { ...logEntry, timestamp: new Date().toISOString() };
     const logs = cache.getPersistent('api_activity_log') || [];
     const updatedLogs = [newLog, ...logs].slice(0, 100);
@@ -43,9 +47,9 @@ const logApiActivity = (logEntry) => {
 // --- CONSTANTS & HELPERS ---
 const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished'];
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const getStatusPriority = (statusShort) => {
+const getStatusPriority = (statusShort: string | null) => {
     if (!statusShort) return 3;
     const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INTR'];
     if (live.includes(statusShort)) return 1;
@@ -53,7 +57,7 @@ const getStatusPriority = (statusShort) => {
     return 3;
 };
 
-const getMatchStatusEmoji = (status) => {
+const getMatchStatusEmoji = (status: any) => {
     if (!status || !status.short) return '⏳';
     switch (status.short) {
         case '1H': case 'HT': case '2H': case 'ET': case 'BT': case 'P': case 'LIVE': case 'INTR': return '🔴';
@@ -63,14 +67,14 @@ const getMatchStatusEmoji = (status) => {
 };
 
 // --- MOCK & API SERVICES ---
-const getSportApiConfig = (year) => ({
+const getSportApiConfig = (year: number): any => ({
     'hockey': { host: 'https://v1.hockey.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'nba': { host: 'https://v2.nba.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
 });
 
-async function _fetchGamesForDate(sport, queryDate) {
+async function _fetchGamesForDate(sport: string, queryDate: string) {
     console.log(`[Local API] Fetching games for ${sport} for date ${queryDate}.`);
     const year = new Date(queryDate).getFullYear();
     const config = getSportApiConfig(year)[sport];
@@ -79,17 +83,17 @@ async function _fetchGamesForDate(sport, queryDate) {
     const url = `${config.host}/${config.path}?date=${queryDate}`;
 
     try {
-        const response = await fetch(url, { headers: { [config.keyName]: process.env.SPORT_API_KEY } });
+        const response = await fetch(url, { headers: { [config.keyName]: process.env.SPORT_API_KEY as string } });
         if (!response.ok) throw new Error(`API responded with status ${response.status}: ${await response.text()}`);
 
-        const data = await response.json();
+        const data: any = await response.json();
         if (data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0)) {
             throw new Error(`API returned logical error: ${JSON.stringify(data.errors)}`);
         }
         
         logApiActivity({ sport, endpoint: url, status: 'success' });
 
-        const games = data.response.map(item => {
+        const games = data.response.map((item: any) => {
              try {
                 if (sport === 'football') {
                     if (!item?.fixture?.id || !item?.teams?.home || !item?.teams?.away || !item?.league) return null;
@@ -108,7 +112,7 @@ async function _fetchGamesForDate(sport, queryDate) {
                 if (sport === 'nba' && item.date?.start) gameDateStr = item.date.start;
                 if (typeof gameDateStr !== 'string') gameDateStr = new Date().toISOString();
 
-                const getScores = (s) => (!s ? { home: null, away: null } : { home: s.home?.total ?? s.home ?? null, away: s.away?.total ?? s.away ?? null });
+                const getScores = (s: any) => (!s ? { home: null, away: null } : { home: s.home?.total ?? s.home ?? null, away: s.away?.total ?? s.away ?? null });
                 const finalScores = getScores(item.scores);
                 
                 return {
@@ -121,23 +125,25 @@ async function _fetchGamesForDate(sport, queryDate) {
                 console.error(`[Local Parser] Error processing game item for ${sport}:`, e, item);
                 return null;
             }
-        }).filter(g => g !== null);
+        }).filter((g: any) => g !== null);
 
         console.log(`[Local API SUCCESS] Fetched ${games.length} games for ${sport} on date ${queryDate}.`);
         return games;
 
-    } catch (error) {
+    } catch (error: any) {
         console.error(`[Local API ERROR] fetching ${sport} games. Error:`, error);
         logApiActivity({ sport, endpoint: url, status: 'error', errorMessage: error.message });
         throw error;
     }
 }
 
-async function getTodaysGamesBySport(sport) {
+async function getTodaysGamesBySport(sport: string) {
     if (!process.env.SPORT_API_KEY) {
         console.log(`[Local MOCK] SPORT_API_KEY not found. Generating mock games for ${sport}.`);
         logApiActivity({ sport, endpoint: 'MOCK_SPORTS_API', status: 'success' });
-        return require('../functions/utils/mockGames').generateMockGames(sport);
+        // @ts-ignore
+        const { generateMockGames } = await import('../functions/utils/mockGames');
+        return generateMockGames(sport);
     }
     
     const now = new Date();
@@ -153,15 +159,15 @@ async function getTodaysGamesBySport(sport) {
     ]);
     
     const allGamesMap = new Map();
-    yesterdayGames.forEach(game => allGamesMap.set(game.id, game));
-    todayGames.forEach(game => allGamesMap.set(game.id, game));
+    yesterdayGames.forEach((game: any) => allGamesMap.set(game.id, game));
+    todayGames.forEach((game: any) => allGamesMap.set(game.id, game));
     
     return Array.from(allGamesMap.values());
 }
 
-async function processSport(sport) {
+async function processSport(sport: string) {
     console.log(`[Updater] Starting a fresh update for sport: ${sport}`);
-    let games = await getTodaysGamesBySport(sport);
+    let games: any[] = await getTodaysGamesBySport(sport);
 
     games = games.filter(game =>
         game && game.teams && game.teams.home && game.teams.home.name && game.teams.away && game.teams.away.name
@@ -172,7 +178,7 @@ async function processSport(sport) {
     }
     
     const centralPredictionsKey = `central_predictions:${sport}`;
-    const existingPredictions = cache.getPersistent(centralPredictionsKey) || [];
+    const existingPredictions: any[] = cache.getPersistent(centralPredictionsKey) || [];
     const existingPredictionsMap = new Map(existingPredictions.map(p => [p.id, p]));
 
     games.forEach(game => {
@@ -197,12 +203,12 @@ async function processSport(sport) {
     });
 
     const finalPredictions = Array.from(existingPredictionsMap.values())
-        .sort((a,b) => getStatusPriority(a.status?.short) - getStatusPriority(b.status?.short) || b.timestamp - a.timestamp);
+        .sort((a: any, b: any) => getStatusPriority(a.status?.short) - getStatusPriority(b.status?.short) || b.timestamp - a.timestamp);
     
     const now = Date.now();
     const cutoff = now - (48 * 60 * 60 * 1000); // 48 hours ago cutoff
 
-    const prunedPredictions = finalPredictions.filter(p => {
+    const prunedPredictions = finalPredictions.filter((p: any) => {
         if (FINISHED_STATUSES.includes(p.status?.short)) {
             return true;
         }
@@ -217,7 +223,7 @@ async function processSport(sport) {
     return prunedPredictions;
 }
 
-async function runUpdate() {
+export async function runUpdate() {
     cache.putPersistent('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
 
@@ -230,7 +236,7 @@ async function runUpdate() {
                 if (sportPredictions && sportPredictions.length > 0) {
                     allSportPredictions.push(...sportPredictions);
                 }
-            } catch (sportError) {
+            } catch (sportError: any) {
                 console.error(`[Updater Task] Failed to process sport ${sport}, continuing. Error:`, sportError);
                 cache.putPersistent('last_run_error', {
                     timestamp: new Date().toISOString(),
@@ -241,7 +247,7 @@ async function runUpdate() {
             await delay(10000);
         }
 
-        const uniqueAllPredictions = Array.from(new Map(allSportPredictions.map(p => [`${p.sport.toLowerCase()}-${p.id}`, p])).values());
+        const uniqueAllPredictions = Array.from(new Map(allSportPredictions.map((p: any) => [`${p.sport.toLowerCase()}-${p.id}`, p])).values());
         
         cache.putPersistent('central_predictions:all', uniqueAllPredictions);
         console.log(`[Updater Task] Completed all sports. Total unique predictions now: ${uniqueAllPredictions.length}`);
@@ -252,7 +258,7 @@ async function runUpdate() {
         
         return { success: true };
 
-    } catch (error) {
+    } catch (error: any) {
         console.error(`[Updater Task] A critical error occurred:`, error);
         cache.putPersistent('last_run_error', {
             timestamp: new Date().toISOString(),
@@ -261,5 +267,4 @@ async function runUpdate() {
         return { success: false, message: error.message };
     }
 }
-
-module.exports = { runUpdate, cache };
+, cache };

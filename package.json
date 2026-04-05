@@ -4,14 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
     "build": "vite build",
+    "start": "tsx server.ts",
     "lint": "tsc --noEmit",
     "postbuild": "rm -f dist/_routes.json",
     "preview": "vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.25.0",
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.0",
+    "express": "^5.2.1",
     "framer-motion": "^12.36.0",
     "lucide-react": "^0.577.0",
     "react": "^18.2.0",
@@ -19,9 +24,13 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
+    "@types/body-parser": "^1.19.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.2.2",
     "vite": "^5.2.0"
   }
