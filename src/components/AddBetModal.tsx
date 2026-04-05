@@ -170,6 +170,7 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
           MainButton.setParams({
               text: isEditMode ? 'ОБНОВИТЬ СТАВКУ' : 'СОХРАНИТЬ СТАВКУ',
               is_visible: true,
+              is_active: true,
               color: '#4F46E5', // Indigo-600
           });
       }
@@ -242,7 +243,7 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
 
   return (
     <Modal title={isEditMode ? "Редактировать ставку" : "Добавить новую ставку"} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4 pb-12 sm:pb-0">
+      <form onSubmit={handleSubmit} className="space-y-4 pb-24 sm:pb-0">
         {!isEditMode && (
             <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl">
                 <div className="flex items-center justify-between">

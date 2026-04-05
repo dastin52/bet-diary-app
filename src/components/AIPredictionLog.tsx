@@ -327,7 +327,30 @@ const AIPredictionLog: React.FC = () => {
 
             <Card>
                 <h3 className="text-lg font-semibold mb-4">Детальная точность по всем исходам</h3>
-                <div className="overflow-x-auto">
+                
+                {/* Mobile View: Cards */}
+                <div className="md:hidden space-y-3">
+                    {detailedOutcomeStats.map(stat => (
+                        <div key={stat.market} className="p-3 bg-gray-800 rounded-lg border border-gray-700">
+                            <div className="flex justify-between items-start mb-2">
+                                <span className="text-sm font-bold text-white">{stat.market}</span>
+                                <span className={`text-sm font-bold ${stat.accuracy > 55 ? 'text-green-400' : 'text-gray-300'}`}>
+                                    {stat.accuracy.toFixed(1)}%
+                                </span>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-400">
+                                <span>Оценки: {stat.evaluations}</span>
+                                <span>Коэф: <span className="text-cyan-400 font-mono">{stat.frequentCoefficient > 0 ? stat.frequentCoefficient.toFixed(2) : '-'}</span></span>
+                            </div>
+                        </div>
+                    ))}
+                    {detailedOutcomeStats.length === 0 && (
+                        <p className="text-center py-4 text-gray-500 text-sm">Нет данных для детальной статистики.</p>
+                    )}
+                </div>
+
+                {/* Desktop View: Table */}
+                <div className="hidden md:block overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-800">
                             <tr>
@@ -372,7 +395,43 @@ const AIPredictionLog: React.FC = () => {
                     </Select>
                 </div>
 
-                <div className="overflow-x-auto">
+                {/* Mobile View: Cards */}
+                <div className="md:hidden space-y-4">
+                    {filteredPredictions.map(p => {
+                        const confidence = getConfidenceForPrediction(p);
+                        const status = getDynamicStatus(p);
+                        return (
+                            <div key={p.id} className="p-4 bg-gray-800 rounded-lg border border-gray-700 space-y-3">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1 pr-2">
+                                        <p className="font-bold text-white text-base leading-tight">{p.matchName}</p>
+                                        <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider">{p.leagueName} • {new Date(p.createdAt).toLocaleDateString('ru-RU')}</p>
+                                    </div>
+                                    <span className={`flex-shrink-0 px-2 py-1 text-[10px] font-bold rounded uppercase ${getStatusInfo(status).color}`}>
+                                        {getStatusInfo(status).label}
+                                    </span>
+                                </div>
+                                
+                                <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
+                                    <PredictionDetails prediction={p.prediction} confidence={confidence} />
+                                </div>
+
+                                <div className="flex justify-between items-center pt-1 border-t border-gray-700/50">
+                                    <span className="text-xs text-gray-500">Результат:</span>
+                                    <span className="text-sm font-mono font-bold text-cyan-400">
+                                        {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {filteredPredictions.length === 0 && (
+                        <p className="text-center py-8 text-gray-500">Нет прогнозов по выбранным фильтрам.</p>
+                    )}
+                </div>
+
+                {/* Desktop View: Table */}
+                <div className="hidden md:block overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-700">
                          <thead className="bg-gray-800">
                             <tr>
