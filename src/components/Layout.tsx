@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
+import BottomNav from './BottomNav';
 import Dashboard from './Dashboard';
 import BetLog from './BetLog';
 import AdminPanel from './AdminPanel';
@@ -127,7 +128,7 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
       case 'dashboard':
         return <Dashboard onOpenAIChat={handleOpenGeneralChatModal} onNavigate={setCurrentView} />;
       case 'log':
-        return <BetLog onEditBet={handleOpenEditModal} onViewBet={handleOpenViewModal} onDiscussBet={handleOpenChatModal} onImportBets={handleOpenImportModal} isDemoMode={isDemoMode} onAuthRequired={onAuthRequired} />;
+        return <BetLog onEditBet={handleOpenEditModal} onViewBet={handleOpenViewModal} onImportBets={handleOpenImportModal} isDemoMode={isDemoMode} onAuthRequired={onAuthRequired} />;
       case 'bank_history':
         return <BankHistoryPanel />;
       case 'admin':
@@ -171,7 +172,7 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
           )}
         </div>
         
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">
           <Header 
             onAddBetClick={handleOpenAddModal} 
             onCashOutClick={handleOpenCashOutModal} 
@@ -179,10 +180,12 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
             currentView={currentView}
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             />
-          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-8">
+          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-3 md:p-8">
             {renderView()}
           </main>
         </div>
+        
+        <BottomNav currentView={currentView} setCurrentView={setCurrentView} />
         
         {isAddEditModalOpen && <AddBetModal onClose={() => { setIsAddEditModalOpen(false); setBetToEdit(null); }} betToEdit={betToEdit} />}
         {isChatModalOpen && <AIChatModal bet={chatBet} analytics={analytics} onClose={() => { setIsChatModalOpen(false); setChatBet(null); }} />}

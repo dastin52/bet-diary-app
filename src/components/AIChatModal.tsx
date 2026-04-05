@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bet, Message, GroundingSource } from '../types';
+import { Bet, Message } from '../types';
 import { UseBetsReturn } from '../hooks/useBets';
 import { getAIChatResponse } from '../services/aiService';
 import Modal from './ui/Modal';

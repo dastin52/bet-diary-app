@@ -86,21 +86,23 @@ const Header: React.FC<HeaderProps> = ({ onAddBetClick, onCashOutClick, onUpdate
             </div>
         </div>
         {showActionButtons && (
-            <div className="flex items-center flex-wrap justify-end gap-2 md:gap-4">
-                <div className="text-right hidden sm:block">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Банк</div>
-                    <div className="text-lg font-bold text-gray-900 dark:text-white">{bankroll.toFixed(2)} ₽</div>
+            <div className="flex items-center flex-wrap justify-end gap-1 md:gap-4">
+                <div className="text-right hidden lg:block mr-2">
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">Банк</div>
+                    <div className="text-base font-bold text-gray-900 dark:text-white">{bankroll.toFixed(2)} ₽</div>
                 </div>
-                 <Button onClick={onUpdateBankrollClick} variant="secondary">
-                    Изменить банк
-                </Button>
-                 <Button onClick={onCashOutClick} variant="secondary">
-                    Кэшаут
-                </Button>
-                <Button onClick={onAddBetClick}>
-                    <PlusIcon />
-                    Новая ставка
-                </Button>
+                <div className="flex gap-1">
+                  <Button onClick={onUpdateBankrollClick} variant="secondary" className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2">
+                      Банк
+                  </Button>
+                  <Button onClick={onCashOutClick} variant="secondary" className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2">
+                      Кэшаут
+                  </Button>
+                  <Button onClick={onAddBetClick} className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2">
+                      <PlusIcon />
+                      <span className="hidden xs:inline">Ставка</span>
+                  </Button>
+                </div>
             </div>
         )}
       </div>

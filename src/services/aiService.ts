@@ -1,7 +1,7 @@
 // DEPRECATED: Прямые вызовы к Gemini API с фронтенда небезопасны.
 // API-ключ будет виден всем пользователям.
 // import { GoogleGenAI, Type } from "@google/genai";
-import { Bet, BetLeg, Message, GroundingSource, BetStatus, SharedPrediction } from '../types';
+import { Bet, BetLeg, Message, GroundingSource, SharedPrediction } from '../types';
 import { UseBetsReturn } from "../hooks/useBets";
 
 // DEPRECATED: Инициализация на клиенте небезопасна.

@@ -59,30 +59,30 @@ const PokerAcademy: React.FC = () => {
   return (
     <div className="space-y-8 pb-20">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-8 text-white border border-white/5">
+      <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-6 md:p-8 text-white border border-white/5">
         <div className="relative z-10 max-w-2xl">
           <motion.h1 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="text-4xl font-bold mb-4"
+            className="text-3xl md:text-4xl font-bold mb-4"
           >
             Академия Покера <span className="text-amber-500">Pro</span>
           </motion.h1>
-          <p className="text-slate-400 text-lg mb-6">
+          <p className="text-slate-400 text-base md:text-lg mb-6">
             Полноценная подготовка к играм, глубокий анализ стратегий и персональный ИИ-тренер для вашего прогресса.
           </p>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
             <Button 
               onClick={() => setActiveTab('training')}
               variant="primary" 
-              className="flex items-center gap-2"
+              className="flex items-center justify-center gap-2"
             >
               <PlayCircle size={18} /> Начать обучение
             </Button>
             <Button 
               onClick={() => setActiveTab('analysis')}
               variant="secondary" 
-              className="bg-white/5 border-white/10 hover:bg-white/10"
+              className="bg-white/5 border-white/10 hover:bg-white/10 flex items-center justify-center"
             >
               Мой прогресс
             </Button>
@@ -94,7 +94,7 @@ const PokerAcademy: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-xl w-fit">
+      <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-xl w-full sm:w-fit overflow-x-auto no-scrollbar">
         {[
           { id: 'training', label: 'Тренировка', icon: <Target size={16} /> },
           { id: 'theory', label: 'Теория', icon: <BookOpen size={16} /> },
@@ -103,14 +103,15 @@ const PokerAcademy: React.FC = () => {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`flex items-center justify-center gap-2 px-4 md:px-6 py-2 rounded-lg text-xs md:text-sm font-medium transition-all whitespace-nowrap flex-1 sm:flex-none ${
               activeTab === tab.id 
                 ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' 
                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
             {tab.icon}
-            {tab.label}
+            <span className="hidden xs:inline">{tab.label}</span>
+            <span className="xs:hidden">{tab.label.split(' ')[0]}</span>
           </button>
         ))}
       </div>

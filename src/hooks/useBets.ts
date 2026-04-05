@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Bet, BetLeg, BetStatus, BetType, BankTransaction, BankTransactionType, Goal, GoalStatus, AIPrediction, AIPredictionStatus } from '../types';
+import { Bet, BetStatus, BankTransaction, BankTransactionType, Goal, GoalStatus, AIPrediction, AIPredictionStatus } from '../types';
 import { BET_TYPE_OPTIONS } from '../constants';
 import { generateEventString, calculateProfit } from '../utils/betUtils';
 import { loadUserData, saveUserData } from '../data/betStore';

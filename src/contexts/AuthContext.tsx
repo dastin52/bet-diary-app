@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else throw new Error('Неверные данные');
   };
 
-  const register = async (email: string, password_hash: string, nickname: string, adminCode?: string, referralCode?: string): Promise<void> => {
+  const register = async (email: string, password_hash: string, nickname: string, adminCode?: string): Promise<void> => {
     if (email === ADMIN_EMAIL && adminCode !== ADMIN_SECRET_CODE) throw new Error('Код админа неверен');
     if (userStore.findUserBy(u => u.email === email)) throw new Error('Email занят');
     

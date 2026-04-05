@@ -77,12 +77,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat, onNavigate }) => {
   const profitColor = totalProfit >= 0 ? 'text-green-500' : 'text-red-500';
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KpiCard title="Текущий банк" value={`${bankroll.toFixed(2)} ₽`} subtext="Ваши доступные средства" colorClass="text-indigo-500 dark:text-indigo-400" />
-        <KpiCard title="Общая прибыль" value={`${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}`} colorClass={profitColor} subtext="Прибыль/убыток по всем ставкам"/>
-        <KpiCard title="ROI / Доходность" value={`${roi.toFixed(2)}%`} subtext="Возврат инвестиций" colorClass={roi >= 0 ? 'text-green-500' : 'text-red-500'} />
-        <KpiCard title="Рассчитано ставок" value={String(betCount)} subtext="Общее количество ставок" />
+    <div className="space-y-4 md:space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+        <KpiCard title="Банк" value={`${bankroll.toFixed(0)} ₽`} subtext="Доступно" colorClass="text-indigo-500 dark:text-indigo-400" />
+        <KpiCard title="Прибыль" value={`${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(0)}`} colorClass={profitColor} subtext="Всего"/>
+        <KpiCard title="ROI" value={`${roi.toFixed(1)}%`} subtext="Доходность" colorClass={roi >= 0 ? 'text-green-500' : 'text-red-500'} />
+        <KpiCard title="Ставок" value={String(betCount)} subtext="Рассчитано" />
       </div>
 
       <GoalProgressCard goals={goals} />

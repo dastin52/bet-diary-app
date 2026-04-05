@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import { useBetContext } from '../contexts/BetContext';
-import { Bet, BetLeg, BetStatus, BetType } from '../types';
+import { Bet, BetStatus, BetType } from '../types';
 
 const ImportBetsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { addMultipleBets } = useBetContext();

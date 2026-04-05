@@ -2,7 +2,7 @@ import React from 'react';
 import { useBetContext } from '../contexts/BetContext';
 import Card from './ui/Card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { BankTransaction, BankTransactionType } from '../types';
+import { BankTransactionType } from '../types';
 import { LineChartTooltip } from './charts/ChartTooltip';
 
 const getTransactionTypeInfo = (type: BankTransactionType): { label: string, colorClass: string } => {

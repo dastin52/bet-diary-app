@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useBetContext } from '../contexts/BetContext';
-import { Bet, BetStatus, BetType } from '../types';
+import { Bet, BetStatus } from '../types';
 import { BET_STATUS_OPTIONS, BOOKMAKERS, SPORTS } from '../constants';
 import Card from './ui/Card';
 import Button from './ui/Button';
@@ -38,12 +38,11 @@ interface BetLogRowProps {
     onDelete: (id: string) => void; 
     onEdit: (bet: Bet) => void; 
     onView: (bet: Bet) => void;
-    onDiscuss: (bet: Bet) => void;
     isDemoMode: boolean;
     onAuthRequired: () => void;
 }
 
-const BetLogRow: React.FC<BetLogRowProps> = ({ bet, onDelete, onEdit, onView, onDiscuss, isDemoMode, onAuthRequired }) => {
+const BetLogRow: React.FC<BetLogRowProps> = ({ bet, onDelete, onEdit, onView, isDemoMode, onAuthRequired }) => {
     const { updateBet } = useBetContext();
     
     const getStatusClass = (status: BetStatus) => {
@@ -68,57 +67,107 @@ const BetLogRow: React.FC<BetLogRowProps> = ({ bet, onDelete, onEdit, onView, on
     };
 
     return (
-        <tr className={`border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors duration-150`}>
-            <td className="px-4 py-3 text-sm text-gray-800 dark:text-gray-300 align-top cursor-pointer" onClick={() => onView(bet)}>
-                <div className="font-medium text-gray-900 dark:text-white">{bet.event}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">{bet.sport} | {new Date(bet.createdAt).toLocaleString('ru-RU')}</div>
-            </td>
-            <td className="px-4 py-3 text-sm text-center align-top">{bet.stake.toFixed(2)} ₽</td>
-            <td className="px-4 py-3 text-sm text-center align-top">{bet.odds.toFixed(2)}</td>
-            <td className="px-4 py-3 text-sm text-center align-top">
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(bet.status)}`}>
-                    {statusLabel}
-                </span>
-            </td>
-            <td className="px-4 py-3 text-sm text-center font-medium align-top">
-                {bet.status !== BetStatus.Pending ? (
-                    <span className={bet.profit && bet.profit > 0 ? 'text-green-500' : bet.profit && bet.profit < 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-300'}>
-                        {bet.profit?.toFixed(2)} ₽
+        <>
+            {/* Desktop Row */}
+            <tr className="hidden md:table-row border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors duration-150">
+                <td className="px-4 py-3 text-sm text-gray-800 dark:text-gray-300 align-top cursor-pointer" onClick={() => onView(bet)}>
+                    <div className="font-medium text-gray-900 dark:text-white">{bet.event}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">{bet.sport} | {new Date(bet.createdAt).toLocaleString('ru-RU')}</div>
+                </td>
+                <td className="px-4 py-3 text-sm text-center align-top">{bet.stake.toFixed(2)} ₽</td>
+                <td className="px-4 py-3 text-sm text-center align-top">{bet.odds.toFixed(2)}</td>
+                <td className="px-4 py-3 text-sm text-center align-top">
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(bet.status)}`}>
+                        {statusLabel}
                     </span>
-                ) : '-'}
-            </td>
-            <td className="px-4 py-3 text-sm text-center align-top">
-                <div className="flex flex-wrap justify-center items-center gap-2">
-                    {bet.status === BetStatus.Pending ? (
-                        <div className="flex gap-1">
-                           <button title="Выигрыш" onClick={() => handleStatusUpdate(BetStatus.Won)} className="p-2 rounded-full hover:bg-green-200 dark:hover:bg-green-500/20 text-green-500"><CheckIcon /></button>
-                           <button title="Проигрыш" onClick={() => handleStatusUpdate(BetStatus.Lost)} className="p-2 rounded-full hover:bg-red-200 dark:hover:bg-red-500/20 text-red-500"><XCrossIcon /></button>
-                           <button title="Возврат" onClick={() => handleStatusUpdate(BetStatus.Void)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-500/20 text-gray-500"><DashIcon /></button>
-                        </div>
-                    ) : null}
-                     <button type="button" title="Редактировать" className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-indigo-500 dark:hover:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors" onClick={isDemoMode ? onAuthRequired : () => onEdit(bet)}>
-                        <EditIcon />
-                    </button>
-                    <button type="button" title="Удалить" className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-red-500 dark:hover:text-red-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors" onClick={isDemoMode ? onAuthRequired : () => onDelete(bet.id)}>
-                        <TrashIcon />
-                    </button>
+                </td>
+                <td className="px-4 py-3 text-sm text-center font-medium align-top">
+                    {bet.status !== BetStatus.Pending ? (
+                        <span className={bet.profit && bet.profit > 0 ? 'text-green-500' : bet.profit && bet.profit < 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-300'}>
+                            {bet.profit?.toFixed(2)} ₽
+                        </span>
+                    ) : '-'}
+                </td>
+                <td className="px-4 py-3 text-sm text-center align-top">
+                    <div className="flex flex-wrap justify-center items-center gap-2">
+                        {bet.status === BetStatus.Pending ? (
+                            <div className="flex gap-1">
+                               <button title="Выигрыш" onClick={() => handleStatusUpdate(BetStatus.Won)} className="p-2 rounded-full hover:bg-green-200 dark:hover:bg-green-500/20 text-green-500"><CheckIcon /></button>
+                               <button title="Проигрыш" onClick={() => handleStatusUpdate(BetStatus.Lost)} className="p-2 rounded-full hover:bg-red-200 dark:hover:bg-red-500/20 text-red-500"><XCrossIcon /></button>
+                               <button title="Возврат" onClick={() => handleStatusUpdate(BetStatus.Void)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-500/20 text-gray-500"><DashIcon /></button>
+                            </div>
+                        ) : null}
+                         <button type="button" title="Редактировать" className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-indigo-500 dark:hover:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors" onClick={isDemoMode ? onAuthRequired : () => onEdit(bet)}>
+                            <EditIcon />
+                        </button>
+                        <button type="button" title="Удалить" className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-red-500 dark:hover:text-red-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors" onClick={isDemoMode ? onAuthRequired : () => onDelete(bet.id)}>
+                            <TrashIcon />
+                        </button>
+                    </div>
+                </td>
+            </tr>
+
+            {/* Mobile Card */}
+            <div className="md:hidden p-4 border-b border-gray-200 dark:border-gray-700 space-y-3">
+                <div className="flex justify-between items-start">
+                    <div className="cursor-pointer" onClick={() => onView(bet)}>
+                        <div className="font-medium text-gray-900 dark:text-white text-sm">{bet.event}</div>
+                        <div className="text-[10px] text-gray-500 dark:text-gray-500 mt-0.5">{bet.sport} | {new Date(bet.createdAt).toLocaleDateString('ru-RU')}</div>
+                    </div>
+                    <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${getStatusClass(bet.status)}`}>
+                        {statusLabel}
+                    </span>
                 </div>
-            </td>
-        </tr>
+                
+                <div className="flex justify-between items-center text-xs">
+                    <div className="flex gap-4">
+                        <div>
+                            <span className="text-gray-500">Ставка:</span>
+                            <span className="ml-1 font-medium">{bet.stake.toFixed(0)} ₽</span>
+                        </div>
+                        <div>
+                            <span className="text-gray-500">Кэф:</span>
+                            <span className="ml-1 font-medium">{bet.odds.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div className="font-bold">
+                        {bet.status !== BetStatus.Pending ? (
+                            <span className={bet.profit && bet.profit > 0 ? 'text-green-500' : bet.profit && bet.profit < 0 ? 'text-red-500' : 'text-gray-800 dark:text-gray-300'}>
+                                {bet.profit && bet.profit > 0 ? '+' : ''}{bet.profit?.toFixed(0)} ₽
+                            </span>
+                        ) : '-'}
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-1">
+                    <div className="flex gap-1">
+                        {bet.status === BetStatus.Pending && (
+                            <>
+                                <button onClick={() => handleStatusUpdate(BetStatus.Won)} className="p-2 bg-green-100 dark:bg-green-500/20 text-green-500 rounded-lg"><CheckIcon /></button>
+                                <button onClick={() => handleStatusUpdate(BetStatus.Lost)} className="p-2 bg-red-100 dark:bg-red-500/20 text-red-500 rounded-lg"><XCrossIcon /></button>
+                            </>
+                        )}
+                    </div>
+                    <div className="flex gap-2">
+                        <button onClick={isDemoMode ? onAuthRequired : () => onEdit(bet)} className="p-2 text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg"><EditIcon /></button>
+                        <button onClick={isDemoMode ? onAuthRequired : () => onDelete(bet.id)} className="p-2 text-red-500 bg-red-100 dark:bg-red-500/10 rounded-lg"><TrashIcon /></button>
+                    </div>
+                </div>
+            </div>
+        </>
     );
 };
 
 interface BetLogProps {
     onEditBet: (bet: Bet) => void;
     onViewBet: (bet: Bet) => void;
-    onDiscussBet: (bet: Bet) => void;
     onImportBets: () => void;
     isDemoMode: boolean;
     onAuthRequired: () => void;
 }
 
 
-const BetLog: React.FC<BetLogProps> = ({ onEditBet, onViewBet, onDiscussBet, onImportBets, isDemoMode, onAuthRequired }) => {
+const BetLog: React.FC<BetLogProps> = ({ onEditBet, onViewBet, onImportBets, isDemoMode, onAuthRequired }) => {
   const { bets, deleteBet } = useBetContext();
   const [filters, setFilters] = useState({
     status: 'all',
@@ -177,8 +226,8 @@ const BetLog: React.FC<BetLogProps> = ({ onEditBet, onViewBet, onDiscussBet, onI
                 <Input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} />
             </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="overflow-x-auto -mx-4 md:mx-0">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 hidden md:table">
             <thead className="bg-gray-100 dark:bg-gray-800">
               <tr>
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Событие</th>
@@ -198,7 +247,6 @@ const BetLog: React.FC<BetLogProps> = ({ onEditBet, onViewBet, onDiscussBet, onI
                     onDelete={deleteBet} 
                     onEdit={onEditBet} 
                     onView={onViewBet}
-                    onDiscuss={onDiscussBet}
                     isDemoMode={isDemoMode}
                     onAuthRequired={onAuthRequired}
                     />
@@ -212,6 +260,27 @@ const BetLog: React.FC<BetLogProps> = ({ onEditBet, onViewBet, onDiscussBet, onI
               )}
             </tbody>
           </table>
+
+          {/* Mobile List View */}
+          <div className="md:hidden divide-y divide-gray-200 dark:divide-gray-700">
+            {filteredBets.length > 0 ? (
+                filteredBets.map(bet => (
+                  <BetLogRow 
+                    key={bet.id} 
+                    bet={bet} 
+                    onDelete={deleteBet} 
+                    onEdit={onEditBet} 
+                    onView={onViewBet}
+                    isDemoMode={isDemoMode}
+                    onAuthRequired={onAuthRequired}
+                    />
+                ))
+              ) : (
+                <div className="text-center py-10 text-gray-500">
+                    Ставок не найдено.
+                </div>
+              )}
+          </div>
         </div>
       </Card>
     </div>

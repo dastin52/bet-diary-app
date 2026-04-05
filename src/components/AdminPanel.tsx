@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { useAdminData } from '../hooks/useAdminData';
 import Card from './ui/Card';
 import KpiCard from './ui/KpiCard';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
-import { BarChartTooltip } from './charts/ChartTooltip';
 import Button from './ui/Button';
 import GingerMLPanel from './MLModelPanel';
 import TeamAnalyticsPanel from './TeamAnalyticsPanel';
