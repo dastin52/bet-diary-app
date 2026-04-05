@@ -17,6 +17,15 @@ const SPORT_MAP: Record<string, string> = {
     basketball: 'Баскетбол',
     hockey: 'Хоккей',
     nba: 'NBA',
+    tennis: 'Теннис',
+    mma: 'ММА',
+    baseball: 'Бейсбол',
+    'american-football': 'Амер. футбол',
+    volleyball: 'Волейбол',
+    handball: 'Гандбол',
+    rugby: 'Регби',
+    cricket: 'Крикет',
+    'formula-1': 'Формула-1',
     Футбол: 'Футбол',
     Баскетбол: 'Баскетбол',
     Хоккей: 'Хоккей',
@@ -113,10 +122,34 @@ const AIPredictionLog: React.FC = () => {
     const [sportFilter, setSportFilter] = useState('all');
     const [leagueFilter, setLeagueFilter] = useState('all');
     const [outcomeFilter, setOutcomeFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('all');
 
     const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
     const [analysisText, setAnalysisText] = useState('');
     const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+
+    const getDynamicStatus = useCallback((prediction: EnhancedAIPrediction): AIPredictionStatus => {
+        if (prediction.status === AIPredictionStatus.Pending || !prediction.matchResult) {
+            return AIPredictionStatus.Pending;
+        }
+        try {
+            const data = JSON.parse(prediction.prediction);
+            let outcomeToCheck: string | undefined = data.most_likely_outcome || data.recommended_outcome;
+
+            if (!outcomeToCheck || outcomeToCheck === 'N/A') {
+                return AIPredictionStatus.Incorrect;
+            }
+
+            const result = resolveMarketOutcome(outcomeToCheck, prediction.matchResult.scores, prediction.matchResult.winner);
+            
+            if (result === 'unknown') return AIPredictionStatus.Incorrect;
+            
+            return result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
+
+        } catch {
+            return AIPredictionStatus.Incorrect;
+        }
+    }, []);
     
     const allEnhancedPredictions = useMemo(() => {
         return centralPredictions
@@ -161,6 +194,12 @@ const AIPredictionLog: React.FC = () => {
         return allEnhancedPredictions.filter(p => {
             const sportMatch = sportFilter === 'all' || (SPORT_MAP[p.sport.toLowerCase()] === sportFilter) || p.sport === sportFilter;
             const leagueMatch = leagueFilter === 'all' || p.leagueName === leagueFilter;
+            
+            const status = getDynamicStatus(p);
+            let statusMatch = statusFilter === 'all';
+            if (statusFilter === 'live') statusMatch = status === AIPredictionStatus.Pending && (p as any).status?.emoji === '🔴';
+            if (statusFilter === 'upcoming') statusMatch = status === AIPredictionStatus.Pending && (p as any).status?.emoji === '⏳';
+            if (statusFilter === 'finished') statusMatch = status !== AIPredictionStatus.Pending;
 
             let outcomeMatch = outcomeFilter === 'all';
             if (outcomeFilter !== 'all') {
@@ -177,9 +216,9 @@ const AIPredictionLog: React.FC = () => {
                     outcomeMatch = false;
                 }
             }
-            return sportMatch && leagueMatch && outcomeMatch;
+            return sportMatch && leagueMatch && outcomeMatch && statusMatch;
         });
-    }, [allEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter]);
+    }, [allEnhancedPredictions, sportFilter, leagueFilter, outcomeFilter, statusFilter, getDynamicStatus]);
     
     const { aiStats, detailedOutcomeStats } = useMemo(() => {
         const settled = filteredPredictions.filter(p => p.status !== AIPredictionStatus.Pending && p.matchResult);
@@ -279,28 +318,15 @@ const AIPredictionLog: React.FC = () => {
 
     }, [aiStats, detailedOutcomeStats]);
 
-    const getDynamicStatus = useCallback((prediction: EnhancedAIPrediction): AIPredictionStatus => {
-        if (prediction.status === AIPredictionStatus.Pending || !prediction.matchResult) {
-            return AIPredictionStatus.Pending;
-        }
-        try {
-            const data = JSON.parse(prediction.prediction);
-            let outcomeToCheck: string | undefined = data.most_likely_outcome || data.recommended_outcome;
-
-            if (!outcomeToCheck || outcomeToCheck === 'N/A') {
-                return AIPredictionStatus.Incorrect;
-            }
-
-            const result = resolveMarketOutcome(outcomeToCheck, prediction.matchResult.scores, prediction.matchResult.winner);
-            
-            if (result === 'unknown') return AIPredictionStatus.Incorrect;
-            
-            return result === 'correct' ? AIPredictionStatus.Correct : AIPredictionStatus.Incorrect;
-
-        } catch {
-            return AIPredictionStatus.Incorrect;
-        }
-    }, []);
+    const groupedPredictions = useMemo(() => {
+        const groups: Record<string, EnhancedAIPrediction[]> = {};
+        filteredPredictions.forEach(p => {
+            const league = p.leagueName || 'Прочие';
+            if (!groups[league]) groups[league] = [];
+            groups[league].push(p);
+        });
+        return groups;
+    }, [filteredPredictions]);
 
     return (
         <div className="space-y-6">
@@ -383,10 +409,16 @@ const AIPredictionLog: React.FC = () => {
             </Card>
 
             <Card>
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <Select value={sportFilter} onChange={e => setSportFilter(e.target.value)}>
                         <option value="all">Все виды спорта</option>
                         {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </Select>
+                    <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                        <option value="all">Все статусы</option>
+                        <option value="live">В эфире 🔴</option>
+                        <option value="upcoming">Предстоящие ⏳</option>
+                        <option value="finished">Завершенные 🏁</option>
                     </Select>
                     <Select value={leagueFilter} onChange={e => setLeagueFilter(e.target.value)}>
                         <option value="all">Все лиги</option>
@@ -399,35 +431,42 @@ const AIPredictionLog: React.FC = () => {
                 </div>
 
                 {/* Mobile View: Cards */}
-                <div className="md:hidden space-y-4">
-                    {filteredPredictions.map(p => {
-                        const confidence = getConfidenceForPrediction(p);
-                        const status = getDynamicStatus(p);
-                        return (
-                            <div key={p.id} className="p-4 bg-gray-800 rounded-lg border border-gray-700 space-y-3">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex-1 pr-2">
-                                        <p className="font-bold text-white text-base leading-tight">{p.matchName}</p>
-                                        <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider">{p.leagueName} • {new Date(p.createdAt).toLocaleDateString('ru-RU')}</p>
-                                    </div>
-                                    <span className={`flex-shrink-0 px-2 py-1 text-[10px] font-bold rounded uppercase ${getStatusInfo(status).color}`}>
-                                        {getStatusInfo(status).label}
-                                    </span>
-                                </div>
-                                
-                                <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
-                                    <PredictionDetails prediction={p.prediction} confidence={confidence} />
-                                </div>
+                <div className="md:hidden space-y-8">
+                    {Object.entries(groupedPredictions).map(([league, predictions]) => (
+                        <div key={league} className="space-y-4">
+                            <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest border-l-2 border-indigo-500 pl-2 ml-1">
+                                {league}
+                            </h4>
+                            {predictions.map(p => {
+                                const confidence = getConfidenceForPrediction(p);
+                                const status = getDynamicStatus(p);
+                                return (
+                                    <div key={p.id} className="p-4 bg-gray-800 rounded-lg border border-gray-700 space-y-3">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1 pr-2">
+                                                <p className="font-bold text-white text-base leading-tight">{p.matchName}</p>
+                                                <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider">{new Date(p.createdAt).toLocaleDateString('ru-RU')}</p>
+                                            </div>
+                                            <span className={`flex-shrink-0 px-2 py-1 text-[10px] font-bold rounded uppercase ${getStatusInfo(status).color}`}>
+                                                {getStatusInfo(status).label}
+                                            </span>
+                                        </div>
+                                        
+                                        <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
+                                            <PredictionDetails prediction={p.prediction} confidence={confidence} />
+                                        </div>
 
-                                <div className="flex justify-between items-center pt-1 border-t border-gray-700/50">
-                                    <span className="text-xs text-gray-500">Результат:</span>
-                                    <span className="text-sm font-mono font-bold text-cyan-400">
-                                        {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
-                                    </span>
-                                </div>
-                            </div>
-                        );
-                    })}
+                                        <div className="flex justify-between items-center pt-1 border-t border-gray-700/50">
+                                            <span className="text-xs text-gray-500">Результат:</span>
+                                            <span className="text-sm font-mono font-bold text-cyan-400">
+                                                {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ))}
                     {filteredPredictions.length === 0 && (
                         <p className="text-center py-8 text-gray-500">Нет прогнозов по выбранным фильтрам.</p>
                     )}
@@ -445,29 +484,38 @@ const AIPredictionLog: React.FC = () => {
                             </tr>
                          </thead>
                          <tbody className="bg-gray-900 divide-y divide-gray-700">
-                            {filteredPredictions.map(p => {
-                                const confidence = getConfidenceForPrediction(p);
-                                const status = getDynamicStatus(p);
-                                return (
-                                <tr key={p.id}>
-                                    <td className="px-4 py-3 text-sm">
-                                        <p className="font-medium text-white">{p.matchName}</p>
-                                        <p className="text-xs text-gray-500">{p.leagueName} | {new Date(p.createdAt).toLocaleDateString('ru-RU')}</p>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm">
-                                        <PredictionDetails prediction={p.prediction} confidence={confidence} />
-                                    </td>
-                                     <td className="px-4 py-3 text-sm text-center font-mono">
-                                        {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-center">
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(status).color}`}>
-                                            {getStatusInfo(status).label}
-                                        </span>
-                                    </td>
-                                </tr>
-                                )
-                            })}
+                            {Object.entries(groupedPredictions).map(([league, predictions]) => (
+                                <React.Fragment key={league}>
+                                    <tr className="bg-gray-800/50">
+                                        <td colSpan={4} className="px-4 py-2 text-xs font-bold text-indigo-400 uppercase tracking-widest">
+                                            {league}
+                                        </td>
+                                    </tr>
+                                    {predictions.map(p => {
+                                        const confidence = getConfidenceForPrediction(p);
+                                        const status = getDynamicStatus(p);
+                                        return (
+                                        <tr key={p.id}>
+                                            <td className="px-4 py-3 text-sm">
+                                                <p className="font-medium text-white">{p.matchName}</p>
+                                                <p className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleDateString('ru-RU')}</p>
+                                            </td>
+                                            <td className="px-4 py-3 text-sm">
+                                                <PredictionDetails prediction={p.prediction} confidence={confidence} />
+                                            </td>
+                                             <td className="px-4 py-3 text-sm text-center font-mono">
+                                                {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-center">
+                                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(status).color}`}>
+                                                    {getStatusInfo(status).label}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        )
+                                    })}
+                                </React.Fragment>
+                            ))}
                          </tbody>
                     </table>
                 </div>

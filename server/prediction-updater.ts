@@ -86,8 +86,8 @@ const logApiActivity = (logEntry: any) => {
 };
 
 // --- CONSTANTS & HELPERS ---
-const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba'];
-const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished', 'AOT', 'AP', 'CANC', 'ABD', 'AWD', 'WO', 'POST'];
+const SPORTS_TO_PROCESS = ['football', 'hockey', 'basketball', 'nba', 'tennis', 'mma', 'baseball', 'american-football', 'volleyball', 'handball', 'rugby', 'cricket', 'formula-1'];
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'Finished', 'AOT', 'AP', 'CANC', 'ABD', 'AWD', 'WO', 'POST', 'Ended'];
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getStatusPriority = (statusShort: string | null) => {
@@ -113,6 +113,15 @@ const getSportApiConfig = (year: number): any => ({
     'football': { host: 'https://v3.football.api-sports.io', path: 'fixtures', keyName: 'x-apisports-key' },
     'basketball': { host: 'https://v1.basketball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
     'nba': { host: 'https://v2.nba.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'tennis': { host: 'https://v1.tennis.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'mma': { host: 'https://v1.mma.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'baseball': { host: 'https://v1.baseball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'american-football': { host: 'https://v1.american-football.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'volleyball': { host: 'https://v1.volleyball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'handball': { host: 'https://v1.handball.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'rugby': { host: 'https://v1.rugby.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'cricket': { host: 'https://v1.cricket.api-sports.io', path: 'games', keyName: 'x-apisports-key' },
+    'formula-1': { host: 'https://v1.formula-1.api-sports.io', path: 'races', keyName: 'x-apisports-key' },
 });
 
 async function _fetchGamesForDate(sport: string, queryDate: string) {
@@ -145,6 +154,19 @@ async function _fetchGamesForDate(sport: string, queryDate: string) {
                         status: { long: item.fixture.status?.long, short: item.fixture.status?.short },
                         league: item.league, teams: item.teams, scores: item.score?.fulltime,
                         winner: FINISHED_STATUSES.includes(item.fixture.status?.short) ? (item.teams.home?.winner ? 'home' : (item.teams.away?.winner ? 'away' : 'draw')) : undefined,
+                    };
+                }
+                
+                if (sport === 'formula-1') {
+                    if (!item?.id || !item?.competition || !item?.circuit) return null;
+                    return {
+                        id: item.id, date: item.date?.split('T')[0],
+                        time: new Date(item.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                        timestamp: new Date(item.date).getTime() / 1000,
+                        status: { long: item.status, short: item.status === 'Completed' ? 'FT' : 'NS' },
+                        league: { name: item.competition.name, country: item.competition.location.country },
+                        teams: { home: { name: item.competition.name }, away: { name: item.circuit.name } },
+                        scores: { home: null, away: null }
                     };
                 }
                 
@@ -207,18 +229,23 @@ async function getTodaysGamesBySport(sport: string) {
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
     
     const todayStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
     const yesterdayStr = `${yesterday.getUTCFullYear()}-${String(yesterday.getUTCMonth() + 1).padStart(2, '0')}-${String(yesterday.getUTCDate()).padStart(2, '0')}`;
+    const tomorrowStr = `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, '0')}-${String(tomorrow.getUTCDate()).padStart(2, '0')}`;
 
-    const [yesterdayGames, todayGames] = await Promise.all([
+    const [yesterdayGames, todayGames, tomorrowGames] = await Promise.all([
         _fetchGamesForDate(sport, yesterdayStr).catch(e => { console.error(`(Local) Failed to fetch yesterday's games for ${sport}`, e); return []; }),
-        _fetchGamesForDate(sport, todayStr).catch(e => { console.error(`(Local) Failed to fetch today's games for ${sport}`, e); return []; })
+        _fetchGamesForDate(sport, todayStr).catch(e => { console.error(`(Local) Failed to fetch today's games for ${sport}`, e); return []; }),
+        _fetchGamesForDate(sport, tomorrowStr).catch(e => { console.error(`(Local) Failed to fetch tomorrow's games for ${sport}`, e); return []; })
     ]);
     
     const allGamesMap = new Map();
     yesterdayGames.forEach((game: any) => allGamesMap.set(game.id, game));
     todayGames.forEach((game: any) => allGamesMap.set(game.id, game));
+    tomorrowGames.forEach((game: any) => allGamesMap.set(game.id, game));
     
     return Array.from(allGamesMap.values());
 }
@@ -254,7 +281,7 @@ async function processSport(sport: string) {
     const existingPredictionsMap = new Map(existingPredictions.map(p => [p.id, p]));
 
     let aiCallsCount = 0;
-    const MAX_AI_CALLS_PER_SPORT = 3; // Limit AI calls to stay within free tier and speed up
+    const MAX_AI_CALLS_PER_SPORT = 8; // Increased from 3 to provide more variety
 
     for (const game of games) {
         const homeTeam = game.teams.home.name;
