@@ -121,6 +121,10 @@
       }
       @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
       
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+
       #debug-console {
         position: fixed; bottom: 0; left: 0; width: 100%; max-height: 70%;
         background: #1a1a1a; color: #00ff00; font-family: monospace; font-size: 11px;
@@ -154,8 +158,6 @@
           Открыть в браузере
         </a>
       </div>
-
-      <button onclick="document.getElementById('debug-console').style.display='block'" style="margin-top: 30px; font-size: 11px; opacity: 0.4; text-decoration: underline;">Диагностика</button>
     </div>
 
     <script>

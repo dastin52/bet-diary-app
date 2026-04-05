@@ -10,6 +10,7 @@ import Select from './ui/Select';
 import Button from './ui/Button';
 import Label from './ui/Label';
 import { useTelegram } from '../hooks/useTelegram';
+import { analyzeBetScreenshot } from '../services/aiService';
 
 interface AddBetModalProps {
   onClose: () => void;
@@ -39,6 +40,7 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
   const [tagInput, setTagInput] = useState('');
   const [recommendedStakeInfo, setRecommendedStakeInfo] = useState<{ stake: number; percentage: number } | null>(null);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   useEffect(() => {
     if (isEditMode && betToEdit) {
@@ -189,6 +191,49 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
           setFormData(prev => ({ ...prev, stake: parseFloat(recommendedStakeInfo.stake.toFixed(2)) }));
       }
   }
+
+  const handleScreenshotUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsAnalyzing(true);
+    setErrors({});
+
+    try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const base64 = (reader.result as string).split(',')[1];
+            try {
+                const data = await analyzeBetScreenshot(base64);
+                if (data) {
+                    setFormData(prev => ({
+                        ...prev,
+                        sport: data.sport || prev.sport,
+                        bookmaker: data.bookmaker || prev.bookmaker,
+                        betType: data.betType || prev.betType,
+                        stake: data.stake || prev.stake,
+                        odds: data.odds || prev.odds,
+                        status: data.status || prev.status,
+                        profit: data.profit || prev.profit || 0,
+                        legs: data.legs && data.legs.length > 0 ? data.legs : prev.legs,
+                    }));
+                    if (data.tags && data.tags.length > 0) {
+                        setTagInput(data.tags.join(', '));
+                    }
+                }
+            } catch (err) {
+                console.error("Analysis failed:", err);
+                setErrors({ screenshot: "Не удалось проанализировать скриншот. Попробуйте другое изображение или введите данные вручную." });
+            } finally {
+                setIsAnalyzing(false);
+            }
+        };
+        reader.readAsDataURL(file);
+    } catch (err) {
+        console.error("File reading failed:", err);
+        setIsAnalyzing(false);
+    }
+  };
   
   const availableMarkets = MARKETS_BY_SPORT[formData.sport] || [];
   const isIndividualSport = ['Теннис', 'Бокс', 'ММА'].includes(formData.sport);
@@ -198,6 +243,30 @@ const AddBetModal: React.FC<AddBetModalProps> = ({ onClose, betToEdit }) => {
   return (
     <Modal title={isEditMode ? "Редактировать ставку" : "Добавить новую ставку"} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4 pb-12 sm:pb-0">
+        {!isEditMode && (
+            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Авто-заполнение по скриншоту</h4>
+                        <p className="text-[10px] text-indigo-700 dark:text-indigo-300">Загрузите скриншот купона, и AI заполнит детали за вас.</p>
+                    </div>
+                    <div className="relative">
+                        <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleScreenshotUpload} 
+                            className="absolute inset-0 opacity-0 cursor-pointer" 
+                            disabled={isAnalyzing}
+                        />
+                        <Button type="button" variant="primary" className="!py-1.5 !px-3 text-xs" disabled={isAnalyzing}>
+                            {isAnalyzing ? 'Анализ...' : 'Загрузить'}
+                        </Button>
+                    </div>
+                </div>
+                {errors.screenshot && <p className="text-red-500 text-[10px] mt-2">{errors.screenshot}</p>}
+            </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <Label htmlFor="sport">Вид спорта</Label>

@@ -9,7 +9,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import LoginScreen from './components/auth/LoginScreen';
 import { PredictionProvider } from './contexts/PredictionContext';
 import ErrorBoundary from './components/ErrorBoundary';
-import TwaDebugger from './components/TwaDebugger';
+// import TwaDebugger from './components/TwaDebugger';
 
 const AppContent: React.FC = () => {
   const { currentUser } = useAuthContext();
@@ -51,7 +51,6 @@ const AppContent: React.FC = () => {
 
   return (
     <>
-      <TwaDebugger />
       {showWelcomeOverlay && <WelcomeOverlay onStart={handleStartFromWelcome} />}
       <Layout isDemoMode={isDemoMode} onAuthRequired={handleAuthRequired} />
       {isLoginModalOpen && (

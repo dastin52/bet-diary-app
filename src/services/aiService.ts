@@ -99,6 +99,59 @@ async function callApiProxy(endpoint: string, payload: object) {
     return response.json();
 }
 
+export const analyzeBetScreenshot = async (base64Image: string): Promise<any> => {
+    const systemInstruction = `Вы — эксперт по анализу скриншотов ставок из букмекерских контор.
+Ваша задача: извлечь детали ставки из изображения и вернуть их строго в формате JSON.
+
+Ожидаемый формат JSON:
+{
+  "sport": "Футбол" | "Хоккей" | "Баскетбол" | "Теннис" | "Киберспорт" | "Бокс" | "ММА",
+  "bookmaker": "string (название БК)",
+  "betType": "Single" | "Parlay",
+  "stake": number,
+  "odds": number,
+  "legs": [
+    {
+      "homeTeam": "string",
+      "awayTeam": "string",
+      "market": "string (например: П1, ТБ 2.5, Обе забьют)"
+    }
+  ],
+  "status": "Pending" | "Won" | "Lost" | "Void",
+  "profit": number (только если статус Won или Lost)
+}
+
+Правила:
+1. Если вид спорта не определен точно, выберите наиболее подходящий из списка.
+2. Если это экспресс, извлеките все события в массив legs.
+3. Если сумма ставки или коэффициент не найдены, используйте 0.
+4. Возвращайте ТОЛЬКО чистый JSON, без пояснений.`;
+
+    const prompt = "Проанализируй этот скриншот ставки и извлеки данные.";
+    
+    try {
+        const response = await callApiProxy('generateContent', {
+            model: "gemini-3-flash-preview",
+            contents: [{ 
+                role: 'user', 
+                parts: [
+                    { text: prompt },
+                    { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                ] 
+            }],
+            config: { 
+                systemInstruction,
+                responseMimeType: "application/json"
+            },
+        });
+        
+        return JSON.parse(response.text);
+    } catch (error) {
+        console.error('Error analyzing screenshot:', error);
+        throw error;
+    }
+};
+
 export const fetchAIStrategy = async (analytics: UseBetsReturn['analytics']): Promise<string> => {
     const systemInstruction = `Вы — AI-Стратег...`; // Полный текст инструкции
     const prompt = `Проанализируй мою эффективность и дай стратегические советы.\n\n${analyticsToText(analytics)}`;

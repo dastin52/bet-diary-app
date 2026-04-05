@@ -44,7 +44,7 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
   
   const { analytics } = useBetContext();
   const { isAdmin } = useAuthContext();
-  const { isTwa, BackButton, onBackButtonClick, initData, tg } = useTelegram();
+  const { isTwa, BackButton, onBackButtonClick } = useTelegram();
 
   // Reset view to dashboard if user logs out from admin panel
   useEffect(() => {
@@ -152,8 +152,6 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
     }
   };
 
-  const isDesktopBrowser = !tg || tg.platform === 'unknown' || !initData || initData === 'EMPTY_STRING';
-
   return (
       <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
         <div className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>
@@ -161,15 +159,6 @@ const Layout: React.FC<LayoutProps> = ({ isDemoMode, onAuthRequired }) => {
           <div className="flex-1 overflow-y-auto">
             <Sidebar currentView={currentView} setCurrentView={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} isDemoMode={isDemoMode} onAuthRequired={onAuthRequired} />
           </div>
-          
-          {/* Debug Footer for missing initData */}
-          {isDesktopBrowser && (
-              <div className="p-2 bg-yellow-900/80 text-yellow-200 text-[10px] break-all border-t border-yellow-700">
-                  <p className="font-bold">⚠️ GUEST MODE / BROWSER DETECTED</p>
-                  <p>Open via Telegram Menu Button for full features.</p>
-                  <p>Platform: {tg?.platform || 'browser'}</p>
-              </div>
-          )}
         </div>
         
         <div className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">

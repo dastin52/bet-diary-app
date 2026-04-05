@@ -92,15 +92,17 @@ const Header: React.FC<HeaderProps> = ({ onAddBetClick, onCashOutClick, onUpdate
                     <div className="text-base font-bold text-gray-900 dark:text-white">{bankroll.toFixed(2)} ₽</div>
                 </div>
                 <div className="flex gap-1">
-                  <Button onClick={onUpdateBankrollClick} variant="secondary" className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2">
-                      Банк
+                  <Button onClick={onUpdateBankrollClick} variant="secondary" className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2 flex items-center">
+                      <span className="hidden xs:inline">Банк</span>
+                      <span className="xs:hidden">Б</span>
                   </Button>
-                  <Button onClick={onCashOutClick} variant="secondary" className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2">
-                      Кэшаут
+                  <Button onClick={onCashOutClick} variant="secondary" className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2 flex items-center">
+                      <span className="hidden xs:inline">Кэшаут</span>
+                      <span className="xs:hidden">К</span>
                   </Button>
-                  <Button onClick={onAddBetClick} className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2">
+                  <Button onClick={onAddBetClick} className="px-2 py-1 text-[10px] md:text-sm md:px-4 md:py-2 flex items-center">
                       <PlusIcon />
-                      <span className="hidden xs:inline">Ставка</span>
+                      <span className="hidden sm:inline">Ставка</span>
                   </Button>
                 </div>
             </div>
