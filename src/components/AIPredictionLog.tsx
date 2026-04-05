@@ -118,10 +118,20 @@ const AIPredictionLog: React.FC = () => {
     const allEnhancedPredictions = useMemo(() => {
         return centralPredictions
             .filter(p => p.prediction) 
-            .map(p => ({
-                ...(p.prediction as AIPrediction),
-                leagueName: p.eventName,
-            }))
+            .map(p => {
+                const pred = p.prediction as AIPrediction;
+                return {
+                    ...pred,
+                    leagueName: p.eventName,
+                    // @google/genai-fix: Correctly map matchResult from SharedPrediction if not in AIPrediction
+                    matchResult: pred.matchResult || (p.scores && p.winner ? { 
+                        scores: p.scores, 
+                        winner: p.winner 
+                    } : undefined),
+                    matchName: p.teams,
+                    sport: p.sport,
+                };
+            })
             .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [centralPredictions]);
     

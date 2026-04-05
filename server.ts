@@ -243,9 +243,9 @@ async function startServer() {
         console.log(`Server running at http://localhost:${port}`);
         
         setInterval(() => {
-            console.log('Hourly prediction update...');
-            runUpdate().catch(err => console.error('Hourly update run failed:', err));
-        }, 3600 * 1000);
+            console.log('Periodic prediction update (15m)...');
+            runUpdate().catch(err => console.error('Periodic update run failed:', err));
+        }, 15 * 60 * 1000);
     });
 }
 
