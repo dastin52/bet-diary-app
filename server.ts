@@ -60,6 +60,28 @@ async function startServer() {
         });
     });
 
+    app.get('/api/admin/logs', (req, res) => {
+        const logs = cache.getPersistent('system_logs_buffer') || [];
+        res.json(logs);
+    });
+
+    app.post('/api/admin/clear-cache', (req, res) => {
+        console.log('[ADMIN] Clearing cache by user request.');
+        // We only clear prediction caches and stamps, not user data
+        const keysToKeep = ['tgusers:list']; // Keep sensitive lists
+        const allKeys = Object.keys(cache.getPersistent('__all') || {});
+        
+        // This is a bit hacky since cache doesn't have a full del but we can rewrite it
+        // For simplicity, let's just clear specific known keys
+        const sports = ['football', 'hockey', 'basketball', 'nba', 'tennis', 'mma', 'baseball', 'american-football', 'volleyball', 'handball', 'rugby', 'cricket', 'formula-1', 'all'];
+        sports.forEach(s => cache.putPersistent(`central_predictions:${s}`, []));
+        cache.putPersistent('last_run_triggered_timestamp', null);
+        cache.putPersistent('last_successful_run_timestamp', null);
+        cache.putPersistent('last_run_error', null);
+        
+        res.json({ message: 'Кэш прогнозов успешно очищен.' });
+    });
+
     app.get('/api/admin/activity', (req, res) => {
         const logs = cache.getPersistent('api_activity_log') || [];
         res.json(logs);

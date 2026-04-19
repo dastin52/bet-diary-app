@@ -8,6 +8,25 @@ import { google } from 'googleapis';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- LOG CAPTURE ---
+const originalLog = console.log;
+const originalError = console.error;
+
+const captureLog = (type: 'info' | 'error', ...args: any[]) => {
+    const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    const logEntry = { timestamp: new Date().toISOString(), type, message };
+    const logs = cache.getPersistent('system_logs_buffer') || [];
+    logs.push(logEntry);
+    if (logs.length > 200) logs.shift();
+    cache.putPersistent('system_logs_buffer', logs);
+    
+    if (type === 'error') originalError(...args);
+    else originalLog(...args);
+};
+
+console.log = (...args) => captureLog('info', ...args);
+console.error = (...args) => captureLog('error', ...args);
+
 // --- AI SETUP ---
 let ai: GoogleGenAI | null = null;
 if (process.env.GEMINI_API_KEY) {
@@ -32,9 +51,16 @@ const PREDICTION_SYSTEM_INSTRUCTION = `Вы — эксперт-аналитик 
 async function generatePredictionForMatch(sport: string, teams: string, league: string) {
     if (!ai) return null;
     console.log(`[AI] Generating prediction for ${teams} (${sport}, ${league}) with Search Grounding...`);
+    
+    // Safety timeout for AI calls
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('AI Generation Timeout (60s)')), 60000)
+    );
+
     try {
         const prompt = `Проанализируй матч: ${teams}. Вид спорта: ${sport}. Лига: ${league}. Используй поиск Google для получения свежих данных о форме команд, травмах и последних результатах. Дай прогноз на основные исходы.`;
-        const response = await ai.models.generateContent({
+        
+        const aiPromise = ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
@@ -51,13 +77,15 @@ async function generatePredictionForMatch(sport: string, teams: string, league: 
                 ]
             }
         });
+
+        const response: any = await Promise.race([aiPromise, timeoutPromise]);
         
         return {
             text: response.text,
             sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
         };
-    } catch (e) {
-        console.error(`[AI ERROR] Failed to generate prediction for ${teams}:`, e);
+    } catch (e: any) {
+        console.error(`[AI ERROR] Failed to generate prediction for ${teams}:`, e.message);
         return null;
     }
 }
@@ -503,11 +531,17 @@ export async function runUpdate() {
     try {
         const allSportPredictions = [];
         for (const sport of SPORTS_TO_PROCESS) {
-            console.log(`[Updater Task] Processing sport: ${sport}`);
+            console.log(`[Updater Task] Processing sport: ${sport} (${SPORTS_TO_PROCESS.indexOf(sport) + 1}/${SPORTS_TO_PROCESS.length})`);
             try {
+                // Heartbeat update before each sport to show progress
+                cache.putPersistent('last_run_triggered_timestamp', new Date().toISOString());
+                
                 const sportPredictions = await processSport(sport);
                 if (sportPredictions && sportPredictions.length > 0) {
                     allSportPredictions.push(...sportPredictions);
+                    console.log(`[Updater Task] Successfully processed ${sportPredictions.length} predictions for ${sport}.`);
+                } else {
+                    console.log(`[Updater Task] No predictions found/processed for ${sport}.`);
                 }
             } catch (sportError: any) {
                 console.error(`[Updater Task] Failed to process sport ${sport}, continuing. Error:`, sportError);

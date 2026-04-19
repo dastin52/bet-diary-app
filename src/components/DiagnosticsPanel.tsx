@@ -36,7 +36,9 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey, onForce
     const [lastUpdate, setLastUpdate] = useState<CheckResult | null>(null);
     const [lastError, setLastError] = useState<CheckResult | null>(null);
     const [cacheStatus, setCacheStatus] = useState<Record<string, CacheCheckResult>>({});
+    const [systemLogs, setSystemLogs] = useState<{ timestamp: string; type: string; message: string }[]>([]);
     const [copySuccess, setCopySuccess] = useState(false);
+    const [showLogs, setShowLogs] = useState(false);
 
     const runDiagnostics = useCallback(async () => {
         setIsLoading(true);
@@ -102,6 +104,17 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey, onForce
             setLog(fullLog + `[ERROR] Connectivity: ${errorMsg}\n`);
             setIsLoading(false);
             return;
+        }
+
+        // Fetch Logs
+        try {
+            const logsRes = await fetch('/api/admin/logs');
+            if (logsRes.ok) {
+                const logsData = await logsRes.json();
+                setSystemLogs(logsData);
+            }
+        } catch (e) {
+            console.error('Failed to fetch system logs');
         }
 
         fullLog += '\n--- CACHE STATUS ---\n';
@@ -174,13 +187,33 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey, onForce
                     </div>
                 </div>
                 <p className="text-sm text-gray-400 mt-2">Эта панель проверяет ключевые компоненты системы. Если матчи не обновляются, скопируйте лог и отправьте его для анализа.</p>
-                 <div className="mt-4">
+                 <div className="mt-4 flex gap-2 flex-wrap">
                     <Button onClick={onForceUpdate} disabled={isUpdating} variant="secondary">
                         {isUpdating ? 'Обновление...' : 'Запустить обновление прогнозов вручную'}
+                    </Button>
+                    <Button onClick={() => setShowLogs(!showLogs)} variant="secondary" className="!bg-purple-900/10 border-purple-500/30">
+                        {showLogs ? 'Скрыть логи' : 'Показать логи системы'}
+                    </Button>
+                    <Button onClick={handleClearCache} variant="secondary" className="!bg-red-900/10 border-red-500/30">
+                        Очистить кэш
                     </Button>
                 </div>
                  {updateMessage && (
                     <p className={`mt-4 text-sm p-3 rounded-md ${getMessageColor()}`}>{updateMessage.text}</p>
+                )}
+                {showLogs && (
+                    <div className="mt-4 p-3 bg-black/50 rounded-lg border border-purple-900/30 font-mono text-xs overflow-auto max-h-64 space-y-1">
+                        {systemLogs.length === 0 ? (
+                            <p className="text-gray-500 italic">Логи пока пусты (появятся после запуска)...</p>
+                        ) : (
+                            systemLogs.map((log, i) => (
+                                <div key={i} className={`${log.type === 'error' ? 'text-red-400' : 'text-gray-300'}`}>
+                                    <span className="text-purple-400 mr-2 opacity-60">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                                    {log.message}
+                                </div>
+                            ))
+                        )}
+                    </div>
                 )}
             </Card>
 
