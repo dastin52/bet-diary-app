@@ -129,7 +129,7 @@ const calculateMode = (numbers: number[]): number => {
     return mode;
 };
 
-type EnhancedAIPrediction = AIPrediction & { leagueName?: string };
+type EnhancedAIPrediction = AIPrediction & { leagueName?: string, sources?: any[] };
 
 const AIPredictionLog: React.FC = () => {
     const { allPredictions: centralPredictions, isLoading, fetchAllPredictions } = usePredictionContext();
@@ -181,6 +181,7 @@ const AIPredictionLog: React.FC = () => {
                     } : undefined),
                     matchName: p.teams,
                     sport: p.sport,
+                    sources: pred.sources,
                 };
             })
             .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

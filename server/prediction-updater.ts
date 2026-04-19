@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
+import { google } from 'googleapis';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -402,6 +403,82 @@ async function processSport(sport: string) {
     return prunedPredictions;
 }
 
+async function syncToGoogleSheets(predictions: any[]) {
+    const sheetId = process.env.GOOGLE_SHEET_ID;
+    const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+    if (!sheetId || !clientEmail || !privateKey) {
+        console.log('[Google Sheets] Missing credentials, skipping sync.');
+        return;
+    }
+
+    // Only sync finished matches that haven't been synced as finished yet
+    const alreadySyncedFinishedIds = new Set(cache.getPersistent('gsheets_synced_finished_ids') || []);
+    const toSync = predictions.filter(p => (p.matchResult || FINISHED_STATUSES.includes(p.status?.short)) && !alreadySyncedFinishedIds.has(p.id));
+
+    if (toSync.length === 0) {
+        console.log('[Google Sheets] No new finished predictions to sync.');
+        return;
+    }
+
+    console.log(`[Google Sheets] Syncing ${toSync.length} finished matches...`);
+
+    try {
+        const auth = new google.auth.JWT(
+            clientEmail,
+            undefined,
+            privateKey,
+            ['https://www.googleapis.com/auth/spreadsheets']
+        );
+
+        const sheets = google.sheets({ version: 'v4', auth });
+        
+        // Prepare rows: Match, Sport, League, Date, AI Prediction, Result, Confidence, Analysis, Sources
+        const rows = toSync.map(p => {
+             let outcome = 'N/A';
+             let reasoning = 'N/A';
+             try {
+                 const predData = typeof p.prediction?.prediction === 'string' ? JSON.parse(p.prediction.prediction) : (typeof p.prediction === 'string' ? JSON.parse(p.prediction) : {});
+                 outcome = predData.most_likely_outcome || predData.recommended_outcome || 'N/A';
+                 reasoning = predData.market_analysis?.[outcome]?.justification || 'N/A';
+             } catch (e) {
+                 console.error(`[GSheets Row Layout] Error parsing prediction for ${p.id}:`, e);
+             }
+
+             return [
+                 p.teams || `${p.teams?.home?.name} vs ${p.teams?.away?.name}`,
+                 p.sport,
+                 p.league?.name || p.leagueName || 'N/A',
+                 p.date,
+                 outcome,
+                 p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : 'Finished (No Scores)',
+                 p.prediction?.confidence_score || 'N/A',
+                 reasoning,
+                 p.prediction?.sources?.map((s: any) => s.web?.uri).join(', ') || ''
+             ];
+        });
+
+        // Appending to the sheet
+        await sheets.spreadsheets.values.append({
+            spreadsheetId: sheetId,
+            range: 'A:I',
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+                values: rows
+            }
+        });
+
+        // Update synced IDs
+        toSync.forEach(p => alreadySyncedFinishedIds.add(p.id));
+        cache.putPersistent('gsheets_synced_finished_ids', Array.from(alreadySyncedFinishedIds));
+
+        console.log(`[Google Sheets] Successfully synced ${rows.length} rows.`);
+    } catch (e: any) {
+        console.error('[Google Sheets Error]', e.message);
+    }
+}
+
 export async function runUpdate() {
     cache.putPersistent('last_run_triggered_timestamp', new Date().toISOString());
     console.log(`[Updater Task] Triggered at ${new Date().toISOString()}`);
@@ -430,6 +507,9 @@ export async function runUpdate() {
         
         cache.putPersistent('central_predictions:all', uniqueAllPredictions);
         console.log(`[Updater Task] Completed all sports. Total unique predictions now: ${uniqueAllPredictions.length}`);
+
+        // Sync to Google Sheets if configured
+        await syncToGoogleSheets(uniqueAllPredictions);
 
         cache.putPersistent('last_successful_run_timestamp', new Date().toISOString());
         cache.putPersistent('last_run_error', null);
