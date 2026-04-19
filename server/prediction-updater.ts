@@ -406,11 +406,29 @@ async function processSport(sport: string) {
 async function syncToGoogleSheets(predictions: any[]) {
     const sheetId = process.env.GOOGLE_SHEET_ID;
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY;
 
-    if (!sheetId || !clientEmail || !privateKey) {
+    if (!sheetId || !clientEmail || !rawPrivateKey) {
         console.log('[Google Sheets] Missing credentials, skipping sync.');
         return;
+    }
+
+    // Robust private key repair (handles literal \n, missing newlines, or spaces instead of newlines)
+    let privateKey = rawPrivateKey;
+    if (privateKey.includes('\\n')) {
+        privateKey = privateKey.replace(/\\n/g, '\n');
+    }
+    
+    // If it looks like a one-line key (no actual newlines), re-format it
+    if (!privateKey.includes('\n') && privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+        const body = privateKey
+            .replace('-----BEGIN PRIVATE KEY-----', '')
+            .replace('-----END PRIVATE KEY-----', '')
+            .replace(/\s+/g, ''); // Remove all spaces/tabs/newlines
+        
+        // Re-wrap and add headers
+        const lines = body.match(/.{1,64}/g) || [];
+        privateKey = `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----\n`;
     }
 
     // Only sync finished matches that haven't been synced as finished yet
@@ -425,12 +443,11 @@ async function syncToGoogleSheets(predictions: any[]) {
     console.log(`[Google Sheets] Syncing ${toSync.length} finished matches...`);
 
     try {
-        const auth = new google.auth.JWT(
-            clientEmail,
-            undefined,
-            privateKey,
-            ['https://www.googleapis.com/auth/spreadsheets']
-        );
+        const auth = new google.auth.JWT({
+            email: clientEmail,
+            key: privateKey,
+            scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
 
         const sheets = google.sheets({ version: 'v4', auth });
         
