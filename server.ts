@@ -230,14 +230,11 @@ async function startServer() {
         });
     }
 
-    // --- INITIAL UPDATE ---
+    // --- INITIAL UPDATE --- (Non-blocking)
     console.log('Running initial prediction update on startup...');
-    try {
-        await runUpdate();
-        console.log('Initial prediction update complete.');
-    } catch (err) {
-        console.error('Initial update run failed:', err);
-    }
+    runUpdate().catch(err => {
+        console.error('Initial prediction update run failed:', err);
+    });
 
     app.listen(port, '0.0.0.0', () => {
         console.log(`Server running at http://localhost:${port}`);

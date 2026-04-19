@@ -30,18 +30,31 @@ const PREDICTION_SYSTEM_INSTRUCTION = `Вы — эксперт-аналитик 
 
 async function generatePredictionForMatch(sport: string, teams: string, league: string) {
     if (!ai) return null;
-    console.log(`[AI] Generating prediction for ${teams} (${sport}, ${league})...`);
+    console.log(`[AI] Generating prediction for ${teams} (${sport}, ${league}) with Search Grounding...`);
     try {
-        const prompt = `Проанализируй матч: ${teams}. Вид спорта: ${sport}. Лига: ${league}. Дай прогноз на основные исходы.`;
+        const prompt = `Проанализируй матч: ${teams}. Вид спорта: ${sport}. Лига: ${league}. Используй поиск Google для получения свежих данных о форме команд, травмах и последних результатах. Дай прогноз на основные исходы.`;
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
                 systemInstruction: PREDICTION_SYSTEM_INSTRUCTION,
-                responseMimeType: "application/json"
+                responseMimeType: "application/json",
+                tools: [
+                    {
+                        googleSearch: {
+                            searchTypes: {
+                                webSearch: {}
+                            }
+                        }
+                    }
+                ]
             }
         });
-        return response.text;
+        
+        return {
+            text: response.text,
+            sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
+        };
     } catch (e) {
         console.error(`[AI ERROR] Failed to generate prediction for ${teams}:`, e);
         return null;
@@ -132,13 +145,26 @@ async function _fetchGamesForDate(sport: string, queryDate: string) {
 
     const url = `${config.host}/${config.path}?date=${queryDate}`;
 
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
     try {
-        const response = await fetch(url, { headers: { [config.keyName]: process.env.SPORT_API_KEY as string } });
+        const response = await fetch(url, { 
+            headers: { [config.keyName]: process.env.SPORT_API_KEY as string },
+            signal: controller.signal
+        });
+        clearTimeout(id);
+
         if (!response.ok) throw new Error(`API responded with status ${response.status}: ${await response.text()}`);
 
         const data: any = await response.json();
         if (data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0)) {
             throw new Error(`API returned logical error: ${JSON.stringify(data.errors)}`);
+        }
+        
+        if (!data.response || !Array.isArray(data.response)) {
+            console.warn(`[Local API] No valid response array for ${sport} on ${queryDate}`);
+            return [];
         }
         
         logApiActivity({ sport, endpoint: url, status: 'success' });
@@ -261,7 +287,7 @@ async function processSport(sport: string) {
     // Only fetch from API if more than 15 minutes passed, unless it's a manual trigger
     // (We'll handle manual trigger by checking a flag if needed, but for now let's stick to 15m)
     if (lastFetched && (now - lastFetched < 15 * 60 * 1000) && process.env.SPORT_API_KEY) {
-        console.log(`[Updater] Skipping API fetch for ${sport}, last fetch was less than 30m ago.`);
+        console.log(`[Updater] Skipping API fetch for ${sport}, last fetch was less than 15m ago.`);
         return cache.getPersistent(`central_predictions:${sport}`) || [];
     }
 
@@ -297,8 +323,17 @@ async function processSport(sport: string) {
         // Generate prediction if missing and match is in the future
         const isFutureMatch = game.timestamp * 1000 > Date.now();
         if (!prediction && isFutureMatch && aiCallsCount < MAX_AI_CALLS_PER_SPORT) {
-            prediction = await generatePredictionForMatch(sport, matchName, game.league.name);
-            if (prediction) {
+            const aiResult = await generatePredictionForMatch(sport, matchName, game.league.name);
+            if (aiResult) {
+                prediction = {
+                    id: `ai-${game.id}`,
+                    createdAt: new Date().toISOString(),
+                    sport,
+                    matchName,
+                    prediction: aiResult.text,
+                    sources: aiResult.sources,
+                    status: 'pending'
+                };
                 aiCallsCount++;
                 // Add a small delay between AI calls
                 await delay(2000);
@@ -348,16 +383,18 @@ async function processSport(sport: string) {
     const finalPredictions = Array.from(existingPredictionsMap.values())
         .sort((a: any, b: any) => getStatusPriority(a.status?.short) - getStatusPriority(b.status?.short) || b.timestamp - a.timestamp);
     
-    const cutoff = Date.now() - (48 * 60 * 60 * 1000); // 48 hours ago cutoff
+    const cutoff = Date.now() - (48 * 60 * 60 * 1000); // 48 hours ago cutoff for upcoming
+    const finishedCutoff = Date.now() - (72 * 60 * 60 * 1000); // Keep finished for 3 days
 
     const prunedPredictions = finalPredictions.filter((p: any) => {
-        if (FINISHED_STATUSES.includes(p.status?.short)) {
-            return true;
+        const isFinished = FINISHED_STATUSES.includes(p.status?.short);
+        const matchTime = p.timestamp * 1000;
+
+        if (isFinished) {
+            return matchTime >= finishedCutoff;
         }
-        if (p.timestamp * 1000 >= cutoff) {
-            return true;
-        }
-        return false;
+        
+        return matchTime >= cutoff;
     });
 
     cache.putPersistent(centralPredictionsKey, prunedPredictions);

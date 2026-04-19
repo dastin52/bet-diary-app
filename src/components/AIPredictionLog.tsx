@@ -39,7 +39,7 @@ const getStatusInfo = (status: AIPredictionStatus): { label: string; color: stri
     }
 };
 
-const PredictionDetails: React.FC<{ prediction: string, confidence: number | null }> = ({ prediction, confidence }) => {
+const PredictionDetails: React.FC<{ prediction: string, confidence: number | null, groundingSources?: any[] }> = ({ prediction, confidence, groundingSources }) => {
     try {
         const data = JSON.parse(prediction);
         // NEW STRUCTURE
@@ -79,6 +79,21 @@ const PredictionDetails: React.FC<{ prediction: string, confidence: number | nul
                             ))}
                         </div>
                     </details>
+                    {groundingSources && groundingSources.length > 0 && (
+                        <div className="pt-1 border-t border-gray-700/50 mt-2">
+                            <p className="text-[9px] text-gray-500 mb-1 font-medium flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+                                Источники (Google Search):
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                                {groundingSources.slice(0, 3).map((source, idx) => (
+                                    <span key={idx} className="text-[8px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded-full truncate max-w-[100px]">
+                                        {source.web?.title || `Источник ${idx + 1}`}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -453,7 +468,11 @@ const AIPredictionLog: React.FC = () => {
                                         </div>
                                         
                                         <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
-                                            <PredictionDetails prediction={p.prediction} confidence={confidence} />
+                                            <PredictionDetails 
+                                                prediction={p.prediction} 
+                                                confidence={confidence} 
+                                                groundingSources={p.sources}
+                                            />
                                         </div>
 
                                         <div className="flex justify-between items-center pt-1 border-t border-gray-700/50">
@@ -501,7 +520,11 @@ const AIPredictionLog: React.FC = () => {
                                                 <p className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleDateString('ru-RU')}</p>
                                             </td>
                                             <td className="px-4 py-3 text-sm">
-                                                <PredictionDetails prediction={p.prediction} confidence={confidence} />
+                                                <PredictionDetails 
+                                                    prediction={p.prediction} 
+                                                    confidence={confidence} 
+                                                    groundingSources={p.sources}
+                                                />
                                             </td>
                                              <td className="px-4 py-3 text-sm text-center font-mono">
                                                 {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
