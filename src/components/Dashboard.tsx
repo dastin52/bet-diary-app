@@ -6,6 +6,7 @@ import AICard from './AICard';
 import KpiCard from './ui/KpiCard';
 import UpcomingMatches from './UpcomingMatches';
 import MatchDetailsModal from './MatchDetailsModal';
+import ProAnalyticsPanel from './ProAnalyticsPanel';
 import { Goal, SharedPrediction, View } from '../types';
 import { LineChartTooltip, BarChartTooltip, StackedBarChartTooltip, OddsPerformanceTooltip } from './charts/ChartTooltip';
 import { getGoalProgress } from '../utils/goalUtils';
@@ -106,6 +107,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onOpenAIChat, onNavigate }) => {
       </div>
 
       <UpcomingMatches onMatchClick={setSelectedMatch} />
+
+      <ProAnalyticsPanel />
 
       <Card>
         <h3 className="text-lg font-semibold mb-4">История баланса</h3>

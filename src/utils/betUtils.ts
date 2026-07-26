@@ -39,3 +39,49 @@ export const generateEventString = (legs: BetLeg[], betType: BetType, sport: str
     }
     return legs[0]?.market || 'Неизвестное событие';
 };
+
+export const exportBetsToCSV = (bets: Bet[]): void => {
+  if (bets.length === 0) return;
+
+  const headers = [
+    'Date',
+    'Sport',
+    'Event',
+    'Bookmaker',
+    'BetType',
+    'Stake',
+    'Odds',
+    'Status',
+    'Profit',
+    'Tags'
+  ];
+
+  const rows = bets.map(bet => {
+    const formattedDate = new Date(bet.createdAt).toISOString();
+    const cleanEvent = `"${(bet.event || '').replace(/"/g, '""')}"`;
+    const cleanBookmaker = `"${(bet.bookmaker || '').replace(/"/g, '""')}"`;
+    const cleanTags = `"${(bet.tags || []).join(';')}"`;
+
+    return [
+      formattedDate,
+      bet.sport,
+      cleanEvent,
+      cleanBookmaker,
+      bet.betType,
+      bet.stake,
+      bet.odds,
+      bet.status,
+      bet.profit ?? 0,
+      cleanTags
+    ].join(',');
+  });
+
+  const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `bet_diary_export_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useBetContext } from '../contexts/BetContext';
 import { Bet, BetStatus } from '../types';
 import { BET_STATUS_OPTIONS, BOOKMAKERS, SPORTS } from '../constants';
+import { exportBetsToCSV } from '../utils/betUtils';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import Input from './ui/Input';
@@ -204,7 +205,15 @@ const BetLog: React.FC<BetLogProps> = ({ onEditBet, onViewBet, onImportBets, isD
       <Card>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
             <h2 className="text-xl font-semibold">История ставок</h2>
-            <Button onClick={onImportBets} variant="secondary"><ImportIcon /> Импорт из CSV</Button>
+            <div className="flex flex-wrap gap-2">
+                <Button onClick={() => exportBetsToCSV(filteredBets)} variant="secondary" disabled={filteredBets.length === 0}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Экспорт ({filteredBets.length})
+                </Button>
+                <Button onClick={onImportBets} variant="secondary"><ImportIcon /> Импорт из CSV</Button>
+            </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
             <Input type="text" name="search" placeholder="Поиск по событию, тегу..." value={filters.search} onChange={handleFilterChange} />

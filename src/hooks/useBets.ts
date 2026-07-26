@@ -30,9 +30,15 @@ export interface UseBetsReturn {
     betCount: number;
     lostBetsCount: number;
     winRate: number;
+    avgOdds: number;
+    avgStake: number;
+    longestWinStreak: number;
+    longestLoseStreak: number;
+    maxDrawdown: { value: number; percentage: number };
     balanceHistory: { date: string; balance: number }[];
     profitBySport: { sport: string; profit: number; roi: number; }[];
     profitByBetType: { type: string; profit: number; roi: number; }[];
+    profitByBookmaker: { bookmaker: string; profit: number; roi: number; count: number; }[];
     winLossBySport: { sport: string; wins: number; losses: number; }[];
     performanceByOdds: { range: string; wins: number; losses: number; winRate: number; roi: number; }[];
   };
@@ -423,6 +429,62 @@ export const useBets = (userKey: string): UseBetsReturn => {
         };
     });
 
+    const avgOdds = betCount > 0 ? settledBets.reduce((acc, b) => acc + b.odds, 0) / betCount : 0;
+    const avgStake = betCount > 0 ? totalStaked / betCount : 0;
+
+    const chronologicalBets = [...settledBets].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    let longestWinStreak = 0;
+    let longestLoseStreak = 0;
+    let currentWin = 0;
+    let currentLose = 0;
+
+    chronologicalBets.forEach(bet => {
+        if (bet.status === BetStatus.Won) {
+            currentWin++;
+            currentLose = 0;
+            if (currentWin > longestWinStreak) longestWinStreak = currentWin;
+        } else if (bet.status === BetStatus.Lost) {
+            currentLose++;
+            currentWin = 0;
+            if (currentLose > longestLoseStreak) longestLoseStreak = currentLose;
+        }
+    });
+
+    const initialBankroll = bankroll - totalProfit;
+    let peak = initialBankroll;
+    let maxDrawdownValue = 0;
+    let maxDrawdownPercentage = 0;
+    let runningBank = initialBankroll;
+
+    chronologicalBets.forEach(bet => {
+        runningBank += (bet.profit ?? 0);
+        if (runningBank > peak) {
+            peak = runningBank;
+        } else {
+            const drawdown = peak - runningBank;
+            if (drawdown > maxDrawdownValue) {
+                maxDrawdownValue = drawdown;
+                maxDrawdownPercentage = peak > 0 ? (drawdown / peak) * 100 : 0;
+            }
+        }
+    });
+
+    const statsByBookmaker = settledBets.reduce((acc, bet) => {
+        const bm = bet.bookmaker || 'Другое';
+        if (!acc[bm]) acc[bm] = { profit: 0, staked: 0, count: 0 };
+        acc[bm].profit += bet.profit ?? 0;
+        acc[bm].staked += bet.stake;
+        acc[bm].count += 1;
+        return acc;
+    }, {} as { [key: string]: { profit: number; staked: number; count: number } });
+
+    const profitByBookmaker = Object.keys(statsByBookmaker).map(bm => ({
+        bookmaker: bm,
+        profit: statsByBookmaker[bm].profit,
+        roi: statsByBookmaker[bm].staked > 0 ? (statsByBookmaker[bm].profit / statsByBookmaker[bm].staked) * 100 : 0,
+        count: statsByBookmaker[bm].count,
+    }));
+
     return {
       totalStaked,
       turnover: totalStaked,
@@ -432,9 +494,15 @@ export const useBets = (userKey: string): UseBetsReturn => {
       betCount,
       lostBetsCount,
       winRate,
+      avgOdds,
+      avgStake,
+      longestWinStreak,
+      longestLoseStreak,
+      maxDrawdown: { value: maxDrawdownValue, percentage: maxDrawdownPercentage },
       balanceHistory,
       profitBySport: profitBySportArray,
       profitByBetType: profitByBetTypeArray,
+      profitByBookmaker,
       winLossBySport,
       performanceByOdds,
     };
