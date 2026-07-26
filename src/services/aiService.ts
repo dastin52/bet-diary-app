@@ -131,7 +131,7 @@ export const analyzeBetScreenshot = async (base64Image: string): Promise<any> =>
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: [{ 
                 role: 'user', 
                 parts: [
@@ -158,7 +158,7 @@ export const fetchAIStrategy = async (analytics: UseBetsReturn['analytics']): Pr
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: { systemInstruction },
         });
@@ -175,7 +175,7 @@ export const fetchMatchAnalysis = async (match: SharedPrediction): Promise<{ tex
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
                 systemInstruction: generalSystemInstruction(currentDate),
@@ -196,7 +196,7 @@ export const fetchAIPredictionAnalysis = async (analytics: string): Promise<stri
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: { systemInstruction },
         });
@@ -217,7 +217,7 @@ export const fetchPokerAnalysis = async (handData: string): Promise<string> => {
     
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: { systemInstruction },
         });
@@ -257,7 +257,7 @@ export const getAIChatResponse = async (
 
     try {
         const response = await callApiProxy('generateContent', {
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: contents,
             config: {
                 systemInstruction: systemInstructionText,

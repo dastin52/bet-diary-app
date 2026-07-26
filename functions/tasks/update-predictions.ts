@@ -113,7 +113,7 @@ async function processSport(sport: string, env: Env): Promise<SharedPrediction[]
                         aiCallCount++;
                         const { prompt, schema, keyMapping } = getAiPayloadForSport(sport, matchName);
                         const res = await ai.models.generateContent({ 
-                            model: "gemini-2.0-flash-exp", 
+                            model: "gemini-2.5-flash", 
                             contents: [{ parts: [{ text: prompt }] }],
                             config: { responseMimeType: "application/json", responseSchema: schema }
                         });

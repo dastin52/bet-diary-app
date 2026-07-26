@@ -129,6 +129,34 @@ const calculateMode = (numbers: number[]): number => {
     return mode;
 };
 
+const extractScoreVal = (val: any): number | null => {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'number') return isNaN(val) ? null : val;
+    if (typeof val === 'string') {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? null : parsed;
+    }
+    if (typeof val === 'object') {
+        const inner = val.total ?? val.points ?? val.score ?? val.goals ?? val.value ?? val.home ?? val.fulltime?.home;
+        return extractScoreVal(inner);
+    }
+    return null;
+};
+
+const formatDisplayScore = (matchResult?: any, rawScores?: any): string => {
+    if (matchResult && matchResult.scores) {
+        const h = extractScoreVal(matchResult.scores.home);
+        const a = extractScoreVal(matchResult.scores.away);
+        if (h !== null && a !== null) return `${h} - ${a}`;
+    }
+    if (rawScores) {
+        const h = extractScoreVal(rawScores.home);
+        const a = extractScoreVal(rawScores.away);
+        if (h !== null && a !== null) return `${h} - ${a}`;
+    }
+    return '–';
+};
+
 type EnhancedAIPrediction = AIPrediction & { leagueName?: string, sources?: any[] };
 
 const AIPredictionLog: React.FC = () => {
@@ -175,10 +203,15 @@ const AIPredictionLog: React.FC = () => {
                     ...pred,
                     leagueName: p.eventName,
                     // @google/genai-fix: Correctly map matchResult from SharedPrediction if not in AIPrediction
-                    matchResult: pred.matchResult || (p.scores && p.scores.home !== null && p.scores.away !== null && p.winner ? { 
-                        scores: p.scores as { home: number; away: number }, 
-                        winner: p.winner 
-                    } : undefined),
+                    matchResult: pred.matchResult || (() => {
+                        const h = extractScoreVal((p as any).scores?.home);
+                        const a = extractScoreVal((p as any).scores?.away);
+                        if (h !== null && a !== null) {
+                            const winner: 'home' | 'away' | 'draw' = (p.winner as any) || (h > a ? 'home' : (a > h ? 'away' : 'draw'));
+                            return { scores: { home: h, away: a }, winner };
+                        }
+                        return undefined;
+                    })(),
                     matchName: p.teams,
                     sport: p.sport,
                     sources: pred.sources,
@@ -479,7 +512,7 @@ const AIPredictionLog: React.FC = () => {
                                         <div className="flex justify-between items-center pt-1 border-t border-gray-700/50">
                                             <span className="text-xs text-gray-500">Результат:</span>
                                             <span className="text-sm font-mono font-bold text-cyan-400">
-                                                {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
+                                                {formatDisplayScore(p.matchResult, (p as any).scores)}
                                             </span>
                                         </div>
                                     </div>
@@ -528,7 +561,7 @@ const AIPredictionLog: React.FC = () => {
                                                 />
                                             </td>
                                              <td className="px-4 py-3 text-sm text-center font-mono">
-                                                {p.matchResult ? `${p.matchResult.scores.home} - ${p.matchResult.scores.away}` : '–'}
+                                                {formatDisplayScore(p.matchResult, (p as any).scores)}
                                             </td>
                                             <td className="px-4 py-3 text-sm text-center">
                                                 <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusInfo(status).color}`}>

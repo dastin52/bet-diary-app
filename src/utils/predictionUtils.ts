@@ -7,10 +7,31 @@
  * @param winner The overall winner, including overtime (for sports like hockey/basketball).
  * @returns 'correct', 'incorrect', or 'unknown'.
  */
-export const resolveMarketOutcome = (market: string, scores: { home: number; away: number }, winner?: 'home' | 'away' | 'draw'): 'correct' | 'incorrect' | 'unknown' => {
-    if (scores.home === null || scores.away === null) return 'unknown';
-    
-    const { home, away } = scores;
+function extractScoreVal(val: any): number | null {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'number') return isNaN(val) ? null : val;
+    if (typeof val === 'string') {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? null : parsed;
+    }
+    if (typeof val === 'object') {
+        const inner = val.total ?? val.points ?? val.score ?? val.goals ?? val.value ?? val.home ?? val.fulltime?.home;
+        return extractScoreVal(inner);
+    }
+    return null;
+}
+
+export const resolveMarketOutcome = (market: string, rawScores: any, winner?: 'home' | 'away' | 'draw'): 'correct' | 'incorrect' | 'unknown' => {
+    if (!rawScores) return 'unknown';
+
+    let homeVal = rawScores.home !== undefined ? rawScores.home : rawScores.score?.home;
+    let awayVal = rawScores.away !== undefined ? rawScores.away : rawScores.score?.away;
+
+    const home = extractScoreVal(homeVal);
+    const away = extractScoreVal(awayVal);
+
+    if (home === null || away === null) return 'unknown';
+
     const total = home + away;
 
     const marketClean = market.trim();
