@@ -302,7 +302,16 @@ async function getTodaysGamesBySport(sport: string) {
     todayGames.forEach((game: any) => allGamesMap.set(game.id, game));
     tomorrowGames.forEach((game: any) => allGamesMap.set(game.id, game));
     
-    return Array.from(allGamesMap.values());
+    const realGames = Array.from(allGamesMap.values());
+    if (realGames.length > 0) {
+        return realGames;
+    }
+
+    console.log(`[Local API] API returned 0 games for ${sport} (possibly 429 rate limit reached or off-season). Falling back to generated mock games.`);
+    logApiActivity({ sport, endpoint: 'MOCK_DATA_FALLBACK', status: 'success' });
+    // @ts-ignore
+    const { generateMockGames } = await import('../functions/utils/mockGames');
+    return generateMockGames(sport);
 }
 
 async function processSport(sport: string) {
@@ -312,12 +321,13 @@ async function processSport(sport: string) {
     const lastFetchedKey = `last_fetched:${sport}`;
     const lastFetched = cache.getPersistent(lastFetchedKey);
     const now = Date.now();
-    
-    // Only fetch from API if more than 15 minutes passed, unless it's a manual trigger
-    // (We'll handle manual trigger by checking a flag if needed, but for now let's stick to 15m)
-    if (lastFetched && (now - lastFetched < 15 * 60 * 1000) && process.env.SPORT_API_KEY) {
-        console.log(`[Updater] Skipping API fetch for ${sport}, last fetch was less than 15m ago.`);
-        return cache.getPersistent(`central_predictions:${sport}`) || [];
+    const centralPredictionsKey = `central_predictions:${sport}`;
+    const existingPredictions: any[] = cache.getPersistent(centralPredictionsKey) || [];
+
+    // Only skip API fetch if fetched <15m ago AND we already have existing predictions saved
+    if (lastFetched && (now - lastFetched < 15 * 60 * 1000) && process.env.SPORT_API_KEY && existingPredictions.length > 0) {
+        console.log(`[Updater] Skipping API fetch for ${sport}, last fetch was less than 15m ago and predictions exist.`);
+        return existingPredictions;
     }
 
     let games: any[] = await getTodaysGamesBySport(sport);

@@ -158,6 +158,19 @@ const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({ refreshKey, onForce
         setCopySuccess(true);
         setTimeout(() => setCopySuccess(false), 2000);
     };
+
+    const handleClearCache = async () => {
+        if (!confirm('Вы уверены, что хотите очистить кэш прогнозов? Все текущие прогнозы будут удалены и сгенерированы заново.')) return;
+        try {
+            const res = await fetch('/api/admin/clear-cache', { method: 'POST' });
+            if (res.ok) {
+                alert('Кэш успешно очищен. Пожалуйста, запустите обновление вручную.');
+                runDiagnostics();
+            }
+        } catch (e) {
+            alert('Ошибка при очистке кэша.');
+        }
+    };
     
      const getMessageColor = () => {
         if (!updateMessage) return '';
